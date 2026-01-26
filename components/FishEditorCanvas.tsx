@@ -562,7 +562,7 @@ export default function FishEditorCanvas({
       // Draw AI fish
       fishListRef.current.forEach((fish) => {
         if (fish.sprite) {
-          const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / maxSpeed);
+          const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
           drawFishWithDeformation(
             ctx,
             fish.sprite,
@@ -584,7 +584,7 @@ export default function FishEditorCanvas({
       });
 
       // Draw player
-      const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / maxSpeed);
+      const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / MAX_SPEED);
       if (player.sprite) {
         drawFishWithDeformation(
           ctx,
