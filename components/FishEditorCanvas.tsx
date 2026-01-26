@@ -369,34 +369,34 @@ export default function FishEditorCanvas({
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    const maxSpeed = 1.5;
+    // Game physics constants
+    const MAX_SPEED = 1.5;
+    const ACCELERATION = 0.15;
+    const FRICTION = 0.92;
 
     const gameLoop = () => {
       const player = playerRef.current;
 
-      const acceleration = 0.15;
-      const friction = 0.92;
-
       // Use joystick if active, otherwise keyboard
       if (joystickActiveRef.current) {
         // Analog joystick control - smooth velocity
-        player.vx = joystickVelocityRef.current.x * maxSpeed;
-        player.vy = joystickVelocityRef.current.y * maxSpeed;
+        player.vx = joystickVelocityRef.current.x * MAX_SPEED;
+        player.vy = joystickVelocityRef.current.y * MAX_SPEED;
       } else {
         // Keyboard control with acceleration and friction
-        if (hasKey('w') || hasKey('arrowup')) player.vy -= acceleration;
-        if (hasKey('s') || hasKey('arrowdown')) player.vy += acceleration;
-        if (hasKey('a') || hasKey('arrowleft')) player.vx -= acceleration;
-        if (hasKey('d') || hasKey('arrowright')) player.vx += acceleration;
-        player.vx *= friction;
-        player.vy *= friction;
+        if (hasKey('w') || hasKey('arrowup')) player.vy -= ACCELERATION;
+        if (hasKey('s') || hasKey('arrowdown')) player.vy += ACCELERATION;
+        if (hasKey('a') || hasKey('arrowleft')) player.vx -= ACCELERATION;
+        if (hasKey('d') || hasKey('arrowright')) player.vx += ACCELERATION;
+        player.vx *= FRICTION;
+        player.vy *= FRICTION;
       }
 
       let speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-      if (speed > maxSpeed) {
-        player.vx = (player.vx / speed) * maxSpeed;
-        player.vy = (player.vy / speed) * maxSpeed;
-        speed = maxSpeed;
+      if (speed > MAX_SPEED) {
+        player.vx = (player.vx / speed) * MAX_SPEED;
+        player.vy = (player.vy / speed) * MAX_SPEED;
+        speed = MAX_SPEED;
       }
 
       player.x += player.vx;
@@ -412,7 +412,7 @@ export default function FishEditorCanvas({
       player.verticalTilt += (targetTilt - player.verticalTilt) * 0.1;
 
       // Movement-based animation: faster tail cycle when swimming
-      const normalizedSpeed = Math.min(1, speed / maxSpeed);
+      const normalizedSpeed = Math.min(1, speed / MAX_SPEED);
       player.animTime += 0.05 + normalizedSpeed * 0.06;
 
       // Update chomp phase (decay over ~280ms)

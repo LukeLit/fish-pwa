@@ -18,6 +18,9 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   const gameEngineRef = useRef<GameEngine | null>(null);
   const [isClient, setIsClient] = useState(false);
 
+  // Joystick threshold for converting analog input to key presses
+  const VELOCITY_THRESHOLD = 0.3;
+
   const handleJoystickChange = (output: AnalogJoystickOutput) => {
     if (!gameEngineRef.current) return;
 
@@ -29,15 +32,14 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
     if (!output.isActive) return;
 
     // Use velocity for smooth analog control
-    const threshold = 0.3; // Dead zone threshold
-    if (Math.abs(output.velocity.x) > threshold) {
+    if (Math.abs(output.velocity.x) > VELOCITY_THRESHOLD) {
       if (output.velocity.x > 0) {
         gameEngineRef.current.handleKeyDown('d');
       } else {
         gameEngineRef.current.handleKeyDown('a');
       }
     }
-    if (Math.abs(output.velocity.y) > threshold) {
+    if (Math.abs(output.velocity.y) > VELOCITY_THRESHOLD) {
       if (output.velocity.y > 0) {
         gameEngineRef.current.handleKeyDown('s');
       } else {

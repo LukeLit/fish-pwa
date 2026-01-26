@@ -100,7 +100,6 @@ export default function BottomSheet({
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      touchIdRef.current = null;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
