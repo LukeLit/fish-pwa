@@ -18,7 +18,7 @@ export default function MetaHub() {
 
   useEffect(() => {
     // Load data asynchronously
-    const loadData = async () => {
+    async function fetchData() {
       const storage = GameStorage.getInstance();
       const essenceManager = new EssenceManager();
       
@@ -28,13 +28,13 @@ export default function MetaHub() {
       setEssence(currentEssence);
       setHighScore(currentHighScore);
       setHasRun(runExists);
-    };
+    }
     
-    loadData();
+    fetchData();
 
     // Update on focus (in case essence changed in another tab)
     const handleFocus = () => {
-      loadData();
+      fetchData();
     };
     
     window.addEventListener('focus', handleFocus);
