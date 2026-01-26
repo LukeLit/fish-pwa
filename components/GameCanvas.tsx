@@ -38,9 +38,11 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
       if (!currentRunState) {
         // No existing run, create new one with default starter fish
         currentRunState = createNewRunState(DEFAULT_STARTER_FISH_ID);
-        if (currentRunState) {
-          saveRunState(currentRunState);
+        if (!currentRunState) {
+          console.error('Failed to create new run state');
+          return null;
         }
+        saveRunState(currentRunState);
       }
       
       setRunState(currentRunState);
@@ -60,7 +62,12 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
 
         // Load player fish sprite from run state
         const playerCreature = getCreature(currentRunState.selectedFishId);
-        if (playerCreature) {
+        if (!playerCreature) {
+          console.error(`Player creature ${currentRunState.selectedFishId} not found`);
+          // Fallback to sprite from run state
+          setPlayerFishSprite(currentRunState.fishState.sprite);
+        } else {
+          // Use sprite from run state (may have evolved)
           setPlayerFishSprite(currentRunState.fishState.sprite);
         }
 

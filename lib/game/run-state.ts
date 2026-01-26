@@ -376,8 +376,30 @@ export function incrementEvolution(runState: RunState): RunState {
  * ```
  */
 export function progressToNextLevel(runState: RunState): RunState {
-  const [biome, levelNum] = runState.currentLevel.split('-');
-  const nextLevel = parseInt(levelNum) + 1;
+  // Parse current level format (e.g., "1-1" -> biome: "1", level: 1)
+  const parts = runState.currentLevel.split('-');
+  if (parts.length !== 2) {
+    console.warn(`Invalid level format: ${runState.currentLevel}, using default progression`);
+    return {
+      ...runState,
+      currentLevel: '1-2',
+      collectedEssence: {},
+      hunger: 100,
+    };
+  }
+  
+  const [biome, levelNum] = parts;
+  const nextLevel = parseInt(levelNum, 10) + 1;
+  
+  if (isNaN(nextLevel)) {
+    console.warn(`Invalid level number in: ${runState.currentLevel}`);
+    return {
+      ...runState,
+      currentLevel: '1-2',
+      collectedEssence: {},
+      hunger: 100,
+    };
+  }
   
   return {
     ...runState,

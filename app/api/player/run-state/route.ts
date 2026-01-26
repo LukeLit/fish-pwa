@@ -3,13 +3,20 @@
  * GET: Get current run state
  * POST: Save run state
  * DELETE: Clear run state
+ * 
+ * NOTE: This uses in-memory storage which is NOT suitable for production
+ * in serverless environments. For production, use:
+ * - Vercel Blob Storage
+ * - Database (PostgreSQL, MongoDB, etc.)
+ * - Client-side localStorage only (already implemented in lib/game/run-state.ts)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import type { RunState } from '@/lib/game/types'
 
-// In-memory storage for demo purposes
-// In production, this would use a database or Vercel Blob Storage
+// WARNING: In-memory storage for demo purposes only
+// This will be reset between serverless function invocations
+// For production, use persistent storage (Vercel Blob, database, etc.)
 let runStateStorage: Record<string, RunState> = {}
 
 export async function GET(request: NextRequest) {
