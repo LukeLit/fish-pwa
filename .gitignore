@@ -38,6 +38,7 @@ yarn-error.log*
 logs/
 nul
 .claude/
+test-fish-editor-api.js
 
 # vercel
 .vercel

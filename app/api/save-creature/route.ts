@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     // Upload metadata
     const metadataPath = `creatures/${creatureId}.json`;
-    const metadataBlob = await put(metadataPath, JSON.stringify(metadata, null, 2), {
+    const metadataBlob = await put(metadataPath, JSON.stringify(metadata), {
       access: 'public',
       addRandomSuffix: false,
       contentType: 'application/json',

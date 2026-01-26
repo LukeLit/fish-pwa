@@ -38,6 +38,14 @@ export interface FishData {
   };
 }
 
+// Type alias for updateField values to improve readability
+type FishFieldValue = 
+  | string 
+  | number 
+  | boolean 
+  | Array<{ type: string; baseYield: number }> 
+  | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number };
+
 interface FishEditOverlayProps {
   fish: FishData | null;
   onSave: (fish: FishData) => void;
@@ -86,6 +94,8 @@ export default function FishEditOverlay({
   };
 
   const handleSaveToGame = async () => {
+    if (!editedFish) return; // Null check
+    
     setIsSaving(true);
     setSaveMessage('');
     
@@ -137,6 +147,8 @@ export default function FishEditOverlay({
   };
 
   const handleUnlockForPlayer = async () => {
+    if (!editedFish) return; // Null check
+    
     setIsSaving(true);
     setSaveMessage('');
     
@@ -164,7 +176,7 @@ export default function FishEditOverlay({
     }
   };
 
-  const updateField = (field: string, value: string | number | boolean | Array<{ type: string; baseYield: number }> | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number }) => {
+  const updateField = (field: string, value: FishFieldValue) => {
     setEditedFish((prev) => {
       if (!prev) return null;
       if (field.includes('.')) {
