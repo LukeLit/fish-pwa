@@ -33,9 +33,20 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local / generated
+logs/
+nul
+.claude/
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# downloaded AI-generated assets
+/public/models/fish/*.glb
+/public/sprites/fish/*.png
+/public/backgrounds/*.png
+/public/backgrounds/*.jpg

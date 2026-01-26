@@ -1,0 +1,17 @@
+{
+  "name": "Fish Odyssey",
+  "short_name": "Fish Odyssey",
+  "description": "Eat, grow, and evolve in this epic fish-eat-fish roguelite with meta-progression",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0ea5e9",
+  "theme_color": "#0ea5e9",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}
