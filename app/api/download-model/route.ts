@@ -1,11 +1,9 @@
 /**
- * Download and save 3D model from Tencent Cloud to local storage
+ * Download and save 3D model to Vercel Blob Storage
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { uploadAsset, listAssets, assetExists } from '@/lib/storage/blob-storage';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,26 +16,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Define the public models directory
-    const modelsDir = join(process.cwd(), 'public', 'models', 'fish');
+    const blobPath = `models/${filename}`;
 
-    // Ensure directory exists
-    if (!existsSync(modelsDir)) {
-      await mkdir(modelsDir, { recursive: true });
+    // Check if file already exists in blob storage
+    const exists = await assetExists(blobPath);
+    if (exists) {
+      // Need to get the full URL - list with specific prefix
+      const assets = await listAssets(blobPath);
+      if (assets.length > 0) {
+        console.log('[DownloadModel] Model already exists:', assets[0].url);
+        return NextResponse.json({
+          success: true,
+          localPath: assets[0].url,
+          cached: true,
+        });
+      }
     }
 
-    const filepath = join(modelsDir, filename);
-
-    // Check if file already exists
-    if (existsSync(filepath)) {
-      return NextResponse.json({
-        success: true,
-        localPath: `/models/fish/${filename}`,
-        cached: true,
-      });
-    }
-
-    // Download the model from Tencent Cloud
+    // Download the model
     console.log('[DownloadModel] Downloading from:', url);
     const response = await fetch(url);
 
@@ -48,23 +44,23 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Save to local file system
-    await writeFile(filepath, buffer);
+    // Upload to Vercel Blob Storage
+    const result = await uploadAsset(blobPath, buffer, 'model/gltf-binary');
 
-    console.log('[DownloadModel] Saved to:', filepath);
+    console.log('[DownloadModel] Saved to Vercel Blob:', result.url);
 
     return NextResponse.json({
       success: true,
-      localPath: `/models/fish/${filename}`,
+      localPath: result.url,
       cached: false,
       size: buffer.length,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[DownloadModel] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to download model',
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

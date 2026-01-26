@@ -4,7 +4,7 @@
  */
 
 import { getFishSpriteService, FishSpriteService } from './fish-sprite-service';
-import { FishGenerator } from '../assets/fish-generator';
+import { FishGenerator, FishShape } from '../assets/fish-generator';
 
 export interface AssetCache {
   fishSprites: Map<string, HTMLImageElement | string>;
@@ -55,58 +55,26 @@ export class AssetManager {
   }
 
   /**
-   * Load cached models from localStorage
+   * Load cached models - no longer needed with Vercel Blob Storage
+   * Assets are tracked server-side in blob storage
    */
   private loadCachedModels(): void {
-    if (typeof window === 'undefined') return;
-
-    try {
-      const cached = localStorage.getItem('fish_models_cache');
-      if (cached) {
-        const models: CachedModel[] = JSON.parse(cached);
-        models.forEach((model) => {
-          this.cache.fish3D.set(model.cacheKey, model.localPath);
-        });
-        console.log(`[AssetManager] Loaded ${models.length} cached models from localStorage`);
-      }
-    } catch (error) {
-      console.warn('[AssetManager] Failed to load cached models:', error);
-    }
+    // No-op: Blob storage handles caching server-side
+    console.log('[AssetManager] Using Vercel Blob Storage for asset management');
   }
 
   /**
-   * Save model to localStorage cache
+   * Save model cache - no longer needed with Vercel Blob Storage
+   * Assets are tracked server-side in blob storage
    */
   private saveCachedModel(cacheKey: string, localPath: string): void {
-    if (typeof window === 'undefined') return;
-
-    try {
-      const cached = localStorage.getItem('fish_models_cache');
-      const models: CachedModel[] = cached ? JSON.parse(cached) : [];
-
-      // Add or update the model
-      const existing = models.findIndex((m) => m.cacheKey === cacheKey);
-      const newModel: CachedModel = {
-        cacheKey,
-        localPath,
-        timestamp: Date.now(),
-      };
-
-      if (existing >= 0) {
-        models[existing] = newModel;
-      } else {
-        models.push(newModel);
-      }
-
-      localStorage.setItem('fish_models_cache', JSON.stringify(models));
-      console.log(`[AssetManager] Cached model: ${cacheKey} -> ${localPath}`);
-    } catch (error) {
-      console.warn('[AssetManager] Failed to save cached model:', error);
-    }
+    // Store in memory cache for this session
+    this.cache.fish3D.set(cacheKey, localPath);
+    console.log(`[AssetManager] Cached model in memory: ${cacheKey} -> ${localPath}`);
   }
 
   /**
-   * Download sprite and save locally
+   * Download sprite and save to Vercel Blob Storage
    */
   private async downloadSprite(
     imageUrl?: string,
@@ -156,7 +124,7 @@ export class AssetManager {
   }): Promise<{
     sprite?: HTMLImageElement | string;
     modelUrl?: string;
-    shape?: any;
+    shape?: FishShape;
     useAI: boolean;
   }> {
     const cacheKey = `${params.type}_${params.size}_${params.seed || 'default'}`;

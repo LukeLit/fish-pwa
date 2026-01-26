@@ -13,24 +13,24 @@ export class EssenceManager {
   /**
    * Get current essence amount
    */
-  getAmount(): number {
+  async getAmount(): Promise<number> {
     return this.storage.getEssence();
   }
 
   /**
    * Add essence (e.g., on death or high score)
    */
-  add(amount: number): void {
-    this.storage.addEssence(amount);
+  async add(amount: number): Promise<void> {
+    await this.storage.addEssence(amount);
   }
 
   /**
    * Spend essence (returns true if successful)
    */
-  spend(amount: number): boolean {
-    const current = this.getAmount();
+  async spend(amount: number): Promise<boolean> {
+    const current = await this.getAmount();
     if (current >= amount) {
-      this.storage.setEssence(current - amount);
+      await this.storage.setEssence(current - amount);
       return true;
     }
     return false;

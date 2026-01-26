@@ -1,6 +1,6 @@
 /**
  * Storage abstraction for game data
- * Uses localStorage for simple data, IndexedDB for larger datasets
+ * Uses Vercel Blob Storage for all data persistence
  */
 
 const STORAGE_PREFIX = 'fish_odyssey_';
@@ -39,9 +39,19 @@ const DEFAULT_SETTINGS: GameSettings = {
 export class GameStorage {
   private static instance: GameStorage;
   private data: StorageData | null = null;
+  private saveTimeout: NodeJS.Timeout | null = null;
+  private loadingPromise: Promise<void> | null = null;
+  private loaded: boolean = false;
 
   private constructor() {
-    this.load();
+    // Initialize with default data, actual loading happens on first use
+    this.data = {
+      essence: 0,
+      upgrades: {},
+      runHistory: [],
+      settings: DEFAULT_SETTINGS,
+      highScore: 0,
+    };
   }
 
   static getInstance(): GameStorage {
@@ -55,13 +65,34 @@ export class GameStorage {
     return `${STORAGE_PREFIX}${key}`;
   }
 
-  load(): void {
+  private async ensureLoaded(): Promise<void> {
+    if (this.loaded) {
+      // Already loaded
+      return;
+    }
+
+    if (this.loadingPromise) {
+      // Already loading, wait for it
+      await this.loadingPromise;
+      return;
+    }
+
+    // Start loading
+    this.loadingPromise = this.load();
+    await this.loadingPromise;
+    this.loadingPromise = null;
+  }
+
+  async load(): Promise<void> {
     try {
-      const essence = this.getNumber('essence', 0);
-      const upgrades = this.getObject<Record<string, number>>('upgrades', {});
-      const runHistory = this.getObject<RunHistoryEntry[]>('runHistory', []);
-      const settings = this.getObject<GameSettings>('settings', DEFAULT_SETTINGS);
-      const highScore = this.getNumber('highScore', 0);
+      // Load all game data from Vercel Blob Storage via API
+      const [essence, upgrades, runHistory, settings, highScore] = await Promise.all([
+        this.getNumber('essence', 0),
+        this.getObject<Record<string, number>>('upgrades', {}),
+        this.getObject<RunHistoryEntry[]>('runHistory', []),
+        this.getObject<GameSettings>('settings', DEFAULT_SETTINGS),
+        this.getNumber('highScore', 0),
+      ]);
 
       this.data = {
         essence,
@@ -70,6 +101,7 @@ export class GameStorage {
         settings,
         highScore,
       };
+      this.loaded = true;
     } catch (error) {
       console.error('Failed to load game data:', error);
       this.data = {
@@ -79,61 +111,80 @@ export class GameStorage {
         settings: DEFAULT_SETTINGS,
         highScore: 0,
       };
+      this.loaded = true; // Mark as loaded even on error to avoid infinite retries
     }
   }
 
-  save(): void {
+  private async saveAsync(): Promise<void> {
     if (!this.data) return;
 
     try {
-      this.setNumber('essence', this.data.essence);
-      this.setObject('upgrades', this.data.upgrades);
-      this.setObject('runHistory', this.data.runHistory);
-      this.setObject('settings', this.data.settings);
-      this.setNumber('highScore', this.data.highScore);
+      // Save all data to Vercel Blob Storage via API
+      await Promise.all([
+        this.setNumber('essence', this.data.essence),
+        this.setObject('upgrades', this.data.upgrades),
+        this.setObject('runHistory', this.data.runHistory),
+        this.setObject('settings', this.data.settings),
+        this.setNumber('highScore', this.data.highScore),
+      ]);
     } catch (error) {
       console.error('Failed to save game data:', error);
     }
   }
 
-  getEssence(): number {
+  save(): void {
+    // Debounce saves to avoid too many API calls
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+    this.saveTimeout = setTimeout(() => {
+      this.saveAsync();
+    }, 1000);
+  }
+
+  async getEssence(): Promise<number> {
+    await this.ensureLoaded();
     return this.data?.essence ?? 0;
   }
 
-  setEssence(amount: number): void {
-    if (!this.data) this.load();
+  async setEssence(amount: number): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.essence = Math.max(0, amount);
       this.save();
     }
   }
 
-  addEssence(amount: number): void {
-    this.setEssence(this.getEssence() + amount);
+  async addEssence(amount: number): Promise<void> {
+    const current = await this.getEssence();
+    await this.setEssence(current + amount);
   }
 
-  getUpgrades(): Record<string, number> {
+  async getUpgrades(): Promise<Record<string, number>> {
+    await this.ensureLoaded();
     return this.data?.upgrades ?? {};
   }
 
-  setUpgrade(id: string, level: number): void {
-    if (!this.data) this.load();
+  async setUpgrade(id: string, level: number): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.upgrades[id] = level;
       this.save();
     }
   }
 
-  getUpgradeLevel(id: string): number {
+  async getUpgradeLevel(id: string): Promise<number> {
+    await this.ensureLoaded();
     return this.data?.upgrades[id] ?? 0;
   }
 
-  getRunHistory(): RunHistoryEntry[] {
+  async getRunHistory(): Promise<RunHistoryEntry[]> {
+    await this.ensureLoaded();
     return this.data?.runHistory ?? [];
   }
 
-  addRunHistory(entry: RunHistoryEntry): void {
-    if (!this.data) this.load();
+  async addRunHistory(entry: RunHistoryEntry): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.runHistory.push(entry);
       // Keep only last 50 runs
@@ -144,67 +195,96 @@ export class GameStorage {
     }
   }
 
-  getSettings(): GameSettings {
+  async getSettings(): Promise<GameSettings> {
+    await this.ensureLoaded();
     return this.data?.settings ?? DEFAULT_SETTINGS;
   }
 
-  updateSettings(settings: Partial<GameSettings>): void {
-    if (!this.data) this.load();
+  async updateSettings(settings: Partial<GameSettings>): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.settings = { ...this.data.settings, ...settings };
       this.save();
     }
   }
 
-  getHighScore(): number {
+  async getHighScore(): Promise<number> {
+    await this.ensureLoaded();
     return this.data?.highScore ?? 0;
   }
 
-  setHighScore(score: number): void {
-    if (!this.data) this.load();
+  async setHighScore(score: number): Promise<void> {
+    await this.ensureLoaded();
     if (this.data && score > this.data.highScore) {
       this.data.highScore = score;
       this.save();
     }
   }
 
-  private getNumber(key: string, defaultValue: number): number {
+  private async getNumber(key: string, defaultValue: number): Promise<number> {
     if (typeof window === 'undefined') return defaultValue;
-    const value = localStorage.getItem(this.getKey(key));
-    if (value === null) return defaultValue;
-    const num = parseFloat(value);
-    return isNaN(num) ? defaultValue : num;
-  }
-
-  private setNumber(key: string, value: number): void {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(this.getKey(key), value.toString());
-  }
-
-  private getObject<T>(key: string, defaultValue: T): T {
-    if (typeof window === 'undefined') return defaultValue;
-    const value = localStorage.getItem(this.getKey(key));
-    if (value === null) return defaultValue;
+    
     try {
-      return JSON.parse(value) as T;
-    } catch {
+      const response = await fetch(`/api/load-game-data?key=${this.getKey(key)}&default=${defaultValue}`);
+      if (!response.ok) return defaultValue;
+      
+      const result = await response.json();
+      if (!result.success || result.data === null) return defaultValue;
+      
+      const num = typeof result.data === 'number' ? result.data : parseFloat(result.data);
+      return isNaN(num) ? defaultValue : num;
+    } catch (error) {
+      console.warn(`Failed to load ${key}, using default:`, error);
       return defaultValue;
     }
   }
 
-  private setObject(key: string, value: unknown): void {
+  private async setNumber(key: string, value: number): Promise<void> {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(this.getKey(key), JSON.stringify(value));
+    
+    try {
+      await fetch('/api/save-game-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: this.getKey(key), data: value }),
+      });
+    } catch (error) {
+      console.error(`Failed to save ${key}:`, error);
+    }
   }
 
-  clear(): void {
+  private async getObject<T>(key: string, defaultValue: T): Promise<T> {
+    if (typeof window === 'undefined') return defaultValue;
+    
+    try {
+      const response = await fetch(`/api/load-game-data?key=${this.getKey(key)}&default=${encodeURIComponent(JSON.stringify(defaultValue))}`);
+      if (!response.ok) return defaultValue;
+      
+      const result = await response.json();
+      if (!result.success || result.data === null) return defaultValue;
+      
+      return result.data as T;
+    } catch (error) {
+      console.warn(`Failed to load ${key}, using default:`, error);
+      return defaultValue;
+    }
+  }
+
+  private async setObject(key: string, value: unknown): Promise<void> {
     if (typeof window === 'undefined') return;
-    const keys = Object.keys(localStorage);
-    keys.forEach(key => {
-      if (key.startsWith(STORAGE_PREFIX)) {
-        localStorage.removeItem(key);
-      }
-    });
+    
+    try {
+      await fetch('/api/save-game-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: this.getKey(key), data: value }),
+      });
+    } catch (error) {
+      console.error(`Failed to save ${key}:`, error);
+    }
+  }
+
+  async clear(): Promise<void> {
     this.data = {
       essence: 0,
       upgrades: {},
@@ -212,5 +292,6 @@ export class GameStorage {
       settings: DEFAULT_SETTINGS,
       highScore: 0,
     };
+    await this.saveAsync();
   }
 }

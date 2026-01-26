@@ -13,23 +13,23 @@ export class RunHistoryManager {
   /**
    * Get all run history
    */
-  getAll(): RunHistoryEntry[] {
+  async getAll(): Promise<RunHistoryEntry[]> {
     return this.storage.getRunHistory();
   }
 
   /**
    * Get recent runs (last N)
    */
-  getRecent(count: number = 10): RunHistoryEntry[] {
-    const all = this.getAll();
+  async getRecent(count: number = 10): Promise<RunHistoryEntry[]> {
+    const all = await this.getAll();
     return all.slice(-count).reverse();
   }
 
   /**
    * Get best run
    */
-  getBest(): RunHistoryEntry | null {
-    const all = this.getAll();
+  async getBest(): Promise<RunHistoryEntry | null> {
+    const all = await this.getAll();
     if (all.length === 0) return null;
     return all.reduce((best, run) => (run.score > best.score ? run : best));
   }
@@ -37,14 +37,14 @@ export class RunHistoryManager {
   /**
    * Get statistics
    */
-  getStats(): {
+  async getStats(): Promise<{
     totalRuns: number;
     totalEssence: number;
     averageScore: number;
     bestScore: number;
     totalPlayTime: number;
-  } {
-    const all = this.getAll();
+  }> {
+    const all = await this.getAll();
     if (all.length === 0) {
       return {
         totalRuns: 0,

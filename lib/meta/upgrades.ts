@@ -113,18 +113,18 @@ export class UpgradeManager {
   /**
    * Get upgrade level
    */
-  getLevel(upgradeId: string): number {
+  async getLevel(upgradeId: string): Promise<number> {
     return this.storage.getUpgradeLevel(upgradeId);
   }
 
   /**
    * Get cost for next level
    */
-  getCost(upgradeId: string): number {
+  async getCost(upgradeId: string): Promise<number> {
     const definition = UPGRADE_DEFINITIONS.find(u => u.id === upgradeId);
     if (!definition) return Infinity;
 
-    const currentLevel = this.getLevel(upgradeId);
+    const currentLevel = await this.getLevel(upgradeId);
     if (currentLevel >= definition.maxLevel) return Infinity;
 
     return Math.floor(definition.baseCost * Math.pow(definition.costMultiplier, currentLevel));
@@ -133,44 +133,49 @@ export class UpgradeManager {
   /**
    * Check if upgrade can be purchased
    */
-  canPurchase(upgradeId: string, essence: number): boolean {
+  async canPurchase(upgradeId: string, essence: number): Promise<boolean> {
     const definition = UPGRADE_DEFINITIONS.find(u => u.id === upgradeId);
     if (!definition) return false;
 
-    const currentLevel = this.getLevel(upgradeId);
+    const currentLevel = await this.getLevel(upgradeId);
     if (currentLevel >= definition.maxLevel) return false;
 
     // Check prerequisites
     if (definition.prerequisites) {
-      const hasPrereqs = definition.prerequisites.every(
-        prereq => this.getLevel(prereq) > 0
+      const prereqLevels = await Promise.all(
+        definition.prerequisites.map(prereq => this.getLevel(prereq))
       );
+      const hasPrereqs = prereqLevels.every(level => level > 0);
       if (!hasPrereqs) return false;
     }
 
-    return essence >= this.getCost(upgradeId);
+    const cost = await this.getCost(upgradeId);
+    return essence >= cost;
   }
 
   /**
    * Purchase upgrade
    */
-  purchase(upgradeId: string, essence: number): boolean {
-    if (!this.canPurchase(upgradeId, essence)) return false;
+  async purchase(upgradeId: string, essence: number): Promise<boolean> {
+    const canPurchase = await this.canPurchase(upgradeId, essence);
+    if (!canPurchase) return false;
 
-    const cost = this.getCost(upgradeId);
-    const currentLevel = this.getLevel(upgradeId);
-    this.storage.setUpgrade(upgradeId, currentLevel + 1);
+    const currentLevel = await this.getLevel(upgradeId);
+    await this.storage.setUpgrade(upgradeId, currentLevel + 1);
     return true;
   }
 
   /**
    * Get all upgrades with their levels
    */
-  getAllUpgrades(): Array<UpgradeDefinition & { level: number; cost: number }> {
-    return UPGRADE_DEFINITIONS.map(def => ({
-      ...def,
-      level: this.getLevel(def.id),
-      cost: this.getCost(def.id),
-    }));
+  async getAllUpgrades(): Promise<Array<UpgradeDefinition & { level: number; cost: number }>> {
+    const upgrades = await Promise.all(
+      UPGRADE_DEFINITIONS.map(async def => ({
+        ...def,
+        level: await this.getLevel(def.id),
+        cost: await this.getCost(def.id),
+      }))
+    );
+    return upgrades;
   }
 }
