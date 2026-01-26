@@ -14,6 +14,11 @@ interface FishEditorCanvasProps {
   zoom?: number;
   enableWaterDistortion?: boolean;
   deformationIntensity?: number;
+  // Game mode features
+  gameMode?: boolean;
+  levelDuration?: number; // in milliseconds
+  onGameOver?: (score: number) => void;
+  onLevelComplete?: (score: number) => void;
 }
 
 // Chroma key color - bright magenta for easy removal
@@ -166,6 +171,10 @@ export default function FishEditorCanvas({
   zoom = 1,
   enableWaterDistortion = false,
   deformationIntensity = 1,
+  gameMode = false,
+  levelDuration = 60000,
+  onGameOver,
+  onLevelComplete,
 }: FishEditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -189,6 +198,19 @@ export default function FishEditorCanvas({
   }, [deformationIntensity]);
 
   const eatenIdsRef = useRef<Set<string>>(new Set());
+
+  // Game mode state
+  const gameStartTimeRef = useRef<number>(0);
+  const gameOverFiredRef = useRef<boolean>(false);
+  const levelCompleteFiredRef = useRef<boolean>(false);
+  const scoreRef = useRef<number>(0);
+  const cameraRef = useRef({ x: 0, y: 0 });
+  const worldBoundsRef = useRef({
+    minX: -2000,
+    maxX: 2000,
+    minY: -2000,
+    maxY: 2000,
+  });
 
   // Game state
   const playerRef = useRef({
@@ -376,6 +398,23 @@ export default function FishEditorCanvas({
 
     const gameLoop = () => {
       const player = playerRef.current;
+      
+      // Initialize game start time in game mode
+      if (gameMode && gameStartTimeRef.current === 0) {
+        gameStartTimeRef.current = Date.now();
+      }
+      
+      // Check game timer in game mode
+      if (gameMode && !levelCompleteFiredRef.current && !gameOverFiredRef.current) {
+        const elapsed = Date.now() - gameStartTimeRef.current;
+        if (elapsed >= levelDuration) {
+          levelCompleteFiredRef.current = true;
+          if (onLevelComplete) {
+            onLevelComplete(scoreRef.current);
+          }
+          return; // Stop game loop
+        }
+      }
 
       // Use joystick if active, otherwise keyboard
       if (joystickActiveRef.current) {
@@ -423,39 +462,81 @@ export default function FishEditorCanvas({
         player.chompPhase = 0;
       }
 
-      // Collision: eat prey
+      // Collision: eat prey and check predators
       const playerR = player.size * 0.45;
       for (let idx = fishListRef.current.length - 1; idx >= 0; idx--) {
         const fish = fishListRef.current[idx];
-        if (fish.type !== 'prey') continue;
         const fishR = fish.size * 0.45;
         const dx = fish.x - player.x;
         const dy = fish.y - player.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        
         if (dist < playerR + fishR) {
-          eatenIdsRef.current.add(fish.id);
-          fishListRef.current.splice(idx, 1);
-          player.size = Math.min(150, player.size + 10);
-          player.chompPhase = 1;
-          player.chompEndTime = now + 280;
-          const eatX = (fish.x + player.x) * 0.5;
-          const eatY = (fish.y + player.y) * 0.5;
-          for (let k = 0; k < 6; k++) {
-            chompParticlesRef.current.push({
-              x: eatX + (Math.random() - 0.5) * 16,
-              y: eatY + (Math.random() - 0.5) * 16,
-              life: 1,
-              scale: 1 + Math.random() * 0.5,
-              text: k === 0 ? 'CHOMP' : ['!', '•', '*', '♥'][k % 4],
-            });
-          }
-          for (let b = 0; b < 22; b++) {
-            bloodParticlesRef.current.push({
-              x: eatX + (Math.random() - 0.5) * fish.size * 1.2,
-              y: eatY + (Math.random() - 0.5) * fish.size * 1.2,
-              life: 1,
-              radius: 4 + Math.random() * 10,
-            });
+          // In game mode, check if player can eat this fish or gets eaten
+          if (gameMode) {
+            if (fish.size > player.size * 1.2) {
+              // Player is eaten by larger fish - GAME OVER
+              if (!gameOverFiredRef.current) {
+                gameOverFiredRef.current = true;
+                if (onGameOver) {
+                  onGameOver(scoreRef.current);
+                }
+              }
+              return; // Stop game loop
+            } else if (player.size > fish.size * 1.2) {
+              // Player eats fish
+              eatenIdsRef.current.add(fish.id);
+              fishListRef.current.splice(idx, 1);
+              player.size = Math.min(150, player.size + fish.size * 0.1);
+              player.chompPhase = 1;
+              player.chompEndTime = now + 280;
+              const eatX = (fish.x + player.x) * 0.5;
+              const eatY = (fish.y + player.y) * 0.5;
+              for (let k = 0; k < 6; k++) {
+                chompParticlesRef.current.push({
+                  x: eatX + (Math.random() - 0.5) * 16,
+                  y: eatY + (Math.random() - 0.5) * 16,
+                  life: 1,
+                  scale: 1 + Math.random() * 0.5,
+                  text: k === 0 ? 'CHOMP' : ['!', '•', '*', '♥'][k % 4],
+                });
+              }
+              for (let b = 0; b < 22; b++) {
+                bloodParticlesRef.current.push({
+                  x: eatX + (Math.random() - 0.5) * fish.size * 1.2,
+                  y: eatY + (Math.random() - 0.5) * fish.size * 1.2,
+                  life: 1,
+                  radius: 4 + Math.random() * 10,
+                });
+              }
+            }
+          } else {
+            // Editor mode - only eat prey type
+            if (fish.type !== 'prey') continue;
+            eatenIdsRef.current.add(fish.id);
+            fishListRef.current.splice(idx, 1);
+            player.size = Math.min(150, player.size + 10);
+            player.chompPhase = 1;
+            player.chompEndTime = now + 280;
+            const eatX = (fish.x + player.x) * 0.5;
+            const eatY = (fish.y + player.y) * 0.5;
+            for (let k = 0; k < 6; k++) {
+              chompParticlesRef.current.push({
+                x: eatX + (Math.random() - 0.5) * 16,
+                y: eatY + (Math.random() - 0.5) * 16,
+                life: 1,
+                scale: 1 + Math.random() * 0.5,
+                text: k === 0 ? 'CHOMP' : ['!', '•', '*', '♥'][k % 4],
+              });
+            }
+            for (let b = 0; b < 22; b++) {
+              bloodParticlesRef.current.push({
+                x: eatX + (Math.random() - 0.5) * fish.size * 1.2,
+                y: eatY + (Math.random() - 0.5) * fish.size * 1.2,
+                life: 1,
+                radius: 4 + Math.random() * 10,
+              });
+            }
           }
         }
       }
@@ -470,11 +551,26 @@ export default function FishEditorCanvas({
         return b.life > 0;
       });
 
-      // Wrap around screen
-      if (player.x < 0) player.x = canvas.width;
-      if (player.x > canvas.width) player.x = 0;
-      if (player.y < 0) player.y = canvas.height;
-      if (player.y > canvas.height) player.y = 0;
+      // Game mode: constrain to world bounds, else wrap around screen
+      if (gameMode) {
+        // Constrain player to world bounds
+        const bounds = worldBoundsRef.current;
+        player.x = Math.max(bounds.minX, Math.min(bounds.maxX, player.x));
+        player.y = Math.max(bounds.minY, Math.min(bounds.maxY, player.y));
+        
+        // Update camera to follow player
+        cameraRef.current.x = player.x;
+        cameraRef.current.y = player.y;
+        
+        // Update score based on size
+        scoreRef.current = Math.floor((player.size - player.baseSize) * 10);
+      } else {
+        // Wrap around screen (editor mode)
+        if (player.x < 0) player.x = canvas.width;
+        if (player.x > canvas.width) player.x = 0;
+        if (player.y < 0) player.y = canvas.height;
+        if (player.y > canvas.height) player.y = 0;
+      }
 
       // Update AI fish
       fishListRef.current.forEach((fish) => {
@@ -494,11 +590,25 @@ export default function FishEditorCanvas({
         const fishSpeed = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
         fish.animTime += 0.04 + Math.min(0.04, (fishSpeed / 1.5) * 0.04);
 
-        // Wrap around
-        if (fish.x < 0) fish.x = canvas.width;
-        if (fish.x > canvas.width) fish.x = 0;
-        if (fish.y < 0) fish.y = canvas.height;
-        if (fish.y > canvas.height) fish.y = 0;
+        // Game mode: keep fish in bounds, else wrap around
+        if (gameMode) {
+          const bounds = worldBoundsRef.current;
+          // Bounce off edges
+          if (fish.x < bounds.minX || fish.x > bounds.maxX) {
+            fish.vx = -fish.vx;
+            fish.x = Math.max(bounds.minX, Math.min(bounds.maxX, fish.x));
+          }
+          if (fish.y < bounds.minY || fish.y > bounds.maxY) {
+            fish.vy = -fish.vy;
+            fish.y = Math.max(bounds.minY, Math.min(bounds.maxY, fish.y));
+          }
+        } else {
+          // Wrap around (editor mode)
+          if (fish.x < 0) fish.x = canvas.width;
+          if (fish.x > canvas.width) fish.x = 0;
+          if (fish.y < 0) fish.y = canvas.height;
+          if (fish.y > canvas.height) fish.y = 0;
+        }
 
         // Occasional direction change
         if (Math.random() < 0.01) {
@@ -520,11 +630,46 @@ export default function FishEditorCanvas({
       const scaledWidth = canvas.width / currentZoom;
       const scaledHeight = canvas.height / currentZoom;
 
+      // In game mode, translate for camera following
+      if (gameMode) {
+        const camera = cameraRef.current;
+        ctx.translate(scaledWidth / 2 - camera.x, scaledHeight / 2 - camera.y);
+      }
+
       // Draw background
       if (backgroundImageRef.current) {
         ctx.save();
         ctx.filter = 'blur(6px)';
-        ctx.drawImage(backgroundImageRef.current, 0, 0, scaledWidth, scaledHeight);
+        
+        if (gameMode) {
+          // Parallax background - moves slower than camera
+          const camera = cameraRef.current;
+          const parallaxFactor = 0.3;
+          const bgOffsetX = camera.x * parallaxFactor;
+          const bgOffsetY = camera.y * parallaxFactor;
+          
+          // Calculate scaling to maintain aspect ratio
+          const img = backgroundImageRef.current;
+          const imgAspect = img.width / img.height;
+          const screenAspect = scaledWidth / scaledHeight;
+          
+          let drawWidth, drawHeight;
+          if (imgAspect > screenAspect) {
+            drawHeight = scaledHeight * 1.5;
+            drawWidth = drawHeight * imgAspect;
+          } else {
+            drawWidth = scaledWidth * 1.5;
+            drawHeight = drawWidth / imgAspect;
+          }
+          
+          const bgX = (scaledWidth - drawWidth) / 2 - bgOffsetX + camera.x - scaledWidth / 2;
+          const bgY = (scaledHeight - drawHeight) / 2 - bgOffsetY + camera.y - scaledHeight / 2;
+          
+          ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
+        } else {
+          // Editor mode - normal background
+          ctx.drawImage(backgroundImageRef.current, 0, 0, scaledWidth, scaledHeight);
+        }
         ctx.restore();
 
         // Optional: Simple water shimmer overlay (much faster than pixel distortion)
@@ -675,11 +820,23 @@ export default function FishEditorCanvas({
       // Restore zoom transform
       ctx.restore();
 
+      // UI text overlay
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.font = '14px monospace';
-      ctx.fillText('WASD / Arrows · Tap and hold for analog control', 10, 20);
-      ctx.fillText(`Zoom: ${(currentZoom * 100).toFixed(0)}%`, 10, 40);
-      ctx.fillText(`Size: ${player.size} (eat prey to grow)`, 10, 60);
+      
+      if (gameMode) {
+        // Game mode UI
+        const elapsed = Date.now() - gameStartTimeRef.current;
+        const timeLeft = Math.max(0, Math.ceil((levelDuration - elapsed) / 1000));
+        ctx.fillText(`Score: ${scoreRef.current}`, 10, 20);
+        ctx.fillText(`Size: ${Math.floor(player.size)}`, 10, 40);
+        ctx.fillText(`Time: ${timeLeft}s`, 10, 60);
+      } else {
+        // Editor mode UI
+        ctx.fillText('WASD / Arrows · Tap and hold for analog control', 10, 20);
+        ctx.fillText(`Zoom: ${(currentZoom * 100).toFixed(0)}%`, 10, 40);
+        ctx.fillText(`Size: ${player.size} (eat prey to grow)`, 10, 60);
+      }
 
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     };

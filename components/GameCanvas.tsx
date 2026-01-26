@@ -80,6 +80,18 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         zoom={1}
         enableWaterDistortion={false}
         deformationIntensity={1}
+        gameMode={true}
+        levelDuration={60000}
+        onGameOver={(score) => {
+          if (onGameEnd) {
+            onGameEnd(score, 0); // For now, no essence calculation
+          }
+        }}
+        onLevelComplete={(score) => {
+          if (onGameEnd) {
+            onGameEnd(score, score); // Simple essence = score for now
+          }
+        }}
       />
     </div>
   );

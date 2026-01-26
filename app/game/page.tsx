@@ -9,7 +9,6 @@ export const ssr = false;
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import GameCanvas from '@/components/GameCanvas';
-import DevTools from '@/components/DevTools';
 import { EssenceManager } from '@/lib/meta/essence';
 
 export default function GamePage() {
@@ -32,7 +31,14 @@ export default function GamePage() {
   return (
     <div className="relative w-full h-screen bg-black">
       <GameCanvas onGameEnd={handleGameEnd} />
-      <DevTools />
+      
+      {/* Fish Editor Menu Button (top right) */}
+      <button
+        onClick={() => router.push('/fish-editor')}
+        className="fixed top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-40 border border-gray-600"
+      >
+        Fish Editor
+      </button>
       
       {showEndScreen && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
