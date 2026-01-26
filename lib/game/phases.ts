@@ -31,7 +31,7 @@ export class PhaseManager {
       type: 'ocean',
       name: 'Ocean Depths',
       difficulty: 1,
-      spawnRate: 0.02,
+      spawnRate: 0.3, // Increased from 0.02 for more fish
       enemySizeMultiplier: 1,
       backgroundColor: '#0ea5e9',
       transitionTime: 3000,
@@ -41,7 +41,7 @@ export class PhaseManager {
       type: 'space',
       name: 'Cosmic Void',
       difficulty: 2,
-      spawnRate: 0.03,
+      spawnRate: 0.4, // Increased from 0.03 for more fish
       enemySizeMultiplier: 1.5,
       backgroundColor: '#1e1b4b',
       transitionTime: 5000,

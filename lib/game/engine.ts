@@ -2,6 +2,7 @@
  * Main game engine
  */
 import p5 from 'p5';
+import Matter from 'matter-js';
 import { PhysicsEngine } from './physics';
 import { Player } from './player';
 import { Entity, Fish, Food } from './entities';
@@ -43,10 +44,19 @@ export class GameEngine {
 
   private camera: { x: number; y: number } = { x: 0, y: 0 };
   private lastSpawnTime: number = 0;
-  private spawnInterval: number = 1000; // ms
+  private spawnInterval: number = 500; // ms - reduced for more frequent spawns
+  private maxEntities: number = 50; // Limit total entities to prevent performance issues
   private particles: Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string }> = [];
   private audio = getAudioManager();
   private fxhash = getFxhash();
+  
+  // World bounds (larger world for better gameplay)
+  private worldBounds = {
+    minX: -2000,
+    maxX: 2000,
+    minY: -2000,
+    maxY: 2000,
+  };
 
   constructor() {
     this.physics = new PhysicsEngine();
@@ -127,8 +137,11 @@ export class GameEngine {
     // Update player
     this.player.update(deltaTime, this.physics);
     this.state.score = this.player.stats.score;
+    
+    // Constrain player within world bounds
+    this.constrainToBounds(this.player);
 
-    // Update camera to follow player
+    // Update camera to follow player (locked to player)
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
 
@@ -146,7 +159,7 @@ export class GameEngine {
     // Update entities
     this.entities.forEach(entity => {
       if (entity instanceof Fish) {
-        entity.update(deltaTime, this.physics);
+        entity.update(deltaTime, this.physics, this.entities, this.player ?? undefined);
       } else {
         entity.update(deltaTime, this.physics);
       }
@@ -188,6 +201,37 @@ export class GameEngine {
   }
 
   /**
+   * Constrain entity to world bounds
+   */
+  private constrainToBounds(entity: Entity): void {
+    let constrained = false;
+    if (entity.x < this.worldBounds.minX) {
+      entity.x = this.worldBounds.minX;
+      Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
+      Matter.Body.setVelocity(entity.body, { x: 0, y: entity.body.velocity.y });
+      constrained = true;
+    }
+    if (entity.x > this.worldBounds.maxX) {
+      entity.x = this.worldBounds.maxX;
+      Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
+      Matter.Body.setVelocity(entity.body, { x: 0, y: entity.body.velocity.y });
+      constrained = true;
+    }
+    if (entity.y < this.worldBounds.minY) {
+      entity.y = this.worldBounds.minY;
+      Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
+      Matter.Body.setVelocity(entity.body, { x: entity.body.velocity.x, y: 0 });
+      constrained = true;
+    }
+    if (entity.y > this.worldBounds.maxY) {
+      entity.y = this.worldBounds.maxY;
+      Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
+      Matter.Body.setVelocity(entity.body, { x: entity.body.velocity.x, y: 0 });
+      constrained = true;
+    }
+  }
+
+  /**
    * Spawn entities based on phase
    */
   private spawnEntities(): void {
@@ -195,24 +239,55 @@ export class GameEngine {
 
     const now = Date.now();
     if (now - this.lastSpawnTime < this.spawnInterval) return;
+    
+    // Don't spawn if at entity limit
+    if (this.entities.length >= this.maxEntities) {
+      this.lastSpawnTime = now;
+      return;
+    }
 
     const params = this.phases.getSpawnParams();
-    if (Math.random() < params.rate) {
+    // Spawn 1-3 fish per interval, but respect entity limit
+    const maxToSpawn = Math.min(3, this.maxEntities - this.entities.length);
+    const spawnCount = Math.floor(Math.random() * maxToSpawn) + 1;
+    
+    for (let i = 0; i < spawnCount; i++) {
       const phaseConfig = this.phases.getCurrentConfig();
-      const worldWidth = this.p5Instance.width * 2;
-      const worldHeight = this.p5Instance.height * 2;
+      const worldWidth = this.worldBounds.maxX - this.worldBounds.minX;
+      const worldHeight = this.worldBounds.maxY - this.worldBounds.minY;
 
-      // Spawn away from player
+      // Spawn away from player but within visible range
       const angle = Math.random() * Math.PI * 2;
-      const distance = Math.max(worldWidth, worldHeight) * 0.4;
-      const x = this.player.x + Math.cos(angle) * distance;
-      const y = this.player.y + Math.sin(angle) * distance;
+      // Spawn at a distance between 200-600 pixels from player (visible on screen)
+      const distance = 200 + Math.random() * 400;
+      let x = this.player.x + Math.cos(angle) * distance;
+      let y = this.player.y + Math.sin(angle) * distance;
+      
+      // Clamp to world bounds
+      x = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
+      y = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
 
       const type = this.rng.pick(params.types);
-      const size = this.rng.randomFloat(params.minSize, params.maxSize);
+      
+      // Spawn fish both smaller and larger than player for variety
+      const playerSize = this.player.stats.size;
+      let size: number;
+      if (Math.random() < 0.4) {
+        // Smaller fish (prey)
+        size = this.rng.randomFloat(playerSize * 0.3, playerSize * 0.8);
+      } else if (Math.random() < 0.7) {
+        // Similar size (competition)
+        size = this.rng.randomFloat(playerSize * 0.8, playerSize * 1.3);
+      } else {
+        // Larger fish (predators)
+        size = this.rng.randomFloat(playerSize * 1.3, playerSize * 2.5);
+      }
+      
+      // Ensure minimum and maximum sizes
+      size = Math.max(params.minSize, Math.min(params.maxSize, size));
 
       if (type === 'food') {
-        const food = new Food(this.physics, { x, y, size, type: 'food' });
+        const food = new Food(this.physics, { x, y, size: size * 0.3, type: 'food' });
         this.entities.push(food);
       } else {
         const fish = new Fish(this.physics, {
@@ -244,8 +319,39 @@ export class GameEngine {
       const collisionDistance = this.player.stats.size + entity.size;
 
       if (distance < collisionDistance) {
-        if (this.player.canEat(entity)) {
-          // Player eats entity
+        // Check if collision is from the front
+        const isPlayerFrontCollision = this.player.isFrontCollision(entity);
+        const isEntityFrontCollision = entity.isFrontCollision(this.player);
+        
+        const sizeDiff = Math.abs(this.player.stats.size - entity.size);
+        const sizeRatio = this.player.stats.size / entity.size;
+        
+        // Battle mechanic: if similar size (within 20%), engage in battle
+        if (sizeDiff < this.player.stats.size * 0.2 && entity instanceof Fish) {
+          // Battle - try to chomp each other
+          if (isPlayerFrontCollision && this.player.chomp(entity)) {
+            this.createParticles(entity.x, entity.y, '#ff0000', 5);
+            this.audio.playSound('bite', 0.2);
+          }
+          if (isEntityFrontCollision && entity.chomp(this.player)) {
+            this.createParticles(this.player.x, this.player.y, '#ff0000', 5);
+            this.audio.playSound('bite', 0.2);
+          }
+          
+          // Check if either lost all stamina
+          if (this.player.stamina <= 0) {
+            // Player loses battle
+            this.safeEndGame();
+          }
+          if (entity.stamina <= 0) {
+            // Entity loses battle, player can eat it
+            this.player.eat(entity);
+            entity.destroy(this.physics);
+            this.createParticles(entity.x, entity.y, entity.color, 10);
+            this.audio.playSound('bite', 0.3);
+          }
+        } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
+          // Player eats entity (only from front)
           this.player.eat(entity);
           entity.destroy(this.physics);
           this.createParticles(entity.x, entity.y, entity.color, 10);
@@ -259,14 +365,43 @@ export class GameEngine {
               this.audio.playSound('mutation', 0.5);
             }
           }
-        } else if (this.player.isEatenBy(entity)) {
-          // Player is eaten - run async endGame
-          this.endGame().catch(err => {
-            console.error('Failed to end game:', err);
-          });
+        } else if (this.player.isEatenBy(entity) && isEntityFrontCollision) {
+          // Player is eaten (only from front)
+          this.safeEndGame();
         }
       }
     });
+    
+    // Also check fish-to-fish collisions for predator eating prey
+    for (let i = 0; i < this.entities.length; i++) {
+      const fish1 = this.entities[i];
+      if (!(fish1 instanceof Fish) || !fish1.alive) continue;
+      
+      for (let j = i + 1; j < this.entities.length; j++) {
+        const fish2 = this.entities[j];
+        if (!(fish2 instanceof Fish) || !fish2.alive) continue;
+        
+        const distance = Math.sqrt(
+          Math.pow(fish1.x - fish2.x, 2) + Math.pow(fish1.y - fish2.y, 2)
+        );
+        const collisionDistance = fish1.size + fish2.size;
+        
+        if (distance < collisionDistance) {
+          // Check which fish is predator and which is prey
+          if (fish1.type === 'predator' && fish1.size >= fish2.size * 1.2 && fish1.isFrontCollision(fish2)) {
+            // fish1 eats fish2
+            fish1.size += fish2.size * 0.05; // Predators grow by eating
+            fish2.destroy(this.physics);
+            this.createParticles(fish2.x, fish2.y, fish2.color, 5);
+          } else if (fish2.type === 'predator' && fish2.size >= fish1.size * 1.2 && fish2.isFrontCollision(fish1)) {
+            // fish2 eats fish1
+            fish2.size += fish1.size * 0.05; // Predators grow by eating
+            fish1.destroy(this.physics);
+            this.createParticles(fish1.x, fish1.y, fish1.color, 5);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -277,9 +412,7 @@ export class GameEngine {
 
     // Die if too small (edge case)
     if (this.player.stats.size < 1) {
-      this.endGame().catch(err => {
-        console.error('Failed to end game:', err);
-      });
+      this.safeEndGame();
     }
   }
 
@@ -327,6 +460,15 @@ export class GameEngine {
       });
     }
   }
+  
+  /**
+   * Helper to safely end game with error handling
+   */
+  private safeEndGame(): void {
+    this.endGame().catch(err => {
+      console.error('Failed to end game:', err);
+    });
+  }
 
   /**
    * Create particle effect
@@ -359,6 +501,19 @@ export class GameEngine {
     // Translate to camera
     p5.push();
     p5.translate(p5.width / 2 - this.camera.x, p5.height / 2 - this.camera.y);
+    
+    // Draw world bounds
+    p5.push();
+    p5.noFill();
+    p5.stroke(255, 255, 255, 100);
+    p5.strokeWeight(3);
+    p5.rect(
+      this.worldBounds.minX,
+      this.worldBounds.minY,
+      this.worldBounds.maxX - this.worldBounds.minX,
+      this.worldBounds.maxY - this.worldBounds.minY
+    );
+    p5.pop();
 
     // Render entities
     this.entities.forEach(entity => entity.render(p5));
@@ -399,11 +554,20 @@ export class GameEngine {
     p5.text(`Size: ${Math.floor(this.player.stats.size)}`, 10, 30);
     p5.text(`Phase: ${this.phases.getCurrentConfig().name}`, 10, 50);
     p5.text(`Essence: ${this.state.cachedEssence ?? 0}`, 10, 70);
+    
+    // Stamina bar
+    const staminaPercent = this.player.stamina / this.player.maxStamina;
+    p5.text(`Stamina:`, 10, 90);
+    p5.fill(50);
+    p5.rect(80, 90, 100, 15);
+    p5.fill(staminaPercent > 0.3 ? '#4ade80' : '#ef4444');
+    p5.rect(80, 90, 100 * staminaPercent, 15);
 
     // Mutations
     const activeMutations = this.mutations.getActiveMutations();
     if (activeMutations.length > 0) {
-      p5.text(`Mutations: ${activeMutations.map(m => m.name).join(', ')}`, 10, 90);
+      p5.fill(255);
+      p5.text(`Mutations: ${activeMutations.map(m => m.name).join(', ')}`, 10, 110);
     }
 
     p5.pop();
