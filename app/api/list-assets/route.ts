@@ -32,12 +32,12 @@ export async function GET(request: NextRequest) {
       success: true,
       assets,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[ListAssets] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to list assets',
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

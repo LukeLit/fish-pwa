@@ -22,18 +22,14 @@ export async function POST(request: NextRequest) {
       : `fish/${filename}`;
 
     // Check if file already exists in blob storage
-    try {
-      const existingAssets = await listAssets(blobPath);
-      if (existingAssets.length > 0) {
-        console.log('[SaveSprite] Asset already exists:', existingAssets[0].url);
-        return NextResponse.json({
-          success: true,
-          localPath: existingAssets[0].url,
-          cached: true,
-        });
-      }
-    } catch (error) {
-      // Asset doesn't exist, continue with upload
+    const existingAssets = await listAssets(blobPath);
+    if (existingAssets.length > 0) {
+      console.log('[SaveSprite] Asset already exists:', existingAssets[0].url);
+      return NextResponse.json({
+        success: true,
+        localPath: existingAssets[0].url,
+        cached: true,
+      });
     }
 
     let buffer: Buffer;
@@ -66,12 +62,12 @@ export async function POST(request: NextRequest) {
       cached: false,
       size: buffer.length,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[SaveSprite] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to save sprite',
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

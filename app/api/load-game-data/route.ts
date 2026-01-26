@@ -20,11 +20,7 @@ export async function GET(request: NextRequest) {
     // Parse default value if provided
     let parsedDefault = null;
     if (defaultValue) {
-      try {
-        parsedDefault = JSON.parse(defaultValue);
-      } catch (error) {
-        parsedDefault = defaultValue;
-      }
+      parsedDefault = JSON.parse(defaultValue);
     }
 
     // Download from Vercel Blob Storage

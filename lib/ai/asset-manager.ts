@@ -124,7 +124,7 @@ export class AssetManager {
   }): Promise<{
     sprite?: HTMLImageElement | string;
     modelUrl?: string;
-    shape?: any;
+    shape?: unknown;
     useAI: boolean;
   }> {
     const cacheKey = `${params.type}_${params.size}_${params.seed || 'default'}`;

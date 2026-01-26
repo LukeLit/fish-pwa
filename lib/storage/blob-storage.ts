@@ -123,7 +123,7 @@ export async function assetExists(pathname: string): Promise<boolean> {
   try {
     await head(`${ASSETS_PREFIX}${pathname}`);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

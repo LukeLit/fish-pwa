@@ -19,18 +19,14 @@ export async function POST(request: NextRequest) {
     const blobPath = `models/${filename}`;
 
     // Check if file already exists in blob storage
-    try {
-      const existingAssets = await listAssets(blobPath);
-      if (existingAssets.length > 0) {
-        console.log('[DownloadModel] Model already exists:', existingAssets[0].url);
-        return NextResponse.json({
-          success: true,
-          localPath: existingAssets[0].url,
-          cached: true,
-        });
-      }
-    } catch (error) {
-      // Asset doesn't exist, continue with upload
+    const existingAssets = await listAssets(blobPath);
+    if (existingAssets.length > 0) {
+      console.log('[DownloadModel] Model already exists:', existingAssets[0].url);
+      return NextResponse.json({
+        success: true,
+        localPath: existingAssets[0].url,
+        cached: true,
+      });
     }
 
     // Download the model
@@ -55,12 +51,12 @@ export async function POST(request: NextRequest) {
       cached: false,
       size: buffer.length,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[DownloadModel] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to download model',
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );
