@@ -17,6 +17,25 @@ export interface FishData {
     damage: number;
   };
   sprite: string;
+  // Extended fields for Creature compatibility
+  rarity?: 'common' | 'rare' | 'epic' | 'legendary';
+  playable?: boolean;
+  biomeId?: string;
+  essenceTypes?: Array<{
+    type: string;
+    baseYield: number;
+  }>;
+  spawnRules?: {
+    canAppearIn: string[];
+    spawnWeight: number;
+    minDepth?: number;
+    maxDepth?: number;
+  };
+  grantedAbilities?: string[];
+  unlockRequirement?: {
+    biomeUnlocked: string[];
+    essenceSpent?: Record<string, number>;
+  };
 }
 
 interface FishEditOverlayProps {
@@ -39,10 +58,23 @@ export default function FishEditOverlay({
   hasNext,
 }: FishEditOverlayProps) {
   const [editedFish, setEditedFish] = useState<FishData | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string>('');
 
   useEffect(() => {
     if (fish) {
-      setEditedFish({ ...fish });
+      // Set default values for new fields if they don't exist
+      setEditedFish({
+        ...fish,
+        rarity: fish.rarity || 'common',
+        playable: fish.playable ?? false,
+        biomeId: fish.biomeId || 'shallow',
+        essenceTypes: fish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
+        spawnRules: fish.spawnRules || {
+          canAppearIn: [fish.biomeId || 'shallow'],
+          spawnWeight: 50,
+        },
+      });
     }
   }, [fish]);
 
@@ -50,6 +82,58 @@ export default function FishEditOverlay({
 
   const handleSave = () => {
     onSave(editedFish);
+    setSaveMessage('');
+  };
+
+  const handleSaveToGame = async () => {
+    setIsSaving(true);
+    setSaveMessage('');
+    
+    try {
+      // Convert sprite to blob if it's a data URL
+      let spriteBlob: Blob | null = null;
+      if (editedFish.sprite.startsWith('data:')) {
+        const response = await fetch(editedFish.sprite);
+        spriteBlob = await response.blob();
+      }
+
+      // Prepare metadata (without sprite data URL)
+      const metadata = {
+        ...editedFish,
+        sprite: '', // Will be set by the API
+      };
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('creatureId', editedFish.id);
+      formData.append('metadata', JSON.stringify(metadata));
+      if (spriteBlob) {
+        formData.append('sprite', spriteBlob, `${editedFish.id}.png`);
+      }
+
+      // Save to API
+      const response = await fetch('/api/save-creature', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSaveMessage('✓ Saved to game successfully!');
+        // Update the fish with the new sprite URL if it was uploaded
+        if (result.spriteUrl) {
+          setEditedFish(prev => prev ? { ...prev, sprite: result.spriteUrl } : null);
+        }
+      } else {
+        setSaveMessage('✗ Failed to save: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const updateField = (field: string, value: any) => {
@@ -125,6 +209,82 @@ export default function FishEditOverlay({
           </select>
         </div>
 
+        {/* Rarity */}
+        <div>
+          <label className="block text-sm font-bold text-white mb-2">Rarity</label>
+          <select
+            value={editedFish.rarity || 'common'}
+            onChange={(e) => updateField('rarity', e.target.value)}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="common">Common</option>
+            <option value="rare">Rare</option>
+            <option value="epic">Epic</option>
+            <option value="legendary">Legendary</option>
+          </select>
+        </div>
+
+        {/* Playable */}
+        <div>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editedFish.playable || false}
+              onChange={(e) => updateField('playable', e.target.checked)}
+              className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+            />
+            <span className="text-sm font-bold text-white">Playable (Can be selected as player fish)</span>
+          </label>
+        </div>
+
+        {/* Biome */}
+        <div>
+          <label className="block text-sm font-bold text-white mb-2">Biome</label>
+          <select
+            value={editedFish.biomeId || 'shallow'}
+            onChange={(e) => updateField('biomeId', e.target.value)}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="shallow">Shallow</option>
+            <option value="medium">Medium</option>
+            <option value="deep">Deep</option>
+            <option value="abyssal">Abyssal</option>
+            <option value="shallow_tropical">Shallow Tropical</option>
+            <option value="deep_polluted">Deep Polluted</option>
+          </select>
+        </div>
+
+        {/* Essence Types */}
+        <div>
+          <label className="block text-sm font-bold text-white mb-2">Essence Types (comma-separated: type:yield)</label>
+          <input
+            type="text"
+            value={
+              editedFish.essenceTypes
+                ? editedFish.essenceTypes.map(e => `${e.type}:${e.baseYield}`).join(', ')
+                : ''
+            }
+            onChange={(e) => {
+              const value = e.target.value.trim();
+              if (!value) {
+                updateField('essenceTypes', []);
+                return;
+              }
+              const essenceTypes = value.split(',').map(part => {
+                const [type, yieldStr] = part.trim().split(':');
+                return {
+                  type: type || 'shallow',
+                  baseYield: parseInt(yieldStr) || 10
+                };
+              });
+              updateField('essenceTypes', essenceTypes);
+            }}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+            placeholder="e.g., shallow:10, deep_sea:15"
+          />
+          <p className="text-xs text-gray-400 mt-1">Example: shallow:10, deep_sea:15, polluted:5</p>
+        </div>
+
         {/* Stats */}
         <div className="border-t border-gray-700 pt-4">
           <h3 className="text-sm font-bold text-white mb-3">Stats</h3>
@@ -191,13 +351,33 @@ export default function FishEditOverlay({
           </div>
         </div>
 
-        {/* Save Button */}
-        <button
-          onClick={handleSave}
-          className="w-full bg-green-600 hover:bg-green-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors"
-        >
-          Save Changes
-        </button>
+        {/* Save Buttons */}
+        <div className="space-y-2">
+          <button
+            onClick={handleSave}
+            className="w-full bg-green-600 hover:bg-green-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors"
+          >
+            Save Changes (Local)
+          </button>
+          
+          <button
+            onClick={handleSaveToGame}
+            disabled={isSaving}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaving ? 'Saving to Game...' : 'Save to Game (Persistent)'}
+          </button>
+          
+          {saveMessage && (
+            <div className={`text-sm text-center p-2 rounded ${
+              saveMessage.startsWith('✓') 
+                ? 'bg-green-600/20 text-green-400' 
+                : 'bg-red-600/20 text-red-400'
+            }`}>
+              {saveMessage}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Navigation Arrows - Bottom Left and Right */}
