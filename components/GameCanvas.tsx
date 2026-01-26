@@ -21,12 +21,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, GameCanvasProps>(({ onLevelCompl
   const canvasRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const p5Ref = useRef<any>(null);
+  const callbackFiredRef = useRef<{ levelComplete: boolean; gameOver: boolean }>({
+    levelComplete: false,
+    gameOver: false,
+  });
 
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
     nextLevel: () => {
       if (engineRef.current) {
         engineRef.current.nextLevel();
+        // Reset callback flags for next level
+        callbackFiredRef.current = { levelComplete: false, gameOver: false };
       }
     }
   }));
@@ -66,11 +72,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, GameCanvasProps>(({ onLevelCompl
           // Render game
           engine.render();
 
-          // Check for game state changes
+          // Check for game state changes (only fire callbacks once)
           const state = engine.getState();
-          if (state.phase === 'levelComplete' && onLevelComplete) {
+          if (state.phase === 'levelComplete' && onLevelComplete && !callbackFiredRef.current.levelComplete) {
+            callbackFiredRef.current.levelComplete = true;
             onLevelComplete(state.score, state.level);
-          } else if (state.phase === 'gameOver' && onGameOver) {
+          } else if (state.phase === 'gameOver' && onGameOver && !callbackFiredRef.current.gameOver) {
+            callbackFiredRef.current.gameOver = true;
             // Call endGame to calculate rewards
             engine.endGame().then(() => {
               const finalState = engine.getState();
