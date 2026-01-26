@@ -4,7 +4,7 @@
  */
 
 import { getFishSpriteService, FishSpriteService } from './fish-sprite-service';
-import { FishGenerator } from '../assets/fish-generator';
+import { FishGenerator, FishShape } from '../assets/fish-generator';
 
 export interface AssetCache {
   fishSprites: Map<string, HTMLImageElement | string>;
@@ -124,7 +124,7 @@ export class AssetManager {
   }): Promise<{
     sprite?: HTMLImageElement | string;
     modelUrl?: string;
-    shape?: unknown;
+    shape?: FishShape;
     useAI: boolean;
   }> {
     const cacheKey = `${params.type}_${params.size}_${params.seed || 'default'}`;
