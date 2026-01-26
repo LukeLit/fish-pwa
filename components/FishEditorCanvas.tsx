@@ -677,7 +677,7 @@ export default function FishEditorCanvas({
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.font = '14px monospace';
-      ctx.fillText('WASD / Arrows · Tap to move · D-pad (mobile)', 10, 20);
+      ctx.fillText('WASD / Arrows · Tap and hold for analog control', 10, 20);
       ctx.fillText(`Zoom: ${(currentZoom * 100).toFixed(0)}%`, 10, 40);
       ctx.fillText(`Size: ${player.size} (eat prey to grow)`, 10, 60);
 
@@ -687,14 +687,6 @@ export default function FishEditorCanvas({
     gameLoop();
 
     return () => {
-      canvas.removeEventListener('mousedown', handleMouseDown);
-      canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('mouseup', handleMouseUp);
-      canvas.removeEventListener('mouseleave', handleMouseUp);
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      canvas.removeEventListener('touchmove', handleTouchMove);
-      canvas.removeEventListener('touchend', handleTouchEnd);
-      canvas.removeEventListener('touchcancel', handleTouchEnd);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', updateCanvasSize);
