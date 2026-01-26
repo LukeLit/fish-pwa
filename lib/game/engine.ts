@@ -45,6 +45,7 @@ export class GameEngine {
   private camera: { x: number; y: number } = { x: 0, y: 0 };
   private lastSpawnTime: number = 0;
   private spawnInterval: number = 500; // ms - reduced for more frequent spawns
+  private maxEntities: number = 50; // Limit total entities to prevent performance issues
   private particles: Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string }> = [];
   private audio = getAudioManager();
   private fxhash = getFxhash();
@@ -238,10 +239,17 @@ export class GameEngine {
 
     const now = Date.now();
     if (now - this.lastSpawnTime < this.spawnInterval) return;
+    
+    // Don't spawn if at entity limit
+    if (this.entities.length >= this.maxEntities) {
+      this.lastSpawnTime = now;
+      return;
+    }
 
     const params = this.phases.getSpawnParams();
-    // Always spawn 1-3 fish per interval for better gameplay
-    const spawnCount = Math.floor(Math.random() * 3) + 1;
+    // Spawn 1-3 fish per interval, but respect entity limit
+    const maxToSpawn = Math.min(3, this.maxEntities - this.entities.length);
+    const spawnCount = Math.floor(Math.random() * maxToSpawn) + 1;
     
     for (let i = 0; i < spawnCount; i++) {
       const phaseConfig = this.phases.getCurrentConfig();
@@ -333,9 +341,7 @@ export class GameEngine {
           // Check if either lost all stamina
           if (this.player.stamina <= 0) {
             // Player loses battle
-            this.endGame().catch(err => {
-              console.error('Failed to end game:', err);
-            });
+            this.safeEndGame();
           }
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
@@ -360,10 +366,8 @@ export class GameEngine {
             }
           }
         } else if (this.player.isEatenBy(entity) && isEntityFrontCollision) {
-          // Player is eaten (only from front) - run async endGame
-          this.endGame().catch(err => {
-            console.error('Failed to end game:', err);
-          });
+          // Player is eaten (only from front)
+          this.safeEndGame();
         }
       }
     });
@@ -408,9 +412,7 @@ export class GameEngine {
 
     // Die if too small (edge case)
     if (this.player.stats.size < 1) {
-      this.endGame().catch(err => {
-        console.error('Failed to end game:', err);
-      });
+      this.safeEndGame();
     }
   }
 
@@ -457,6 +459,15 @@ export class GameEngine {
         phase: this.phases.getCurrentPhase(),
       });
     }
+  }
+  
+  /**
+   * Helper to safely end game with error handling
+   */
+  private safeEndGame(): void {
+    this.endGame().catch(err => {
+      console.error('Failed to end game:', err);
+    });
   }
 
   /**

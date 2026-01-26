@@ -142,8 +142,6 @@ export class Fish extends Entity {
   public targetY?: number;
   public wanderAngle: number = 0;
   public schoolingGroup?: string; // ID for schooling behavior
-  public lastChompTime: number = 0;
-  public chompCooldown: number = 1000; // ms between chomps
 
   constructor(physics: PhysicsEngine, data: EntityData, id?: string) {
     super(physics, data, id);
