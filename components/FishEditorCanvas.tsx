@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
+import { type FishData } from './FishEditOverlay';
 
 interface FishEditorCanvasProps {
   background: string | null;
@@ -19,6 +20,14 @@ interface FishEditorCanvasProps {
   levelDuration?: number; // in milliseconds
   onGameOver?: (score: number) => void;
   onLevelComplete?: (score: number) => void;
+  // Edit mode features
+  editMode?: boolean;
+  selectedFishId?: string | null;
+  onEditFish?: (fishId: string) => void;
+  showEditButtons?: boolean;
+  fishData?: Map<string, FishData>;
+  // Pause feature
+  paused?: boolean;
 }
 
 // Chroma key color - bright magenta for easy removal
@@ -175,6 +184,12 @@ export default function FishEditorCanvas({
   levelDuration = 60000,
   onGameOver,
   onLevelComplete,
+  editMode = false,
+  selectedFishId = null,
+  onEditFish,
+  showEditButtons = true,
+  fishData = new Map(),
+  paused = false,
 }: FishEditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -183,6 +198,12 @@ export default function FishEditorCanvas({
   const chromaToleranceRef = useRef<number>(chromaTolerance);
   const zoomRef = useRef<number>(zoom);
   const deformationRef = useRef<number>(deformationIntensity);
+  const editButtonPositionsRef = useRef<Map<string, { x: number; y: number; size: number }>>(new Map());
+  const editModeRef = useRef<boolean>(editMode);
+  const selectedFishIdRef = useRef<string | null>(selectedFishId);
+  const fishDataRef = useRef<Map<string, FishData>>(fishData);
+  const pausedRef = useRef<boolean>(paused);
+  const showEditButtonsRef = useRef<boolean>(showEditButtons);
 
   // Update refs when props change
   useEffect(() => {
@@ -196,6 +217,26 @@ export default function FishEditorCanvas({
   useEffect(() => {
     deformationRef.current = deformationIntensity;
   }, [deformationIntensity]);
+
+  useEffect(() => {
+    editModeRef.current = editMode;
+  }, [editMode]);
+
+  useEffect(() => {
+    selectedFishIdRef.current = selectedFishId;
+  }, [selectedFishId]);
+
+  useEffect(() => {
+    fishDataRef.current = fishData;
+  }, [fishData]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
+  useEffect(() => {
+    showEditButtonsRef.current = showEditButtons;
+  }, [showEditButtons]);
 
   const eatenIdsRef = useRef<Set<string>>(new Set());
 
@@ -269,6 +310,57 @@ export default function FishEditorCanvas({
     joystickActiveRef.current = output.isActive;
   }, []);
 
+  // Handle canvas clicks/touches for edit buttons
+  const checkEditButtonClick = useCallback((clientX: number, clientY: number) => {
+    // Allow clicks even when paused - we want to be able to click edit buttons
+    if (!showEditButtonsRef.current || editModeRef.current || !onEditFish) return false;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+    
+    // Check if click is on an edit button
+    const currentZoom = zoomRef.current;
+    for (const [fishId, pos] of editButtonPositionsRef.current.entries()) {
+      // Calculate button position in screen space (same as rendering)
+      const screenX = pos.x * currentZoom;
+      const screenY = pos.y * currentZoom - pos.size * currentZoom / 2 - 24 - 5;
+      const buttonSize = 24;
+      
+      const dx = x - screenX;
+      const dy = y - screenY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < buttonSize / 2) {
+        onEditFish(fishId);
+        return true;
+      }
+    }
+    return false;
+  }, [onEditFish]);
+
+  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (checkEditButtonClick(e.clientX, e.clientY)) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, [checkEditButtonClick]);
+
+  const handleCanvasTouchStart = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (checkEditButtonClick(touch.clientX, touch.clientY)) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }
+  }, [checkEditButtonClick]);
+
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -311,29 +403,45 @@ export default function FishEditorCanvas({
     img.src = playerFishSprite;
   }, [playerFishSprite]);
 
+  // Update fish sizes from fishData
+  useEffect(() => {
+    fishListRef.current.forEach((fish) => {
+      const data = fishDataRef.current.get(fish.id);
+      if (data) {
+        fish.size = data.stats.size;
+      }
+    });
+  }, [fishData]);
+
   // Spawn new fish
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    spawnedFish.forEach((fishData) => {
-      if (eatenIdsRef.current.has(fishData.id)) return;
-      if (!fishListRef.current.find((f) => f.id === fishData.id)) {
+    spawnedFish.forEach((spawnedFishItem) => {
+      if (eatenIdsRef.current.has(spawnedFishItem.id)) return;
+      if (!fishListRef.current.find((f) => f.id === spawnedFishItem.id)) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           const processedSprite = removeBackground(img, chromaToleranceRef.current);
           const vx = (Math.random() - 0.5) * 0.5; // Even slower - reduced from 1 to 0.5
           const vy = (Math.random() - 0.5) * 0.5;
+          
+          // Get size from fishData if available, otherwise use default
+          const fishInfo = fishDataRef.current.get(spawnedFishItem.id);
+          const defaultSize = spawnedFishItem.type === 'prey' ? 60 : spawnedFishItem.type === 'predator' ? 120 : 90;
+          const fishSize = fishInfo?.stats.size || defaultSize;
+          
           const newFish = {
-            id: fishData.id,
+            id: spawnedFishItem.id,
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height,
             vx,
             vy,
-            size: fishData.type === 'prey' ? 60 : fishData.type === 'predator' ? 120 : 90, // Doubled all sizes
+            size: fishSize,
             sprite: processedSprite,
-            type: fishData.type,
+            type: spawnedFishItem.type,
             facingRight: vx >= 0,
             verticalTilt: 0,
             animTime: Math.random() * Math.PI * 2,
@@ -341,9 +449,9 @@ export default function FishEditorCanvas({
           fishListRef.current.push(newFish);
         };
         img.onerror = () => {
-          console.error('Failed to load fish sprite:', fishData.id);
+          console.error('Failed to load fish sprite:', spawnedFishItem.id);
         };
-        img.src = fishData.sprite;
+        img.src = spawnedFishItem.sprite;
       }
     });
 
@@ -398,6 +506,9 @@ export default function FishEditorCanvas({
 
     const gameLoop = () => {
       const player = playerRef.current;
+      const isPaused = pausedRef.current;
+      
+      // Skip game state updates if paused, but continue to render
       
       // Initialize game start time in game mode
       if (gameMode && gameStartTimeRef.current === 0) {
@@ -416,30 +527,38 @@ export default function FishEditorCanvas({
         }
       }
 
-      // Use joystick if active, otherwise keyboard
-      if (joystickActiveRef.current) {
-        // Analog joystick control - smooth velocity
-        player.vx = joystickVelocityRef.current.x * MAX_SPEED;
-        player.vy = joystickVelocityRef.current.y * MAX_SPEED;
+      // Lock movement in edit mode or when paused
+      const currentEditMode = editModeRef.current;
+      if (!currentEditMode && !isPaused) {
+        // Use joystick if active, otherwise keyboard
+        if (joystickActiveRef.current) {
+          // Analog joystick control - smooth velocity
+          player.vx = joystickVelocityRef.current.x * MAX_SPEED;
+          player.vy = joystickVelocityRef.current.y * MAX_SPEED;
+        } else {
+          // Keyboard control with acceleration and friction
+          if (hasKey('w') || hasKey('arrowup')) player.vy -= ACCELERATION;
+          if (hasKey('s') || hasKey('arrowdown')) player.vy += ACCELERATION;
+          if (hasKey('a') || hasKey('arrowleft')) player.vx -= ACCELERATION;
+          if (hasKey('d') || hasKey('arrowright')) player.vx += ACCELERATION;
+          player.vx *= FRICTION;
+          player.vy *= FRICTION;
+        }
+
+        let speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
+        if (speed > MAX_SPEED) {
+          player.vx = (player.vx / speed) * MAX_SPEED;
+          player.vy = (player.vy / speed) * MAX_SPEED;
+          speed = MAX_SPEED;
+        }
+
+        player.x += player.vx;
+        player.y += player.vy;
       } else {
-        // Keyboard control with acceleration and friction
-        if (hasKey('w') || hasKey('arrowup')) player.vy -= ACCELERATION;
-        if (hasKey('s') || hasKey('arrowdown')) player.vy += ACCELERATION;
-        if (hasKey('a') || hasKey('arrowleft')) player.vx -= ACCELERATION;
-        if (hasKey('d') || hasKey('arrowright')) player.vx += ACCELERATION;
-        player.vx *= FRICTION;
-        player.vy *= FRICTION;
+        // In edit mode, stop player movement
+        player.vx = 0;
+        player.vy = 0;
       }
-
-      let speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-      if (speed > MAX_SPEED) {
-        player.vx = (player.vx / speed) * MAX_SPEED;
-        player.vy = (player.vy / speed) * MAX_SPEED;
-        speed = MAX_SPEED;
-      }
-
-      player.x += player.vx;
-      player.y += player.vy;
 
       // Update facing direction based on horizontal velocity
       if (Math.abs(player.vx) > 0.1) {
@@ -451,7 +570,8 @@ export default function FishEditorCanvas({
       player.verticalTilt += (targetTilt - player.verticalTilt) * 0.1;
 
       // Movement-based animation: faster tail cycle when swimming
-      const normalizedSpeed = Math.min(1, speed / MAX_SPEED);
+      const rawPlayerSpeed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
+      const normalizedSpeed = Math.min(1, rawPlayerSpeed / MAX_SPEED);
       player.animTime += 0.05 + normalizedSpeed * 0.06;
 
       // Update chomp phase (decay over ~280ms)
@@ -572,10 +692,16 @@ export default function FishEditorCanvas({
         if (player.y > canvas.height) player.y = 0;
       }
 
-      // Update AI fish
+      // Update AI fish (lock movement in edit mode or when paused)
       fishListRef.current.forEach((fish) => {
-        fish.x += fish.vx;
-        fish.y += fish.vy;
+        if (!currentEditMode && !isPaused) {
+          fish.x += fish.vx;
+          fish.y += fish.vy;
+        } else {
+          // Lock fish movement in edit mode
+          fish.vx = 0;
+          fish.vy = 0;
+        }
 
         // Update facing direction
         if (Math.abs(fish.vx) > 0.1) {
@@ -623,15 +749,61 @@ export default function FishEditorCanvas({
       // Render
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // Calculate zoom and camera for edit mode
+      let currentZoom = zoomRef.current;
+      let cameraX = 0;
+      let cameraY = 0;
+      
+      const currentSelectedFishId = selectedFishIdRef.current;
+      if (currentEditMode && currentSelectedFishId) {
+        // Find selected fish (could be AI fish or player)
+        let selectedFish = fishListRef.current.find((f) => f.id === currentSelectedFishId);
+        let selectedSize = 0;
+        let selectedX = 0;
+        let selectedY = 0;
+        
+        if (selectedFish) {
+          selectedSize = selectedFish.size;
+          selectedX = selectedFish.x;
+          selectedY = selectedFish.y;
+        } else if (currentSelectedFishId === 'player') {
+          // Player fish selected
+          selectedSize = player.size;
+          selectedX = player.x;
+          selectedY = player.y;
+        }
+        
+        if (selectedSize > 0) {
+          // In edit mode, we want to show fish in top area (50% of screen height)
+          // Calculate zoom to fit fish in top half horizontally with padding
+          const padding = 40;
+          const topAreaHeight = canvas.height * 0.5; // Top 50% for fish display
+          const targetWidth = canvas.width - padding * 2;
+          const baseZoomToFit = targetWidth / selectedSize;
+          const baseZoom = Math.max(1, baseZoomToFit);
+          
+          // Apply manual zoom multiplier (allows zooming in/out from base)
+          currentZoom = baseZoom * zoomRef.current;
+          
+          // Position camera to show fish in top area (center horizontally, top 25% vertically)
+          cameraX = selectedX;
+          cameraY = selectedY;
+        }
+      }
+
       // Apply zoom
-      const currentZoom = zoomRef.current;
       ctx.save();
       ctx.scale(currentZoom, currentZoom);
       const scaledWidth = canvas.width / currentZoom;
       const scaledHeight = canvas.height / currentZoom;
 
-      // In game mode, translate for camera following
-      if (gameMode) {
+      // Apply camera transform
+      if (currentEditMode && currentSelectedFishId) {
+        // Position fish in top area: center horizontally, top 25% vertically
+        const topAreaCenterY = scaledHeight * 0.25;
+        ctx.translate(scaledWidth / 2 - cameraX, topAreaCenterY - cameraY);
+      } else if (gameMode) {
+        // In game mode, translate for camera following
         const camera = cameraRef.current;
         ctx.translate(scaledWidth / 2 - camera.x, scaledHeight / 2 - camera.y);
       }
@@ -705,6 +877,7 @@ export default function FishEditorCanvas({
       }
 
       // Draw AI fish
+      const buttonPositions = new Map<string, { x: number; y: number; size: number }>();
       fishListRef.current.forEach((fish) => {
         if (fish.sprite) {
           const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
@@ -726,6 +899,9 @@ export default function FishEditorCanvas({
           ctx.arc(fish.x, fish.y, fish.size / 2, 0, Math.PI * 2);
           ctx.fill();
         }
+        
+        // Store position for edit button
+        buttonPositions.set(fish.id, { x: fish.x, y: fish.y, size: fish.size });
       });
 
       // Draw player
@@ -752,6 +928,12 @@ export default function FishEditorCanvas({
         ctx.fill();
         ctx.stroke();
       }
+      
+      // Store player position for edit button (use special ID "player")
+      buttonPositions.set('player', { x: player.x, y: player.y, size: player.size });
+      
+      // Update edit button positions ref
+      editButtonPositionsRef.current = buttonPositions;
 
       // Blood fog + CHOMP (world space, fixed at eat position — no movement)
       bloodParticlesRef.current.forEach((b) => {
@@ -817,8 +999,38 @@ export default function FishEditorCanvas({
 
       ctx.restore();
 
-      // Restore zoom transform
+      // Restore zoom transform (now we're in screen space)
       ctx.restore();
+
+      // Draw edit buttons on fish (in screen space)
+      if (showEditButtonsRef.current && !currentEditMode && onEditFish) {
+        buttonPositions.forEach((pos, fishId) => {
+          // Calculate screen position - buttons are drawn after all transforms are restored
+          const screenX = pos.x * currentZoom;
+          const screenY = pos.y * currentZoom;
+          
+          // Draw edit button above fish
+          const buttonSize = 24;
+          const buttonY = screenY - pos.size * currentZoom / 2 - buttonSize - 5;
+          
+          ctx.save();
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(screenX, buttonY, buttonSize / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          
+          // Draw edit icon (pencil)
+          ctx.fillStyle = 'white';
+          ctx.font = '12px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✎', screenX, buttonY);
+          ctx.restore();
+        });
+      }
 
       // UI text overlay
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -831,11 +1043,23 @@ export default function FishEditorCanvas({
         ctx.fillText(`Score: ${scoreRef.current}`, 10, 20);
         ctx.fillText(`Size: ${Math.floor(player.size)}`, 10, 40);
         ctx.fillText(`Time: ${timeLeft}s`, 10, 60);
-      } else {
+      } else if (!currentEditMode) {
         // Editor mode UI
         ctx.fillText('WASD / Arrows · Tap and hold for analog control', 10, 20);
         ctx.fillText(`Zoom: ${(currentZoom * 100).toFixed(0)}%`, 10, 40);
         ctx.fillText(`Size: ${player.size} (eat prey to grow)`, 10, 60);
+      }
+
+      // Draw paused indicator (small, non-blocking) if paused
+      if (isPaused) {
+        // Small pause indicator in top-left corner instead of full overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(10, 10, 120, 40);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.font = 'bold 20px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('⏸ PAUSED', 20, 30);
       }
 
       animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -866,8 +1090,13 @@ export default function FishEditorCanvas({
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
+        onClick={handleCanvasClick}
+        onTouchStart={handleCanvasTouchStart}
+        style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1 }}
       />
-      <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" />
+      <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
+        <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
+      </div>
     </div>
   );
 }

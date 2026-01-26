@@ -10,6 +10,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import FishEditorCanvas from '@/components/FishEditorCanvas';
 import FishEditorControls from '@/components/FishEditorControls';
+import FishEditOverlay, { type FishData } from '@/components/FishEditOverlay';
 import BottomSheet from '@/components/BottomSheet';
 
 export default function FishEditorPage() {
@@ -17,10 +18,14 @@ export default function FishEditorPage() {
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
   const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
+  const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
   const [chromaTolerance, setChromaTolerance] = useState<number>(50);
   const [zoom, setZoom] = useState<number>(1);
   const [enableWaterDistortion, setEnableWaterDistortion] = useState<boolean>(false);
   const [deformationIntensity, setDeformationIntensity] = useState<number>(1);
+  const [editMode, setEditMode] = useState<boolean>(false);
+  const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
+  const [paused, setPaused] = useState<boolean>(false);
 
   // Load random background, player fish, and spawn default prey on mount
   useEffect(() => {
@@ -64,27 +69,63 @@ export default function FishEditorPage() {
           );
           const pool = preyCandidates.length >= 4 ? preyCandidates : assets;
           const defaults = [];
+          const newFishData = new Map<string, FishData>();
           for (let i = 0; i < 4; i++) {
             const pick = pool[i % pool.length];
+            const newId = `default_prey_${Date.now()}_${i}`;
             defaults.push({
-              id: `default_prey_${Date.now()}_${i}`,
+              id: newId,
               sprite: pick.url,
               type: 'prey' as const,
             });
+            
+            // Initialize fish data
+            newFishData.set(newId, {
+              id: newId,
+              name: `Prey Fish ${i + 1}`,
+              description: 'A small, swift prey fish.',
+              type: 'prey',
+              stats: {
+                size: 60,
+                speed: 5,
+                health: 20,
+                damage: 5,
+              },
+              sprite: pick.url,
+            });
           }
           setSpawnedFish(defaults);
+          setFishData(newFishData);
         } else {
           // No saved fish: spawn 4 default prey (simple green oval) for testing
           const fallbackSprite = createDefaultPreyDataUrl();
           const defaults = [];
+          const newFishData = new Map<string, FishData>();
           for (let i = 0; i < 4; i++) {
+            const newId = `default_prey_${Date.now()}_${i}`;
             defaults.push({
-              id: `default_prey_${Date.now()}_${i}`,
+              id: newId,
               sprite: fallbackSprite,
               type: 'prey' as const,
             });
+            
+            // Initialize fish data
+            newFishData.set(newId, {
+              id: newId,
+              name: `Prey Fish ${i + 1}`,
+              description: 'A small, swift prey fish.',
+              type: 'prey',
+              stats: {
+                size: 60,
+                speed: 5,
+                health: 20,
+                damage: 5,
+              },
+              sprite: fallbackSprite,
+            });
           }
           setSpawnedFish(defaults);
+          setFishData(newFishData);
         }
       } catch (error) {
         console.error('Failed to load random assets:', error);
@@ -95,25 +136,155 @@ export default function FishEditorPage() {
   }, []);
 
   const handleSpawnFish = (sprite: string, type: string) => {
+    const newId = `fish_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const newFish = {
-      id: `fish_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: newId,
       sprite,
       type,
     };
     setSpawnedFish((prev) => [...prev, newFish]);
+    
+    // Initialize fish data
+    const defaultName = type.charAt(0).toUpperCase() + type.slice(1) + ' Fish';
+    const defaultData: FishData = {
+      id: newId,
+      name: defaultName,
+      description: `A ${type} fish with unique characteristics.`,
+      type: type as 'prey' | 'predator' | 'mutant',
+      stats: {
+        size: type === 'prey' ? 60 : type === 'predator' ? 120 : 90,
+        speed: type === 'prey' ? 5 : type === 'predator' ? 3 : 4,
+        health: type === 'prey' ? 20 : type === 'predator' ? 50 : 35,
+        damage: type === 'prey' ? 5 : type === 'predator' ? 20 : 12,
+      },
+      sprite,
+    };
+    setFishData((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(newId, defaultData);
+      return newMap;
+    });
   };
 
   const handleClearFish = () => {
     setSpawnedFish([]);
+    setFishData(new Map());
+    setEditMode(false);
+    setSelectedFishId(null);
   };
 
   const handleBackToMenu = () => {
     router.push('/');
   };
 
+  const handleEditFish = (fishId: string) => {
+    setSelectedFishId(fishId);
+    setEditMode(true);
+  };
+
+  // Initialize player fish data when player sprite is set
+  useEffect(() => {
+    if (playerFishSprite && !fishData.has('player')) {
+      const playerData: FishData = {
+        id: 'player',
+        name: 'Player Fish',
+        description: 'The main player character.',
+        type: 'prey',
+        stats: {
+          size: 80,
+          speed: 5,
+          health: 50,
+          damage: 10,
+        },
+        sprite: playerFishSprite,
+      };
+      setFishData((prev) => {
+        const newMap = new Map(prev);
+        newMap.set('player', playerData);
+        return newMap;
+      });
+    }
+  }, [playerFishSprite, fishData]);
+
+  const handleExitEditMode = () => {
+    setEditMode(false);
+    setSelectedFishId(null);
+  };
+
+  const handleSaveFish = (fish: FishData) => {
+    setFishData((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(fish.id, fish);
+      return newMap;
+    });
+    // Update spawned fish type if changed
+    setSpawnedFish((prev) =>
+      prev.map((f) => (f.id === fish.id ? { ...f, type: fish.type } : f))
+    );
+  };
+
+  const handlePreviousFish = () => {
+    if (!selectedFishId) return;
+    const fishIds = Array.from(fishData.keys()).sort(); // Sort for consistent ordering
+    const currentIndex = fishIds.indexOf(selectedFishId);
+    if (currentIndex > 0) {
+      setSelectedFishId(fishIds[currentIndex - 1]);
+    }
+  };
+
+  const handleNextFish = () => {
+    if (!selectedFishId) return;
+    const fishIds = Array.from(fishData.keys()).sort(); // Sort for consistent ordering
+    const currentIndex = fishIds.indexOf(selectedFishId);
+    if (currentIndex < fishIds.length - 1) {
+      setSelectedFishId(fishIds[currentIndex + 1]);
+    }
+  };
+
+  // Clean up fish data when fish are removed (but preserve player fish)
+  useEffect(() => {
+    const spawnedIds = new Set(spawnedFish.map((f) => f.id));
+    setFishData((prev) => {
+      const newMap = new Map();
+      prev.forEach((data, id) => {
+        // Keep player fish and spawned fish
+        if (id === 'player' || spawnedIds.has(id)) {
+          newMap.set(id, data);
+        }
+      });
+      return newMap;
+    });
+  }, [spawnedFish]);
+
+  const selectedFish = selectedFishId ? fishData.get(selectedFishId) || null : null;
+  const fishIds = Array.from(fishData.keys()).sort(); // Sort for consistent ordering
+  const selectedIndex = selectedFishId ? fishIds.indexOf(selectedFishId) : -1;
+  const hasPrevious = selectedIndex > 0;
+  const hasNext = selectedIndex >= 0 && selectedIndex < fishIds.length - 1;
+
   return (
     <div className="relative w-full h-screen bg-black flex flex-col overflow-hidden">
-      {/* Full Screen Canvas */}
+      {/* Top Right Icon Buttons */}
+      <div className="absolute top-4 right-4 z-40 flex gap-2">
+        {/* Pause Icon */}
+        <button
+          onClick={() => setPaused(!paused)}
+          className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
+          title={paused ? 'Resume' : 'Pause'}
+        >
+          {paused ? (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {/* Canvas - Full screen, but fish will be positioned in top area during edit mode */}
       <div className="flex-1 relative">
         <FishEditorCanvas
           background={selectedBackground}
@@ -123,30 +294,51 @@ export default function FishEditorPage() {
           zoom={zoom}
           enableWaterDistortion={enableWaterDistortion}
           deformationIntensity={deformationIntensity}
+          editMode={editMode}
+          selectedFishId={selectedFishId}
+          onEditFish={handleEditFish}
+          showEditButtons={paused}
+          fishData={fishData}
+          paused={paused}
         />
       </div>
 
-      {/* Bottom Sheet - Controls */}
-      <BottomSheet defaultHeight={30} minHeight={10} maxHeight={90}>
-        <div className="px-4 pb-4">
-          <FishEditorControls
-            onBackToMenu={handleBackToMenu}
-            onSpawnFish={handleSpawnFish}
-            onClearFish={handleClearFish}
-            onSetBackground={setSelectedBackground}
-            onSetPlayerFish={setPlayerFishSprite}
-            spawnedFishCount={spawnedFish.length}
-            chromaTolerance={chromaTolerance}
-            onChromaToleranceChange={setChromaTolerance}
-            zoom={zoom}
-            onZoomChange={setZoom}
-            enableWaterDistortion={enableWaterDistortion}
-            onWaterDistortionChange={setEnableWaterDistortion}
-            deformationIntensity={deformationIntensity}
-            onDeformationChange={setDeformationIntensity}
-          />
-        </div>
-      </BottomSheet>
+      {/* Edit Mode Overlay - Bottom panel (doesn't cover top area) */}
+      {editMode && selectedFish && (
+        <FishEditOverlay
+          fish={selectedFish}
+          onSave={handleSaveFish}
+          onBack={handleExitEditMode}
+          onPrevious={handlePreviousFish}
+          onNext={handleNextFish}
+          hasPrevious={hasPrevious}
+          hasNext={hasNext}
+        />
+      )}
+
+      {/* Bottom Sheet - Controls (hidden in edit mode) */}
+      {!editMode && (
+        <BottomSheet defaultHeight={30} minHeight={10} maxHeight={90}>
+          <div className="px-4 pb-4">
+            <FishEditorControls
+              onBackToMenu={handleBackToMenu}
+              onSpawnFish={handleSpawnFish}
+              onClearFish={handleClearFish}
+              onSetBackground={setSelectedBackground}
+              onSetPlayerFish={setPlayerFishSprite}
+              spawnedFishCount={spawnedFish.length}
+              chromaTolerance={chromaTolerance}
+              onChromaToleranceChange={setChromaTolerance}
+              zoom={zoom}
+              onZoomChange={setZoom}
+              enableWaterDistortion={enableWaterDistortion}
+              onWaterDistortionChange={setEnableWaterDistortion}
+              deformationIntensity={deformationIntensity}
+              onDeformationChange={setDeformationIntensity}
+            />
+          </div>
+        </BottomSheet>
+      )}
     </div>
   );
 }

@@ -24,6 +24,8 @@ interface AnalogJoystickProps {
   deadZone?: number;
   /** Joystick visibility mode */
   mode?: 'always' | 'on-touch';
+  /** Whether joystick is disabled */
+  disabled?: boolean;
 }
 
 export default function AnalogJoystick({
@@ -31,6 +33,7 @@ export default function AnalogJoystick({
   maxDistance = 50,
   deadZone = 15,
   mode = 'on-touch',
+  disabled = false,
 }: AnalogJoystickProps) {
   const [isActive, setIsActive] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -132,7 +135,9 @@ export default function AnalogJoystick({
   // Touch handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (touchIdRef.current === null && e.touches.length > 0) {
-      e.preventDefault(); // Only prevent when handling the joystick
+      // Stop propagation so canvas doesn't also handle this touch
+      // But don't prevent default - allows natural touch behavior
+      e.stopPropagation();
       const touch = e.touches[0];
       handleStart(touch.clientX, touch.clientY, touch.identifier);
     }
@@ -160,7 +165,9 @@ export default function AnalogJoystick({
 
   // Mouse handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault(); // Only prevent when handling the joystick
+    // Stop propagation so canvas doesn't also handle this click
+    // But don't prevent default - allows natural mouse behavior
+    e.stopPropagation();
     handleStart(e.clientX, e.clientY);
   }, [handleStart]);
 
@@ -176,6 +183,11 @@ export default function AnalogJoystick({
       handleEnd();
     }
   }, [isActive, handleEnd]);
+
+  // If disabled, don't render anything
+  if (disabled) {
+    return null;
+  }
 
   // If mode is 'on-touch' and not active, render an invisible touch area
   if (mode === 'on-touch' && !isActive) {
@@ -201,7 +213,7 @@ export default function AnalogJoystick({
   return (
     <>
       {/* Full screen touch area for 'on-touch' mode */}
-      {mode === 'on-touch' && (
+      {mode === 'on-touch' && !disabled && (
         <div
           className="absolute inset-0 z-10"
           style={{ touchAction: 'none' }}
@@ -227,27 +239,19 @@ export default function AnalogJoystick({
           }}
         >
           {/* Outer ring */}
-          <div className="absolute inset-0 rounded-full bg-blue-600/20 border-2 border-blue-400/40 backdrop-blur-sm" />
+          <div className="absolute inset-0 rounded-full bg-gray-600/20 border-2 border-gray-400/40 backdrop-blur-sm" />
 
           {/* Knob */}
           <div
-            className="absolute rounded-full bg-blue-500 transition-all duration-75"
+            className="absolute rounded-full bg-gray-500 transition-all duration-75"
             style={{
               width: `${knobSize}px`,
               height: `${knobSize}px`,
               left: `${position.x - basePosition.x + joystickSize / 2 - knobSize / 2}px`,
               top: `${position.y - basePosition.y + joystickSize / 2 - knobSize / 2}px`,
-              boxShadow: '0 0 20px rgba(59, 130, 246, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3)',
+              boxShadow: '0 0 20px rgba(107, 114, 128, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3)',
             }}
           />
-
-          {/* Direction indicator */}
-          <div className="absolute inset-0 flex items-center justify-center text-blue-300/60 text-xl font-bold">
-            {currentDirection === 'up' && '↑'}
-            {currentDirection === 'down' && '↓'}
-            {currentDirection === 'left' && '←'}
-            {currentDirection === 'right' && '→'}
-          </div>
         </div>
       )}
 
@@ -272,28 +276,20 @@ export default function AnalogJoystick({
             onMouseLeave={handleMouseUp}
           >
             {/* Outer ring */}
-            <div className="absolute inset-0 rounded-full bg-blue-600/30 border-2 border-blue-400/50 backdrop-blur-sm" />
+            <div className="absolute inset-0 rounded-full bg-gray-600/30 border-2 border-gray-400/50 backdrop-blur-sm" />
             
             {/* Knob */}
             <div
-              className="absolute rounded-full bg-blue-500 transition-all duration-100"
+              className="absolute rounded-full bg-gray-500 transition-all duration-100"
               style={{
                 width: `${knobSize}px`,
                 height: `${knobSize}px`,
                 left: `${joystickSize / 2 - knobSize / 2 + (isActive ? position.x - basePosition.x : 0)}px`,
                 top: `${joystickSize / 2 - knobSize / 2 + (isActive ? position.y - basePosition.y : 0)}px`,
                 transform: isActive ? 'scale(1.2)' : 'scale(1)',
-                boxShadow: isActive ? '0 0 20px rgba(59, 130, 246, 0.6)' : 'none',
+                boxShadow: isActive ? '0 0 20px rgba(107, 114, 128, 0.6)' : 'none',
               }}
             />
-
-            {/* Direction indicator */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-blue-300/40 text-xs font-bold">
-              {currentDirection === 'up' && '↑'}
-              {currentDirection === 'down' && '↓'}
-              {currentDirection === 'left' && '←'}
-              {currentDirection === 'right' && '→'}
-            </div>
           </div>
         </div>
       )}
