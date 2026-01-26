@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { getFishSpriteService } from '@/lib/ai/fish-sprite-service';
+import BiomeBackgroundManager from './BiomeBackgroundManager';
 
 type ModelType = 'bfl/flux-2-pro' | 'google/imagen-4.0-generate-001' | 'google/imagen-4.0-fast-generate-001';
 type FishType = 'prey' | 'predator' | 'mutant';
@@ -703,6 +704,11 @@ export default function FishEditorControls({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Biome Background Manager */}
+      <div className="border-t border-gray-700 pt-4">
+        <BiomeBackgroundManager currentBackground={generatedBg || loadedBgFilename || null} />
       </div>
 
       {/* Scene Controls */}

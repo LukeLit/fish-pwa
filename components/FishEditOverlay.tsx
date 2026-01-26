@@ -296,33 +296,51 @@ export default function FishEditOverlay({
 
         {/* Essence Types */}
         <div>
-          <label className="block text-sm font-bold text-white mb-2">Essence Types (comma-separated: type:yield)</label>
-          <input
-            type="text"
-            value={
-              editedFish.essenceTypes
-                ? editedFish.essenceTypes.map(e => `${e.type}:${e.baseYield}`).join(', ')
-                : ''
-            }
-            onChange={(e) => {
-              const value = e.target.value.trim();
-              if (!value) {
-                updateField('essenceTypes', []);
-                return;
-              }
-              const essenceTypes = value.split(',').map(part => {
-                const [type, yieldStr] = part.trim().split(':');
-                return {
-                  type: type || 'shallow',
-                  baseYield: parseInt(yieldStr) || 10
-                };
-              });
-              updateField('essenceTypes', essenceTypes);
-            }}
-            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-            placeholder="e.g., shallow:10, deep_sea:15"
-          />
-          <p className="text-xs text-gray-400 mt-1">Example: shallow:10, deep_sea:15, polluted:5</p>
+          <label className="block text-sm font-bold text-white mb-2">Essence Types</label>
+          <div className="space-y-2 bg-gray-900/50 p-3 rounded border border-gray-700">
+            {['shallow', 'deep_sea', 'tropical', 'polluted', 'cosmic', 'demonic', 'robotic'].map((essenceType) => {
+              const currentEssence = editedFish.essenceTypes?.find(e => e.type === essenceType);
+              const currentValue = currentEssence?.baseYield || 0;
+              
+              return (
+                <div key={essenceType} className="flex items-center gap-2">
+                  <label className="text-xs text-gray-300 w-24 capitalize">
+                    {essenceType.replace('_', ' ')}:
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="999"
+                    value={currentValue}
+                    onChange={(e) => {
+                      const newValue = parseInt(e.target.value) || 0;
+                      const currentTypes = editedFish.essenceTypes || [];
+                      
+                      if (newValue === 0) {
+                        // Remove this essence type
+                        const filtered = currentTypes.filter(et => et.type !== essenceType);
+                        updateField('essenceTypes', filtered);
+                      } else {
+                        // Update or add this essence type
+                        const existing = currentTypes.find(et => et.type === essenceType);
+                        if (existing) {
+                          const updated = currentTypes.map(et =>
+                            et.type === essenceType ? { ...et, baseYield: newValue } : et
+                          );
+                          updateField('essenceTypes', updated);
+                        } else {
+                          updateField('essenceTypes', [...currentTypes, { type: essenceType, baseYield: newValue }]);
+                        }
+                      }
+                    }}
+                    className="flex-1 bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                    placeholder="0"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Set to 0 to remove an essence type</p>
         </div>
 
         {/* Stats */}
