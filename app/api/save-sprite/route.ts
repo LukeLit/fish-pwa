@@ -1,11 +1,9 @@
 /**
- * Save sprite or background image to local filesystem
+ * Save sprite or background image to Vercel Blob Storage
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { uploadAsset, listAssets } from '@/lib/storage/blob-storage';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,32 +16,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Define the directory based on type
-    let targetDir: string;
-    let urlPath: string;
+    // Define the blob path based on type
+    const blobPath = type === 'background' 
+      ? `backgrounds/${filename}` 
+      : `fish/${filename}`;
 
-    if (type === 'background') {
-      targetDir = join(process.cwd(), 'public', 'backgrounds');
-      urlPath = `/backgrounds/${filename}`;
-    } else {
-      targetDir = join(process.cwd(), 'public', 'sprites', 'fish');
-      urlPath = `/sprites/fish/${filename}`;
-    }
-
-    // Ensure directory exists
-    if (!existsSync(targetDir)) {
-      await mkdir(targetDir, { recursive: true });
-    }
-
-    const filepath = join(targetDir, filename);
-
-    // Check if file already exists
-    if (existsSync(filepath)) {
-      return NextResponse.json({
-        success: true,
-        localPath: urlPath,
-        cached: true,
-      });
+    // Check if file already exists in blob storage
+    try {
+      const existingAssets = await listAssets(blobPath);
+      if (existingAssets.length > 0) {
+        console.log('[SaveSprite] Asset already exists:', existingAssets[0].url);
+        return NextResponse.json({
+          success: true,
+          localPath: existingAssets[0].url,
+          cached: true,
+        });
+      }
+    } catch (error) {
+      // Asset doesn't exist, continue with upload
     }
 
     let buffer: Buffer;
@@ -65,14 +55,14 @@ export async function POST(request: NextRequest) {
       throw new Error('No valid image data provided');
     }
 
-    // Save to local file system
-    await writeFile(filepath, buffer);
+    // Upload to Vercel Blob Storage
+    const result = await uploadAsset(blobPath, buffer, 'image/png');
 
-    console.log('[SaveSprite] Saved to:', filepath);
+    console.log('[SaveSprite] Saved to Vercel Blob:', result.url);
 
     return NextResponse.json({
       success: true,
-      localPath: urlPath,
+      localPath: result.url,
       cached: false,
       size: buffer.length,
     });
