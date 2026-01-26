@@ -93,11 +93,17 @@ export default function BottomSheet({
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      handleDragMove(e.clientY);
+      if (!containerRef.current) return;
+      const containerHeight = window.innerHeight;
+      const deltaY = startYRef.current - e.clientY;
+      const deltaPercent = (deltaY / containerHeight) * 100;
+      const newHeight = Math.min(maxHeight, Math.max(minHeight, startHeightRef.current + deltaPercent));
+      setHeight(newHeight);
     };
 
     const handleMouseUp = () => {
-      handleDragEnd();
+      setIsDragging(false);
+      touchIdRef.current = null;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -107,7 +113,7 @@ export default function BottomSheet({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, maxHeight, minHeight]);
 
   return (
     <div
