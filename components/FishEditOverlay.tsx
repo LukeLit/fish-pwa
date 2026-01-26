@@ -136,7 +136,10 @@ export default function FishEditOverlay({
           setEditedFish(prev => prev ? { ...prev, sprite: result.spriteUrl } : null);
         }
       } else {
-        setSaveMessage('✗ Failed to save: ' + (result.error || 'Unknown error'));
+        const errorMsg = result.requiresToken 
+          ? 'Configuration required: Set BLOB_READ_WRITE_TOKEN in .env.local. See .env.example for details.'
+          : (result.message || result.error || 'Unknown error');
+        setSaveMessage('✗ Failed to save: ' + errorMsg);
       }
     } catch (error) {
       console.error('Save error:', error);
