@@ -113,10 +113,6 @@ export default function MetaHub() {
 
           {/* Options Button */}
           <button
-            onClick={(e) => {
-              e.preventDefault();
-              // TODO: Navigate to Options screen when implemented
-            }}
             disabled
             className="group relative bg-gray-800/50 text-gray-600 border-gray-700/50 font-bold py-6 px-8 rounded-lg text-center text-2xl uppercase tracking-wider transition-all border-4 cursor-not-allowed"
           >
