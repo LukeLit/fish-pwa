@@ -4,7 +4,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import FishEditorDpad, { type DpadDirection } from './FishEditorDpad';
+import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
 
 interface FishEditorCanvasProps {
   background: string | null;
@@ -236,18 +236,15 @@ export default function FishEditorCanvas({
   }>>([]);
 
   const keyKeysRef = useRef<Set<string>>(new Set());
-  const dpadKeysRef = useRef<Set<string>>(new Set());
-  const tapTargetRef = useRef<{ x: number; y: number } | null>(null);
-  const touchIdRef = useRef<number | null>(null);
+  const joystickVelocityRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const joystickActiveRef = useRef<boolean>(false);
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const waterTimeRef = useRef<number>(0);
   const waterDistortionRef = useRef<HTMLCanvasElement | null>(null);
 
-  const dirToKey: Record<DpadDirection, string> = { up: 'w', down: 's', left: 'a', right: 'd' };
-  const handleDpadDirection = useCallback((dir: DpadDirection, pressed: boolean) => {
-    const k = dirToKey[dir];
-    if (pressed) dpadKeysRef.current.add(k);
-    else dpadKeysRef.current.delete(k);
+  const handleJoystickChange = useCallback((output: AnalogJoystickOutput) => {
+    joystickVelocityRef.current = output.velocity;
+    joystickActiveRef.current = output.isActive;
   }, []);
 
   useEffect(() => {
@@ -367,116 +364,39 @@ export default function FishEditorCanvas({
       keyKeysRef.current.delete(key);
     };
 
-    const hasKey = (k: string) => keyKeysRef.current.has(k) || dpadKeysRef.current.has(k);
-
-    const getCanvasCoords = (clientX: number, clientY: number) => {
-      const el = canvas;
-      const r = el.getBoundingClientRect();
-      const scaleX = el.width / r.width;
-      const scaleY = el.height / r.height;
-      return {
-        x: (clientX - r.left) * scaleX,
-        y: (clientY - r.top) * scaleY,
-      };
-    };
-
-    const setTargetFromPointer = (clientX: number, clientY: number) => {
-      const { x, y } = getCanvasCoords(clientX, clientY);
-      if (x < 240 && y < 90) return;
-      tapTargetRef.current = { x, y };
-    };
-
-    const clearTarget = () => {
-      tapTargetRef.current = null;
-    };
-
-    const handleMouseDown = (e: MouseEvent) => {
-      if (e.target !== canvas || e.button !== 0) return;
-      setTargetFromPointer(e.clientX, e.clientY);
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (e.target !== canvas || e.buttons !== 1) return;
-      setTargetFromPointer(e.clientX, e.clientY);
-    };
-
-    const handleMouseUp = (e: MouseEvent) => {
-      if (e.target !== canvas || e.button !== 0) return;
-      clearTarget();
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.target !== canvas || e.touches.length === 0) return;
-      const t = e.touches[0];
-      touchIdRef.current = t.identifier;
-      setTargetFromPointer(t.clientX, t.clientY);
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (touchIdRef.current == null) return;
-      const t = Array.from(e.touches).find((x) => x.identifier === touchIdRef.current);
-      if (!t) return;
-      e.preventDefault();
-      setTargetFromPointer(t.clientX, t.clientY);
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      const t = Array.from(e.changedTouches).find((x) => x.identifier === touchIdRef.current);
-      if (!t) return;
-      touchIdRef.current = null;
-      clearTarget();
-    };
-
-    canvas.addEventListener('mousedown', handleMouseDown);
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mouseleave', handleMouseUp);
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd, { passive: true });
-    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    const hasKey = (k: string) => keyKeysRef.current.has(k);
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    const maxSpeed = 1.5;
-    const tapArrivalThreshold = 14;
+    // Game physics constants
+    const MAX_SPEED = 1.5;
+    const ACCELERATION = 0.15;
+    const FRICTION = 0.92;
 
     const gameLoop = () => {
       const player = playerRef.current;
 
-      const acceleration = 0.15;
-      const friction = 0.92;
-
-      const tap = tapTargetRef.current;
-      if (tap) {
-        const dx = tap.x - player.x;
-        const dy = tap.y - player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist <= tapArrivalThreshold) {
-          tapTargetRef.current = null;
-        } else {
-          const nx = dx / dist;
-          const ny = dy / dist;
-          player.vx = nx * maxSpeed;
-          player.vy = ny * maxSpeed;
-        }
-      }
-
-      if (!tap) {
-        if (hasKey('w') || hasKey('arrowup')) player.vy -= acceleration;
-        if (hasKey('s') || hasKey('arrowdown')) player.vy += acceleration;
-        if (hasKey('a') || hasKey('arrowleft')) player.vx -= acceleration;
-        if (hasKey('d') || hasKey('arrowright')) player.vx += acceleration;
-        player.vx *= friction;
-        player.vy *= friction;
+      // Use joystick if active, otherwise keyboard
+      if (joystickActiveRef.current) {
+        // Analog joystick control - smooth velocity
+        player.vx = joystickVelocityRef.current.x * MAX_SPEED;
+        player.vy = joystickVelocityRef.current.y * MAX_SPEED;
+      } else {
+        // Keyboard control with acceleration and friction
+        if (hasKey('w') || hasKey('arrowup')) player.vy -= ACCELERATION;
+        if (hasKey('s') || hasKey('arrowdown')) player.vy += ACCELERATION;
+        if (hasKey('a') || hasKey('arrowleft')) player.vx -= ACCELERATION;
+        if (hasKey('d') || hasKey('arrowright')) player.vx += ACCELERATION;
+        player.vx *= FRICTION;
+        player.vy *= FRICTION;
       }
 
       let speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-      if (speed > maxSpeed) {
-        player.vx = (player.vx / speed) * maxSpeed;
-        player.vy = (player.vy / speed) * maxSpeed;
-        speed = maxSpeed;
+      if (speed > MAX_SPEED) {
+        player.vx = (player.vx / speed) * MAX_SPEED;
+        player.vy = (player.vy / speed) * MAX_SPEED;
+        speed = MAX_SPEED;
       }
 
       player.x += player.vx;
@@ -492,7 +412,7 @@ export default function FishEditorCanvas({
       player.verticalTilt += (targetTilt - player.verticalTilt) * 0.1;
 
       // Movement-based animation: faster tail cycle when swimming
-      const normalizedSpeed = Math.min(1, speed / maxSpeed);
+      const normalizedSpeed = Math.min(1, speed / MAX_SPEED);
       player.animTime += 0.05 + normalizedSpeed * 0.06;
 
       // Update chomp phase (decay over ~280ms)
@@ -642,7 +562,7 @@ export default function FishEditorCanvas({
       // Draw AI fish
       fishListRef.current.forEach((fish) => {
         if (fish.sprite) {
-          const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / maxSpeed);
+          const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
           drawFishWithDeformation(
             ctx,
             fish.sprite,
@@ -664,7 +584,7 @@ export default function FishEditorCanvas({
       });
 
       // Draw player
-      const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / maxSpeed);
+      const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / MAX_SPEED);
       if (player.sprite) {
         drawFishWithDeformation(
           ctx,
@@ -757,7 +677,7 @@ export default function FishEditorCanvas({
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.font = '14px monospace';
-      ctx.fillText('WASD / Arrows · Tap to move · D-pad (mobile)', 10, 20);
+      ctx.fillText('WASD / Arrows · Tap and hold for analog control', 10, 20);
       ctx.fillText(`Zoom: ${(currentZoom * 100).toFixed(0)}%`, 10, 40);
       ctx.fillText(`Size: ${player.size} (eat prey to grow)`, 10, 60);
 
@@ -767,14 +687,6 @@ export default function FishEditorCanvas({
     gameLoop();
 
     return () => {
-      canvas.removeEventListener('mousedown', handleMouseDown);
-      canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('mouseup', handleMouseUp);
-      canvas.removeEventListener('mouseleave', handleMouseUp);
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      canvas.removeEventListener('touchmove', handleTouchMove);
-      canvas.removeEventListener('touchend', handleTouchEnd);
-      canvas.removeEventListener('touchcancel', handleTouchEnd);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', updateCanvasSize);
@@ -798,7 +710,7 @@ export default function FishEditorCanvas({
         ref={canvasRef}
         className="w-full h-full block"
       />
-      <FishEditorDpad onDirection={handleDpadDirection} mobileOnly />
+      <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" />
     </div>
   );
 }

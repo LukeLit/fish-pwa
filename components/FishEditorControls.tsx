@@ -523,6 +523,7 @@ export default function FishEditorControls({
                 const bg = savedBackgrounds[selectedIndex];
                 setGeneratedBg(bg.url);
                 setLoadedBgFilename(bg.filename);
+                onSetBackground(bg.url);
                 setStatus('✅ Loaded saved background');
               }
             }}
