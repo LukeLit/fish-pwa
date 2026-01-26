@@ -10,6 +10,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import FishEditorCanvas from '@/components/FishEditorCanvas';
 import FishEditorControls from '@/components/FishEditorControls';
+import BottomSheet from '@/components/BottomSheet';
 
 export default function FishEditorPage() {
   const router = useRouter();
@@ -111,28 +112,8 @@ export default function FishEditorPage() {
   };
 
   return (
-    <div className="relative w-full h-screen bg-black flex overflow-hidden">
-      {/* Left Panel - Controls */}
-      <div className="w-80 bg-gray-900 border-r border-gray-700 overflow-y-auto flex-shrink-0">
-        <FishEditorControls
-          onBackToMenu={handleBackToMenu}
-          onSpawnFish={handleSpawnFish}
-          onClearFish={handleClearFish}
-          onSetBackground={setSelectedBackground}
-          onSetPlayerFish={setPlayerFishSprite}
-          spawnedFishCount={spawnedFish.length}
-          chromaTolerance={chromaTolerance}
-          onChromaToleranceChange={setChromaTolerance}
-          zoom={zoom}
-          onZoomChange={setZoom}
-          enableWaterDistortion={enableWaterDistortion}
-          onWaterDistortionChange={setEnableWaterDistortion}
-          deformationIntensity={deformationIntensity}
-          onDeformationChange={setDeformationIntensity}
-        />
-      </div>
-
-      {/* Right Panel - Game Canvas - Fills remaining space */}
+    <div className="relative w-full h-screen bg-black flex flex-col overflow-hidden">
+      {/* Full Screen Canvas */}
       <div className="flex-1 relative">
         <FishEditorCanvas
           background={selectedBackground}
@@ -144,6 +125,28 @@ export default function FishEditorPage() {
           deformationIntensity={deformationIntensity}
         />
       </div>
+
+      {/* Bottom Sheet - Controls */}
+      <BottomSheet defaultHeight={30} minHeight={10} maxHeight={90}>
+        <div className="px-4 pb-4">
+          <FishEditorControls
+            onBackToMenu={handleBackToMenu}
+            onSpawnFish={handleSpawnFish}
+            onClearFish={handleClearFish}
+            onSetBackground={setSelectedBackground}
+            onSetPlayerFish={setPlayerFishSprite}
+            spawnedFishCount={spawnedFish.length}
+            chromaTolerance={chromaTolerance}
+            onChromaToleranceChange={setChromaTolerance}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            enableWaterDistortion={enableWaterDistortion}
+            onWaterDistortionChange={setEnableWaterDistortion}
+            deformationIntensity={deformationIntensity}
+            onDeformationChange={setDeformationIntensity}
+          />
+        </div>
+      </BottomSheet>
     </div>
   );
 }

@@ -4,7 +4,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import FishEditorDpad, { type DpadDirection } from './FishEditorDpad';
+import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
 
 interface FishEditorCanvasProps {
   background: string | null;
@@ -236,18 +236,15 @@ export default function FishEditorCanvas({
   }>>([]);
 
   const keyKeysRef = useRef<Set<string>>(new Set());
-  const dpadKeysRef = useRef<Set<string>>(new Set());
-  const tapTargetRef = useRef<{ x: number; y: number } | null>(null);
-  const touchIdRef = useRef<number | null>(null);
+  const joystickVelocityRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const joystickActiveRef = useRef<boolean>(false);
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const waterTimeRef = useRef<number>(0);
   const waterDistortionRef = useRef<HTMLCanvasElement | null>(null);
 
-  const dirToKey: Record<DpadDirection, string> = { up: 'w', down: 's', left: 'a', right: 'd' };
-  const handleDpadDirection = useCallback((dir: DpadDirection, pressed: boolean) => {
-    const k = dirToKey[dir];
-    if (pressed) dpadKeysRef.current.add(k);
-    else dpadKeysRef.current.delete(k);
+  const handleJoystickChange = useCallback((output: AnalogJoystickOutput) => {
+    joystickVelocityRef.current = output.velocity;
+    joystickActiveRef.current = output.isActive;
   }, []);
 
   useEffect(() => {
@@ -367,80 +364,12 @@ export default function FishEditorCanvas({
       keyKeysRef.current.delete(key);
     };
 
-    const hasKey = (k: string) => keyKeysRef.current.has(k) || dpadKeysRef.current.has(k);
-
-    const getCanvasCoords = (clientX: number, clientY: number) => {
-      const el = canvas;
-      const r = el.getBoundingClientRect();
-      const scaleX = el.width / r.width;
-      const scaleY = el.height / r.height;
-      return {
-        x: (clientX - r.left) * scaleX,
-        y: (clientY - r.top) * scaleY,
-      };
-    };
-
-    const setTargetFromPointer = (clientX: number, clientY: number) => {
-      const { x, y } = getCanvasCoords(clientX, clientY);
-      if (x < 240 && y < 90) return;
-      tapTargetRef.current = { x, y };
-    };
-
-    const clearTarget = () => {
-      tapTargetRef.current = null;
-    };
-
-    const handleMouseDown = (e: MouseEvent) => {
-      if (e.target !== canvas || e.button !== 0) return;
-      setTargetFromPointer(e.clientX, e.clientY);
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (e.target !== canvas || e.buttons !== 1) return;
-      setTargetFromPointer(e.clientX, e.clientY);
-    };
-
-    const handleMouseUp = (e: MouseEvent) => {
-      if (e.target !== canvas || e.button !== 0) return;
-      clearTarget();
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.target !== canvas || e.touches.length === 0) return;
-      const t = e.touches[0];
-      touchIdRef.current = t.identifier;
-      setTargetFromPointer(t.clientX, t.clientY);
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (touchIdRef.current == null) return;
-      const t = Array.from(e.touches).find((x) => x.identifier === touchIdRef.current);
-      if (!t) return;
-      e.preventDefault();
-      setTargetFromPointer(t.clientX, t.clientY);
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      const t = Array.from(e.changedTouches).find((x) => x.identifier === touchIdRef.current);
-      if (!t) return;
-      touchIdRef.current = null;
-      clearTarget();
-    };
-
-    canvas.addEventListener('mousedown', handleMouseDown);
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mouseleave', handleMouseUp);
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd, { passive: true });
-    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    const hasKey = (k: string) => keyKeysRef.current.has(k);
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
     const maxSpeed = 1.5;
-    const tapArrivalThreshold = 14;
 
     const gameLoop = () => {
       const player = playerRef.current;
@@ -448,22 +377,13 @@ export default function FishEditorCanvas({
       const acceleration = 0.15;
       const friction = 0.92;
 
-      const tap = tapTargetRef.current;
-      if (tap) {
-        const dx = tap.x - player.x;
-        const dy = tap.y - player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist <= tapArrivalThreshold) {
-          tapTargetRef.current = null;
-        } else {
-          const nx = dx / dist;
-          const ny = dy / dist;
-          player.vx = nx * maxSpeed;
-          player.vy = ny * maxSpeed;
-        }
-      }
-
-      if (!tap) {
+      // Use joystick if active, otherwise keyboard
+      if (joystickActiveRef.current) {
+        // Analog joystick control - smooth velocity
+        player.vx = joystickVelocityRef.current.x * maxSpeed;
+        player.vy = joystickVelocityRef.current.y * maxSpeed;
+      } else {
+        // Keyboard control with acceleration and friction
         if (hasKey('w') || hasKey('arrowup')) player.vy -= acceleration;
         if (hasKey('s') || hasKey('arrowdown')) player.vy += acceleration;
         if (hasKey('a') || hasKey('arrowleft')) player.vx -= acceleration;
@@ -798,7 +718,7 @@ export default function FishEditorCanvas({
         ref={canvasRef}
         className="w-full h-full block"
       />
-      <FishEditorDpad onDirection={handleDpadDirection} mobileOnly />
+      <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" />
     </div>
   );
 }

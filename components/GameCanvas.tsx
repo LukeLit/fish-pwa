@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GameEngine } from '@/lib/game/engine';
 import { getAudioManager } from '@/lib/game/audio';
-import GameControls from './GameControls';
+import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -18,7 +18,7 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   const gameEngineRef = useRef<GameEngine | null>(null);
   const [isClient, setIsClient] = useState(false);
 
-  const handleControlMove = (direction: 'up' | 'down' | 'left' | 'right' | null) => {
+  const handleJoystickChange = (output: AnalogJoystickOutput) => {
     if (!gameEngineRef.current) return;
 
     // Release all keys first
@@ -26,15 +26,23 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
       gameEngineRef.current?.handleKeyUp(key);
     });
 
-    // Press the appropriate key based on direction
-    if (direction === 'up') {
-      gameEngineRef.current.handleKeyDown('w');
-    } else if (direction === 'down') {
-      gameEngineRef.current.handleKeyDown('s');
-    } else if (direction === 'left') {
-      gameEngineRef.current.handleKeyDown('a');
-    } else if (direction === 'right') {
-      gameEngineRef.current.handleKeyDown('d');
+    if (!output.isActive) return;
+
+    // Use velocity for smooth analog control
+    const threshold = 0.3; // Dead zone threshold
+    if (Math.abs(output.velocity.x) > threshold) {
+      if (output.velocity.x > 0) {
+        gameEngineRef.current.handleKeyDown('d');
+      } else {
+        gameEngineRef.current.handleKeyDown('a');
+      }
+    }
+    if (Math.abs(output.velocity.y) > threshold) {
+      if (output.velocity.y > 0) {
+        gameEngineRef.current.handleKeyDown('s');
+      } else {
+        gameEngineRef.current.handleKeyDown('w');
+      }
     }
   };
 
@@ -60,11 +68,6 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
       // Create game engine
       const gameEngine = new GameEngine();
       gameEngineRef.current = gameEngine;
-
-      // Touch controls state
-      let touchStartX = 0;
-      let touchStartY = 0;
-      let isTouching = false;
 
       // Create p5 instance
       const sketch = (p: typeof p5.prototype) => {
@@ -97,50 +100,6 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
 
       p.keyReleased = () => {
         gameEngine.handleKeyUp(p.key);
-      };
-
-      // Touch controls
-      p.touchStarted = (e: any) => {
-        if (e.touches && e.touches.length > 0) {
-          touchStartX = e.touches[0].x;
-          touchStartY = e.touches[0].y;
-          isTouching = true;
-        }
-        return false; // Prevent default
-      };
-
-      p.touchMoved = (e: any) => {
-        if (e.touches && e.touches.length > 0 && isTouching) {
-          const dx = e.touches[0].x - touchStartX;
-          const dy = e.touches[0].y - touchStartY;
-          const threshold = 10;
-
-          // Convert touch movement to key presses
-          if (Math.abs(dx) > threshold) {
-            if (dx > 0) {
-              gameEngine.handleKeyDown('d');
-            } else {
-              gameEngine.handleKeyDown('a');
-            }
-          }
-          if (Math.abs(dy) > threshold) {
-            if (dy > 0) {
-              gameEngine.handleKeyDown('s');
-            } else {
-              gameEngine.handleKeyDown('w');
-            }
-          }
-        }
-        return false;
-      };
-
-      p.touchEnded = () => {
-        isTouching = false;
-        // Release all movement keys
-        ['w', 'a', 's', 'd'].forEach(key => {
-          gameEngine.handleKeyUp(key);
-        });
-        return false;
       };
 
       // Handle window resize
@@ -195,7 +154,7 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         style={{ touchAction: 'none' }}
       />
       {isClient && (
-        <GameControls onMove={handleControlMove} />
+        <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" />
       )}
     </div>
   );
