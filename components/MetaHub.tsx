@@ -6,27 +6,16 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { GameStorage } from '@/lib/meta/storage';
-import { EssenceManager } from '@/lib/meta/essence';
 import { hasActiveRun } from '@/lib/game/run-state';
 
 export default function MetaHub() {
-  const [essence, setEssence] = useState(0);
-  const [highScore, setHighScore] = useState(0);
   const [hasRun, setHasRun] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     // Load data asynchronously
     async function fetchData() {
-      const storage = GameStorage.getInstance();
-      const essenceManager = new EssenceManager();
-      
-      const currentEssence = await essenceManager.getAmount();
-      const currentHighScore = await storage.getHighScore();
       const runExists = hasActiveRun();
-      setEssence(currentEssence);
-      setHighScore(currentHighScore);
       setHasRun(runExists);
     }
     
@@ -68,22 +57,6 @@ export default function MetaHub() {
           </p>
         </div>
 
-        {/* Stats Display */}
-        <div className="grid grid-cols-2 gap-6 mb-8">
-          <div className="bg-black/40 backdrop-blur-sm rounded-lg p-5 border-4 border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-            <div className="text-cyan-300 text-sm mb-1 font-semibold uppercase tracking-wide">Essence</div>
-            <div className="text-4xl font-bold text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)]">
-              {essence.toLocaleString()}
-            </div>
-          </div>
-          <div className="bg-black/40 backdrop-blur-sm rounded-lg p-5 border-4 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.3)]">
-            <div className="text-purple-300 text-sm mb-1 font-semibold uppercase tracking-wide">High Score</div>
-            <div className="text-4xl font-bold text-green-400 drop-shadow-[0_0_8px_rgba(74,222,128,0.6)]">
-              {highScore.toLocaleString()}
-            </div>
-          </div>
-        </div>
-
         {/* Main Menu Buttons - Vertically Stacked */}
         <div className="flex flex-col gap-4">
           {/* Start Game Button */}
@@ -110,6 +83,15 @@ export default function MetaHub() {
               <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
             )}
           </button>
+
+          {/* Tech Tree / Upgrades Button */}
+          <Link
+            href="/tech-tree"
+            className="group relative bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-6 px-8 rounded-lg text-center text-2xl uppercase tracking-wider transition-all transform hover:scale-105 border-4 border-purple-400/50 shadow-[0_0_25px_rgba(147,51,234,0.4)] hover:shadow-[0_0_35px_rgba(147,51,234,0.6)]"
+          >
+            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Upgrades</span>
+            <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          </Link>
 
           {/* Options Button */}
           <button
