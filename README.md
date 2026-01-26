@@ -1,5 +1,25 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment Setup
+
+This project uses Vercel Blob Storage for storing game data and AI-generated assets. To run the project, you need to configure the following environment variables:
+
+1. Copy `.env.example` to `.env.local`:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Configure the following environment variables in `.env.local`:
+   - `OPENAI_API_KEY`: Your Vercel AI Gateway key (starts with `vck_`) for AI image generation
+   - `BLOB_READ_WRITE_TOKEN`: Your Vercel Blob Storage token for the "fish-art" storage
+
+### Setting up Vercel Blob Storage
+
+1. Go to your [Vercel Dashboard](https://vercel.com/dashboard)
+2. Navigate to Storage and create a new Blob store named "fish-art"
+3. Copy the `BLOB_READ_WRITE_TOKEN` from the storage settings
+4. Add it to your `.env.local` file
+
 ## Getting Started
 
 First, run the development server:
