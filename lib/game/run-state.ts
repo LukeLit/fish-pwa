@@ -1,12 +1,36 @@
 /**
  * Run State Management Utilities
  * Manages the current run's state (temporary, reset on new run)
+ * 
+ * This module provides functions for:
+ * - Creating new run states
+ * - Saving/loading run states to/from localStorage
+ * - Updating run state during gameplay
+ * - Managing run progression (levels, upgrades, essence)
+ * 
+ * @module run-state
  */
 import type { RunState } from './types';
-import { getCreature } from './data';
+import { getCreature } from './data/creatures';
 
 /**
  * Create a new run state with default values
+ * 
+ * Initializes a fresh run state based on the selected fish/creature.
+ * All stats are copied from the creature's base stats, and progression
+ * values (essence, upgrades, stats) are reset to defaults.
+ * 
+ * @param fishId - The ID of the creature to start the run with
+ * @returns New RunState object, or null if creature not found
+ * 
+ * @example
+ * ```typescript
+ * const runState = createNewRunState('goldfish_starter');
+ * if (runState) {
+ *   saveRunState(runState);
+ *   // Start game with this run state
+ * }
+ * ```
  */
 export function createNewRunState(fishId: string): RunState | null {
   const creature = getCreature(fishId);
@@ -41,6 +65,21 @@ export function createNewRunState(fishId: string): RunState | null {
 
 /**
  * Save run state to local storage
+ * 
+ * Persists the run state to localStorage so it survives page refreshes.
+ * This should be called after significant game events (level complete,
+ * upgrade selected, etc.) to ensure progress is not lost.
+ * 
+ * @param runState - The run state to save
+ * 
+ * @example
+ * ```typescript
+ * const runState = loadRunState();
+ * if (runState) {
+ *   const updated = addEssenceToRun(runState, 'shallow', 10);
+ *   saveRunState(updated);
+ * }
+ * ```
  */
 export function saveRunState(runState: RunState): void {
   try {
@@ -52,6 +91,22 @@ export function saveRunState(runState: RunState): void {
 
 /**
  * Load run state from local storage
+ * 
+ * Retrieves the saved run state from localStorage. Returns null if
+ * no run is in progress or if the saved data is invalid.
+ * 
+ * @returns The saved RunState, or null if none exists
+ * 
+ * @example
+ * ```typescript
+ * const runState = loadRunState();
+ * if (runState) {
+ *   // Continue from saved state
+ *   console.log(`Continuing run ${runState.runId} at level ${runState.currentLevel}`);
+ * } else {
+ *   // No saved run, start new game
+ * }
+ * ```
  */
 export function loadRunState(): RunState | null {
   try {
@@ -66,6 +121,20 @@ export function loadRunState(): RunState | null {
 
 /**
  * Clear run state from local storage
+ * 
+ * Removes the saved run state from localStorage. This should be called
+ * when a run ends (either by death or completion) to ensure the "Continue"
+ * button is disabled until a new game is started.
+ * 
+ * @example
+ * ```typescript
+ * // On game over
+ * const runState = loadRunState();
+ * if (runState) {
+ *   // Calculate final score, award essence, etc.
+ *   clearRunState();
+ * }
+ * ```
  */
 export function clearRunState(): void {
   try {
@@ -77,6 +146,20 @@ export function clearRunState(): void {
 
 /**
  * Check if a run is in progress
+ * 
+ * Checks localStorage for a saved run state. Used to enable/disable
+ * the "Continue" button on the main menu.
+ * 
+ * @returns true if a run state exists, false otherwise
+ * 
+ * @example
+ * ```typescript
+ * if (hasActiveRun()) {
+ *   // Enable "Continue" button
+ * } else {
+ *   // Disable "Continue" button
+ * }
+ * ```
  */
 export function hasActiveRun(): boolean {
   return loadRunState() !== null;
@@ -84,6 +167,22 @@ export function hasActiveRun(): boolean {
 
 /**
  * Update run state essence collection
+ * 
+ * Adds essence to the run's collected essence totals. This is used
+ * when the player collects essence orbs or eats fish that grant essence.
+ * 
+ * @param runState - Current run state
+ * @param essenceType - Type of essence to add (e.g., 'shallow', 'deep_sea')
+ * @param amount - Amount of essence to add
+ * @returns Updated RunState with new essence totals
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * runState = addEssenceToRun(runState, 'shallow', 10);
+ * runState = addEssenceToRun(runState, 'deep_sea', 5);
+ * saveRunState(runState);
+ * ```
  */
 export function addEssenceToRun(
   runState: RunState,
@@ -101,6 +200,23 @@ export function addEssenceToRun(
 
 /**
  * Update run state stats
+ * 
+ * Updates run statistics like fish eaten, time survived, and max size.
+ * This should be called during gameplay as these values change.
+ * 
+ * @param runState - Current run state
+ * @param updates - Partial stats object with fields to update
+ * @returns Updated RunState with new stats
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * runState = updateRunStats(runState, {
+ *   fishEaten: runState.stats.fishEaten + 1,
+ *   timeSurvived: runState.stats.timeSurvived + 1
+ * });
+ * saveRunState(runState);
+ * ```
  */
 export function updateRunStats(
   runState: RunState,
@@ -117,6 +233,24 @@ export function updateRunStats(
 
 /**
  * Update fish state
+ * 
+ * Updates the fish's current stats (size, speed, health, damage, sprite).
+ * Automatically updates maxSize if the new size is larger.
+ * 
+ * @param runState - Current run state
+ * @param updates - Partial fish state with fields to update
+ * @returns Updated RunState with new fish state
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * // Fish grows after eating
+ * runState = updateFishState(runState, {
+ *   size: runState.fishState.size + 5,
+ *   health: runState.fishState.health + 2
+ * });
+ * saveRunState(runState);
+ * ```
  */
 export function updateFishState(
   runState: RunState,
@@ -145,6 +279,20 @@ export function updateFishState(
 
 /**
  * Add upgrade to run
+ * 
+ * Adds an upgrade ID to the list of selected upgrades for this run.
+ * Upgrades persist for the entire run and reset on new run.
+ * 
+ * @param runState - Current run state
+ * @param upgradeId - ID of the upgrade to add
+ * @returns Updated RunState with new upgrade
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * runState = addUpgradeToRun(runState, 'coral_speed_1');
+ * saveRunState(runState);
+ * ```
  */
 export function addUpgradeToRun(runState: RunState, upgradeId: string): RunState {
   return {
@@ -155,6 +303,25 @@ export function addUpgradeToRun(runState: RunState, upgradeId: string): RunState
 
 /**
  * Use a reroll
+ * 
+ * Decrements the rerolls remaining counter. Returns null if no
+ * rerolls are available.
+ * 
+ * @param runState - Current run state
+ * @returns Updated RunState with decremented rerolls, or null if no rerolls left
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * const updated = useReroll(runState);
+ * if (updated) {
+ *   runState = updated;
+ *   // Show new upgrade options
+ *   saveRunState(runState);
+ * } else {
+ *   // No rerolls left
+ * }
+ * ```
  */
 export function useReroll(runState: RunState): RunState | null {
   if (runState.rerollsRemaining <= 0) {
@@ -168,6 +335,20 @@ export function useReroll(runState: RunState): RunState | null {
 
 /**
  * Increment evolution level
+ * 
+ * Increments the evolution level counter. This tracks how many times
+ * the fish has evolved during this run.
+ * 
+ * @param runState - Current run state
+ * @returns Updated RunState with incremented evolution level
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * runState = incrementEvolution(runState);
+ * // Generate new evolved sprite based on evolution level
+ * saveRunState(runState);
+ * ```
  */
 export function incrementEvolution(runState: RunState): RunState {
   return {
@@ -178,6 +359,21 @@ export function incrementEvolution(runState: RunState): RunState {
 
 /**
  * Progress to next level
+ * 
+ * Advances the run to the next level (e.g., "1-1" -> "1-2").
+ * Resets collected essence and restores hunger for the new level.
+ * 
+ * @param runState - Current run state
+ * @returns Updated RunState for next level
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * // Level complete
+ * runState = progressToNextLevel(runState);
+ * saveRunState(runState);
+ * // Start next level
+ * ```
  */
 export function progressToNextLevel(runState: RunState): RunState {
   const [biome, levelNum] = runState.currentLevel.split('-');
