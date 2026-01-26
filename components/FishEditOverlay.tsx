@@ -136,7 +136,35 @@ export default function FishEditOverlay({
     }
   };
 
-  const updateField = (field: string, value: any) => {
+  const handleUnlockForPlayer = async () => {
+    setIsSaving(true);
+    setSaveMessage('');
+    
+    try {
+      const response = await fetch('/api/player/unlock-fish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fishId: editedFish.id }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSaveMessage('✓ Fish unlocked for player!');
+      } else {
+        setSaveMessage('✗ Failed to unlock: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Unlock error:', error);
+      setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateField = (field: string, value: string | number | boolean | Array<{ type: string; baseYield: number }> | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number }) => {
     setEditedFish((prev) => {
       if (!prev) return null;
       if (field.includes('.')) {
@@ -367,6 +395,16 @@ export default function FishEditOverlay({
           >
             {isSaving ? 'Saving to Game...' : 'Save to Game (Persistent)'}
           </button>
+          
+          {editedFish.playable && (
+            <button
+              onClick={handleUnlockForPlayer}
+              disabled={isSaving}
+              className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? 'Unlocking...' : 'Unlock for Player'}
+            </button>
+          )}
           
           {saveMessage && (
             <div className={`text-sm text-center p-2 rounded ${
