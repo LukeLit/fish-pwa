@@ -96,7 +96,8 @@ export async function GET(request: NextRequest) {
     });
 
     // Get the operation status
-    // Create an operation object with the name for polling
+    // The SDK requires an operation object with at least the 'name' field for polling
+    // This is the documented pattern in the SDK examples
     const operationInput: Partial<GenerateVideosOperation> = { name: operationName };
     const operation = await ai.operations.getVideosOperation({ 
       operation: operationInput as GenerateVideosOperation
@@ -105,7 +106,8 @@ export async function GET(request: NextRequest) {
     // Check if operation is complete
     if (operation.done) {
       if (operation.response?.generatedVideos && operation.response.generatedVideos.length > 0) {
-        const video = operation.response.generatedVideos[0].video;
+        const generatedVideo = operation.response.generatedVideos[0];
+        const video = generatedVideo?.video;
         
         // The video object contains a URI that can be used to download the file
         // Return the video information to the client

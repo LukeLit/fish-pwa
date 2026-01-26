@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(fileMetadata.downloadUri);
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch file: ${response.statusText}`);
+      throw new Error(`Failed to fetch file ${fileName}: ${response.status} ${response.statusText}`);
     }
 
     const videoBuffer = await response.arrayBuffer();
