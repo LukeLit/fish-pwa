@@ -1,128 +1,66 @@
 /**
- * Game Canvas - Main game component using GameEngine
+ * Game Canvas - Uses the same rendering as Fish Editor for consistency
  */
 'use client';
 
-import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
-import type p5 from 'p5';
-import { GameEngine, type GamePhase } from '@/lib/game/engine';
+import { useEffect, useState } from 'react';
+import FishEditorCanvas from './FishEditorCanvas';
 
 interface GameCanvasProps {
-  onLevelComplete?: (score: number, level: number) => void;
-  onGameOver?: (score: number, essence: number) => void;
+  onGameEnd?: (score: number, essence: number) => void;
 }
 
-export interface GameCanvasHandle {
-  nextLevel: () => void;
-}
-
-const GameCanvas = forwardRef<GameCanvasHandle, GameCanvasProps>(({ onLevelComplete, onGameOver }, ref) => {
+export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   const [isClient, setIsClient] = useState(false);
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef<GameEngine | null>(null);
-  const p5Ref = useRef<any>(null);
-  const callbackFiredRef = useRef<{ levelComplete: boolean; gameOver: boolean }>({
-    levelComplete: false,
-    gameOver: false,
-  });
-
-  // Expose methods to parent component
-  useImperativeHandle(ref, () => ({
-    nextLevel: () => {
-      if (engineRef.current) {
-        engineRef.current.nextLevel();
-        // Reset callback flags for next level
-        callbackFiredRef.current = { levelComplete: false, gameOver: false };
-      }
-    }
-  }));
+  
+  // Game state - using simplified state for now
+  const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
+  const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
+  const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    
+    // Load random assets on mount (same as fish editor)
+    const loadRandomAssets = async () => {
+      try {
+        const bgResponse = await fetch('/api/list-assets?type=background');
+        const bgData = await bgResponse.json();
+        if (bgData.success && bgData.assets.length > 0) {
+          const randomBg = bgData.assets[Math.floor(Math.random() * bgData.assets.length)];
+          setSelectedBackground(randomBg.url);
+        }
 
-  useEffect(() => {
-    if (!isClient || !canvasRef.current) return;
+        const fishResponse = await fetch('/api/list-assets?type=fish');
+        const fishData = await fishResponse.json();
+        if (fishData.success && fishData.assets.length > 0) {
+          const assets = fishData.assets as Array<{ filename: string; url: string }>;
+          const randomFish = assets[Math.floor(Math.random() * assets.length)];
+          setPlayerFishSprite(randomFish.url);
 
-    let p5Instance: any = null;
-
-    const loadP5 = async () => {
-      const p5Module = await import('p5');
-      const P5 = p5Module.default;
-
-      const sketch = (p: p5) => {
-        let engine: GameEngine;
-
-        p.setup = () => {
-          const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
-          canvas.parent(canvasRef.current!);
-          
-          // Create and initialize game engine
-          engine = new GameEngine();
-          engineRef.current = engine;
-          engine.initialize(p);
-        };
-
-        p.draw = () => {
-          if (!engine) return;
-
-          // Update game
-          engine.update();
-          
-          // Render game
-          engine.render();
-
-          // Check for game state changes (only fire callbacks once)
-          const state = engine.getState();
-          if (state.phase === 'levelComplete' && onLevelComplete && !callbackFiredRef.current.levelComplete) {
-            callbackFiredRef.current.levelComplete = true;
-            onLevelComplete(state.score, state.level);
-          } else if (state.phase === 'gameOver' && onGameOver && !callbackFiredRef.current.gameOver) {
-            callbackFiredRef.current.gameOver = true;
-            // Call endGame to calculate rewards
-            engine.endGame().then(() => {
-              const finalState = engine.getState();
-              onGameOver(finalState.score, finalState.cachedEssence ?? 0);
-            }).catch(() => {
-              // Failed to end game properly, still call callback with current state
-              const finalState = engine.getState();
-              onGameOver(finalState.score, finalState.cachedEssence ?? 0);
+          // Spawn some prey fish
+          const preyCandidates = assets.filter((a) =>
+            a.filename.toLowerCase().includes('prey')
+          );
+          const pool = preyCandidates.length >= 6 ? preyCandidates : assets;
+          const defaults = [];
+          for (let i = 0; i < 6; i++) {
+            const pick = pool[i % pool.length];
+            defaults.push({
+              id: `prey_${Date.now()}_${i}`,
+              sprite: pick.url,
+              type: 'prey' as const,
             });
           }
-        };
-
-        p.windowResized = () => {
-          p.resizeCanvas(p.windowWidth, p.windowHeight);
-        };
-
-        p.keyPressed = () => {
-          if (engine) {
-            engine.handleKeyDown(p.key);
-          }
-        };
-
-        p.keyReleased = () => {
-          if (engine) {
-            engine.handleKeyUp(p.key);
-          }
-        };
-      };
-
-      p5Instance = new P5(sketch);
-      p5Ref.current = p5Instance;
-    };
-
-    loadP5();
-
-    return () => {
-      if (p5Instance) {
-        p5Instance.remove();
-      }
-      if (engineRef.current) {
-        engineRef.current.destroy();
+          setSpawnedFish(defaults);
+        }
+      } catch (error) {
+        console.error('Failed to load random assets:', error);
       }
     };
-  }, [isClient, onLevelComplete, onGameOver]);
+
+    loadRandomAssets();
+  }, []);
 
   if (!isClient) {
     return (
@@ -133,10 +71,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, GameCanvasProps>(({ onLevelCompl
   }
 
   return (
-    <div ref={canvasRef} className="relative w-full h-full bg-black" />
+    <div className="relative w-full h-full bg-black">
+      <FishEditorCanvas
+        background={selectedBackground}
+        playerFishSprite={playerFishSprite}
+        spawnedFish={spawnedFish}
+        chromaTolerance={50}
+        zoom={1}
+        enableWaterDistortion={false}
+        deformationIntensity={1}
+      />
+    </div>
   );
-});
-
-GameCanvas.displayName = 'GameCanvas';
-
-export default GameCanvas;
+}
