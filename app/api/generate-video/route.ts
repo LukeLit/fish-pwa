@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,8 +97,9 @@ export async function GET(request: NextRequest) {
 
     // Get the operation status
     // Create an operation object with the name for polling
+    const operationInput: Partial<GenerateVideosOperation> = { name: operationName };
     const operation = await ai.operations.getVideosOperation({ 
-      operation: { name: operationName } as any 
+      operation: operationInput as GenerateVideosOperation
     });
 
     // Check if operation is complete
