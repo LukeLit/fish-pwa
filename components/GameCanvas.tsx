@@ -39,7 +39,7 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         // No existing run, create new one with default starter fish
         currentRunState = createNewRunState(DEFAULT_STARTER_FISH_ID);
         if (!currentRunState) {
-          console.error('Failed to create new run state');
+          console.error(`Failed to create new run state with fish ID: ${DEFAULT_STARTER_FISH_ID}`);
           return null;
         }
         saveRunState(currentRunState);

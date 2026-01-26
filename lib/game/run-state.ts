@@ -40,7 +40,7 @@ export function createNewRunState(fishId: string): RunState | null {
   }
 
   return {
-    runId: `run_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    runId: `run_${Date.now()}_${crypto.randomUUID ? crypto.randomUUID().slice(0, 9) : Math.random().toString(36).substr(2, 9)}`,
     currentLevel: '1-1',
     selectedFishId: fishId,
     fishState: {
