@@ -14,12 +14,17 @@ import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
 
+export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
+
 export interface GameState {
   running: boolean;
   paused: boolean;
+  phase: GamePhase;
   score: number;
   startTime: number;
   currentTime: number;
+  levelDuration: number; // Level duration in milliseconds (default 60 seconds)
+  level: number;
   cachedEssence?: number;
 }
 
@@ -37,9 +42,12 @@ export class GameEngine {
   public state: GameState = {
     running: false,
     paused: false,
+    phase: 'playing',
     score: 0,
     startTime: 0,
     currentTime: 0,
+    levelDuration: 60000, // 60 seconds per level
+    level: 1,
   };
 
   private camera: { x: number; y: number } = { x: 0, y: 0 };
@@ -110,9 +118,12 @@ export class GameEngine {
     this.state = {
       running: true,
       paused: false,
+      phase: 'playing',
       score: 0,
       startTime: Date.now(),
       currentTime: 0,
+      levelDuration: 60000, // 60 seconds per level
+      level: 1,
       cachedEssence: currentEssence,
     };
 
@@ -130,6 +141,12 @@ export class GameEngine {
 
     const deltaTime = 16; // ~60fps
     this.state.currentTime = Date.now() - this.state.startTime;
+
+    // Check if level time is up
+    if (this.state.currentTime >= this.state.levelDuration) {
+      this.levelComplete();
+      return;
+    }
 
     // Update physics
     this.physics.update(deltaTime);
@@ -341,7 +358,7 @@ export class GameEngine {
           // Check if either lost all stamina
           if (this.player.stamina <= 0) {
             // Player loses battle
-            this.safeEndGame();
+            this.gameOver();
           }
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
@@ -367,7 +384,7 @@ export class GameEngine {
           }
         } else if (this.player.isEatenBy(entity) && isEntityFrontCollision) {
           // Player is eaten (only from front)
-          this.safeEndGame();
+          this.gameOver();
         }
       }
     });
@@ -412,17 +429,64 @@ export class GameEngine {
 
     // Die if too small (edge case)
     if (this.player.stats.size < 1) {
-      this.safeEndGame();
+      this.gameOver();
     }
+  }
+
+  /**
+   * Handle level complete (time ran out)
+   */
+  levelComplete(): void {
+    if (!this.player || !this.state.running) return;
+
+    this.state.running = false;
+    this.state.phase = 'levelComplete';
+
+    this.audio.playSound('phase_transition', 0.7);
+  }
+
+  /**
+   * Handle game over (player was eaten)
+   */
+  gameOver(): void {
+    if (!this.player || !this.state.running) return;
+
+    this.state.running = false;
+    this.state.phase = 'gameOver';
+
+    this.audio.playSound('death', 0.5);
+  }
+
+  /**
+   * Start next level after upgrade selection
+   */
+  async nextLevel(): Promise<void> {
+    if (!this.player) return;
+
+    // Increment level
+    this.state.level += 1;
+    
+    // Reset level-specific state but keep player progress
+    this.entities.forEach(e => e.destroy(this.physics));
+    this.entities = [];
+    this.particles = [];
+
+    // Reset timer
+    this.state.running = true;
+    this.state.phase = 'playing';
+    this.state.startTime = Date.now();
+    this.state.currentTime = 0;
+    this.lastSpawnTime = Date.now();
+
+    // Make enemies slightly harder each level
+    this.spawnInterval = Math.max(300, this.spawnInterval - 20);
   }
 
   /**
    * End game and calculate rewards
    */
   async endGame(): Promise<void> {
-    if (!this.player || !this.state.running) return;
-
-    this.state.running = false;
+    if (!this.player) return;
 
     const duration = this.state.currentTime;
     const essenceEarned = this.essenceManager.calculateEarned({
@@ -437,8 +501,6 @@ export class GameEngine {
     
     // Update cached essence
     this.state.cachedEssence = await this.essenceManager.getAmount();
-    
-    this.audio.playSound('death', 0.5);
 
     // Save run history
     await this.storage.addRunHistory({
@@ -459,15 +521,6 @@ export class GameEngine {
         phase: this.phases.getCurrentPhase(),
       });
     }
-  }
-  
-  /**
-   * Helper to safely end game with error handling
-   */
-  private safeEndGame(): void {
-    this.endGame().catch(err => {
-      console.error('Failed to end game:', err);
-    });
   }
 
   /**
@@ -552,22 +605,28 @@ export class GameEngine {
     p5.textAlign(p5.LEFT, p5.TOP);
     p5.text(`Score: ${this.state.score}`, 10, 10);
     p5.text(`Size: ${Math.floor(this.player.stats.size)}`, 10, 30);
-    p5.text(`Phase: ${this.phases.getCurrentConfig().name}`, 10, 50);
-    p5.text(`Essence: ${this.state.cachedEssence ?? 0}`, 10, 70);
+    p5.text(`Level: ${this.state.level}`, 10, 50);
+    
+    // Timer (countdown)
+    const timeLeft = Math.max(0, this.state.levelDuration - this.state.currentTime);
+    const seconds = Math.ceil(timeLeft / 1000);
+    p5.text(`Time: ${seconds}s`, 10, 70);
+    
+    p5.text(`Essence: ${this.state.cachedEssence ?? 0}`, 10, 90);
     
     // Stamina bar
     const staminaPercent = this.player.stamina / this.player.maxStamina;
-    p5.text(`Stamina:`, 10, 90);
+    p5.text(`Stamina:`, 10, 110);
     p5.fill(50);
-    p5.rect(80, 90, 100, 15);
+    p5.rect(80, 110, 100, 15);
     p5.fill(staminaPercent > 0.3 ? '#4ade80' : '#ef4444');
-    p5.rect(80, 90, 100 * staminaPercent, 15);
+    p5.rect(80, 110, 100 * staminaPercent, 15);
 
     // Mutations
     const activeMutations = this.mutations.getActiveMutations();
     if (activeMutations.length > 0) {
       p5.fill(255);
-      p5.text(`Mutations: ${activeMutations.map(m => m.name).join(', ')}`, 10, 110);
+      p5.text(`Mutations: ${activeMutations.map(m => m.name).join(', ')}`, 10, 130);
     }
 
     p5.pop();
@@ -596,6 +655,13 @@ export class GameEngine {
    */
   getState(): GameState {
     return { ...this.state };
+  }
+
+  /**
+   * Get game engine for external access (for nextLevel, etc.)
+   */
+  getEngine(): GameEngine {
+    return this;
   }
 
   /**
