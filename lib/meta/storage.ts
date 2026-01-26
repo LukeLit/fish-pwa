@@ -40,9 +40,17 @@ export class GameStorage {
   private static instance: GameStorage;
   private data: StorageData | null = null;
   private saveTimeout: NodeJS.Timeout | null = null;
+  private loadingPromise: Promise<void> | null = null;
 
   private constructor() {
-    this.load();
+    // Initialize with default data, actual loading happens on first use
+    this.data = {
+      essence: 0,
+      upgrades: {},
+      runHistory: [],
+      settings: DEFAULT_SETTINGS,
+      highScore: 0,
+    };
   }
 
   static getInstance(): GameStorage {
@@ -54,6 +62,24 @@ export class GameStorage {
 
   private getKey(key: string): string {
     return `${STORAGE_PREFIX}${key}`;
+  }
+
+  private async ensureLoaded(): Promise<void> {
+    if (this.loadingPromise) {
+      // Already loading, wait for it
+      await this.loadingPromise;
+      return;
+    }
+
+    if (this.data && this.data.essence !== 0) {
+      // Already loaded (non-default data exists)
+      return;
+    }
+
+    // Start loading
+    this.loadingPromise = this.load();
+    await this.loadingPromise;
+    this.loadingPromise = null;
   }
 
   async load(): Promise<void> {
@@ -113,44 +139,49 @@ export class GameStorage {
     }, 1000);
   }
 
-  getEssence(): number {
+  async getEssence(): Promise<number> {
+    await this.ensureLoaded();
     return this.data?.essence ?? 0;
   }
 
-  setEssence(amount: number): void {
-    if (!this.data) this.load();
+  async setEssence(amount: number): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.essence = Math.max(0, amount);
       this.save();
     }
   }
 
-  addEssence(amount: number): void {
-    this.setEssence(this.getEssence() + amount);
+  async addEssence(amount: number): Promise<void> {
+    const current = await this.getEssence();
+    await this.setEssence(current + amount);
   }
 
-  getUpgrades(): Record<string, number> {
+  async getUpgrades(): Promise<Record<string, number>> {
+    await this.ensureLoaded();
     return this.data?.upgrades ?? {};
   }
 
-  setUpgrade(id: string, level: number): void {
-    if (!this.data) this.load();
+  async setUpgrade(id: string, level: number): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.upgrades[id] = level;
       this.save();
     }
   }
 
-  getUpgradeLevel(id: string): number {
+  async getUpgradeLevel(id: string): Promise<number> {
+    await this.ensureLoaded();
     return this.data?.upgrades[id] ?? 0;
   }
 
-  getRunHistory(): RunHistoryEntry[] {
+  async getRunHistory(): Promise<RunHistoryEntry[]> {
+    await this.ensureLoaded();
     return this.data?.runHistory ?? [];
   }
 
-  addRunHistory(entry: RunHistoryEntry): void {
-    if (!this.data) this.load();
+  async addRunHistory(entry: RunHistoryEntry): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.runHistory.push(entry);
       // Keep only last 50 runs
@@ -161,24 +192,26 @@ export class GameStorage {
     }
   }
 
-  getSettings(): GameSettings {
+  async getSettings(): Promise<GameSettings> {
+    await this.ensureLoaded();
     return this.data?.settings ?? DEFAULT_SETTINGS;
   }
 
-  updateSettings(settings: Partial<GameSettings>): void {
-    if (!this.data) this.load();
+  async updateSettings(settings: Partial<GameSettings>): Promise<void> {
+    await this.ensureLoaded();
     if (this.data) {
       this.data.settings = { ...this.data.settings, ...settings };
       this.save();
     }
   }
 
-  getHighScore(): number {
+  async getHighScore(): Promise<number> {
+    await this.ensureLoaded();
     return this.data?.highScore ?? 0;
   }
 
-  setHighScore(score: number): void {
-    if (!this.data) this.load();
+  async setHighScore(score: number): Promise<void> {
+    await this.ensureLoaded();
     if (this.data && score > this.data.highScore) {
       this.data.highScore = score;
       this.save();

@@ -2,31 +2,36 @@
  * Audio system using Howler.js
  */
 import { Howl, Howler } from 'howler';
+import { GameStorage } from '../meta/storage';
 
 export class AudioManager {
   private sounds: Map<string, Howl> = new Map();
   private music: Howl | null = null;
   private volume: number = 0.7;
   private muted: boolean = false;
+  private initialized: boolean = false;
 
   constructor() {
-    // Initialize with default settings
-    this.loadSettings();
+    // Initialize asynchronously
+    this.initialize();
   }
 
-  private loadSettings(): void {
+  private async initialize(): Promise<void> {
+    if (this.initialized) return;
+    
     if (typeof window !== 'undefined') {
-      const settings = localStorage.getItem('fish_odyssey_settings');
-      if (settings) {
-        try {
-          const parsed = JSON.parse(settings);
-          this.volume = parsed.volume ?? 0.7;
-          this.muted = parsed.muted ?? false;
-          Howler.volume(this.muted ? 0 : this.volume);
-        } catch (e) {
-          console.error('Failed to load audio settings:', e);
-        }
-      }
+      const storage = GameStorage.getInstance();
+      const settings = await storage.getSettings();
+      this.volume = settings.volume ?? 0.7;
+      this.muted = settings.muted ?? false;
+      Howler.volume(this.muted ? 0 : this.volume);
+      this.initialized = true;
+    }
+  }
+
+  async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
     }
   }
 
