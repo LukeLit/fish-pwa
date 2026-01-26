@@ -121,6 +121,7 @@ export interface BaseFishData {
 export interface Creature extends BaseFishData {
   // Identity (inherited from BaseFishData)
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  playable?: boolean; // If true, can be selected as player fish in fish selection
   
   // Visual
   biomeId: string; // Native biome ID

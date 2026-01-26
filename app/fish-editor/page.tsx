@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import FishEditorCanvas from '@/components/FishEditorCanvas';
 import FishEditorControls from '@/components/FishEditorControls';
 import FishEditOverlay, { type FishData } from '@/components/FishEditOverlay';
+import FishLibraryPanel from '@/components/FishLibraryPanel';
 import BottomSheet from '@/components/BottomSheet';
 
 export default function FishEditorPage() {
@@ -26,6 +27,7 @@ export default function FishEditorPage() {
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'controls' | 'library'>('controls');
 
   // Load random background, player fish, and spawn default prey on mount
   useEffect(() => {
@@ -211,6 +213,19 @@ export default function FishEditorPage() {
     setSelectedFishId(null);
   };
 
+  const handleSelectFishFromLibrary = (fish: FishData) => {
+    // Add the fish to our local state if not already there
+    setFishData((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(fish.id, fish);
+      return newMap;
+    });
+    
+    // Enter edit mode for this fish
+    setSelectedFishId(fish.id);
+    setEditMode(true);
+  };
+
   const handleSaveFish = (fish: FishData) => {
     setFishData((prev) => {
       const newMap = new Map(prev);
@@ -316,26 +331,60 @@ export default function FishEditorPage() {
         />
       )}
 
-      {/* Bottom Sheet - Controls (hidden in edit mode) */}
+      {/* Bottom Sheet - Controls and Library (hidden in edit mode) */}
       {!editMode && (
         <BottomSheet defaultHeight={30} minHeight={10} maxHeight={90}>
-          <div className="px-4 pb-4">
-            <FishEditorControls
-              onBackToMenu={handleBackToMenu}
-              onSpawnFish={handleSpawnFish}
-              onClearFish={handleClearFish}
-              onSetBackground={setSelectedBackground}
-              onSetPlayerFish={setPlayerFishSprite}
-              spawnedFishCount={spawnedFish.length}
-              chromaTolerance={chromaTolerance}
-              onChromaToleranceChange={setChromaTolerance}
-              zoom={zoom}
-              onZoomChange={setZoom}
-              enableWaterDistortion={enableWaterDistortion}
-              onWaterDistortionChange={setEnableWaterDistortion}
-              deformationIntensity={deformationIntensity}
-              onDeformationChange={setDeformationIntensity}
-            />
+          <div className="h-full flex flex-col">
+            {/* Tabs */}
+            <div className="flex border-b border-gray-700 px-4">
+              <button
+                onClick={() => setActiveTab('controls')}
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
+                  activeTab === 'controls'
+                    ? 'text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Controls
+              </button>
+              <button
+                onClick={() => setActiveTab('library')}
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
+                  activeTab === 'library'
+                    ? 'text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Fish Library
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div className="flex-1 overflow-hidden">
+              {activeTab === 'controls' && (
+                <div className="px-4 pb-4 pt-2">
+                  <FishEditorControls
+                    onBackToMenu={handleBackToMenu}
+                    onSpawnFish={handleSpawnFish}
+                    onClearFish={handleClearFish}
+                    onSetBackground={setSelectedBackground}
+                    onSetPlayerFish={setPlayerFishSprite}
+                    spawnedFishCount={spawnedFish.length}
+                    chromaTolerance={chromaTolerance}
+                    onChromaToleranceChange={setChromaTolerance}
+                    zoom={zoom}
+                    onZoomChange={setZoom}
+                    enableWaterDistortion={enableWaterDistortion}
+                    onWaterDistortionChange={setEnableWaterDistortion}
+                    deformationIntensity={deformationIntensity}
+                    onDeformationChange={setDeformationIntensity}
+                  />
+                </div>
+              )}
+              {activeTab === 'library' && (
+                <FishLibraryPanel onSelectFish={handleSelectFishFromLibrary} />
+              )}
+            </div>
           </div>
         </BottomSheet>
       )}
