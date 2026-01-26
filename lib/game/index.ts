@@ -13,3 +13,6 @@ export * from './data';
 export * from './run-state';
 export * from './player-state';
 export * from './essence-manager';
+
+// Validation utilities
+export * from './validation';
