@@ -14,11 +14,11 @@ export default function MetaHub() {
   const router = useRouter();
 
   useEffect(() => {
-    // Load data asynchronously
-    async function fetchData() {
+    // Load run state
+    const fetchData = () => {
       const runExists = hasActiveRun();
       setHasRun(runExists);
-    }
+    };
     
     fetchData();
 
@@ -33,7 +33,7 @@ export default function MetaHub() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
-    // Update on focus (in case essence changed in another tab)
+    // Update on focus (in case run state changed in another tab)
     const handleFocus = () => {
       fetchData();
     };
@@ -87,6 +87,7 @@ export default function MetaHub() {
           <button
             onClick={handleContinue}
             disabled={!hasRun}
+            aria-label={hasRun ? "Continue current game" : "No active game to continue"}
             className={`group relative font-bold py-6 px-8 rounded-lg text-center text-2xl uppercase tracking-wider transition-all border-4 ${
               hasRun
                 ? 'bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-white transform hover:scale-105 border-orange-400/50 shadow-[0_0_25px_rgba(234,88,12,0.4)] hover:shadow-[0_0_35px_rgba(234,88,12,0.6)] cursor-pointer'
@@ -111,6 +112,7 @@ export default function MetaHub() {
           {/* Options Button */}
           <button
             disabled
+            aria-label="Options (coming soon)"
             className="group relative bg-gray-800/50 text-gray-600 border-gray-700/50 font-bold py-6 px-8 rounded-lg text-center text-2xl uppercase tracking-wider transition-all border-4 cursor-not-allowed"
           >
             <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Options</span>
@@ -143,7 +145,7 @@ export default function MetaHub() {
         {isMobile && (
           <div className="bg-cyan-900/20 backdrop-blur-sm rounded-lg p-6 border-4 border-cyan-400/40 shadow-[0_0_20px_rgba(6,182,212,0.3)] mt-4">
             <h3 className="text-xl font-bold text-cyan-300 mb-3 uppercase tracking-wide flex items-center gap-2">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
               Touch Controls
@@ -151,7 +153,7 @@ export default function MetaHub() {
             <div className="space-y-3 text-cyan-200">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-12 h-12 bg-cyan-600/30 rounded-full border-2 border-cyan-400/50 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
                   </svg>
                 </div>
@@ -162,7 +164,7 @@ export default function MetaHub() {
               </div>
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-12 h-12 bg-cyan-600/30 rounded-full border-2 border-cyan-400/50 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
                   </svg>
                 </div>
