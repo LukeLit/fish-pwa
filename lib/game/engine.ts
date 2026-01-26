@@ -44,7 +44,7 @@ export class GameEngine {
 
   private camera: { x: number; y: number } = { x: 0, y: 0 };
   private lastSpawnTime: number = 0;
-  private spawnInterval: number = 1000; // ms
+  private spawnInterval: number = 500; // ms - reduced for more frequent spawns
   private particles: Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string }> = [];
   private audio = getAudioManager();
   private fxhash = getFxhash();
@@ -240,17 +240,18 @@ export class GameEngine {
     if (now - this.lastSpawnTime < this.spawnInterval) return;
 
     const params = this.phases.getSpawnParams();
-    // Increase spawn rate - spawn multiple entities per tick
-    const spawnCount = Math.random() < params.rate ? Math.floor(Math.random() * 3) + 1 : 0;
+    // Always spawn 1-3 fish per interval for better gameplay
+    const spawnCount = Math.floor(Math.random() * 3) + 1;
     
     for (let i = 0; i < spawnCount; i++) {
       const phaseConfig = this.phases.getCurrentConfig();
       const worldWidth = this.worldBounds.maxX - this.worldBounds.minX;
       const worldHeight = this.worldBounds.maxY - this.worldBounds.minY;
 
-      // Spawn away from player but within world bounds
+      // Spawn away from player but within visible range
       const angle = Math.random() * Math.PI * 2;
-      const distance = Math.min(worldWidth, worldHeight) * 0.3;
+      // Spawn at a distance between 200-600 pixels from player (visible on screen)
+      const distance = 200 + Math.random() * 400;
       let x = this.player.x + Math.cos(angle) * distance;
       let y = this.player.y + Math.sin(angle) * distance;
       
