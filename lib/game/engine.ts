@@ -19,6 +19,7 @@ export interface GameState {
   score: number;
   startTime: number;
   currentTime: number;
+  cachedEssence?: number;
 }
 
 export class GameEngine {
@@ -61,13 +62,16 @@ export class GameEngine {
    */
   initialize(p5Instance: p5): void {
     this.p5Instance = p5Instance;
-    this.start();
+    // Start game asynchronously
+    this.start().catch(err => {
+      console.error('Failed to start game:', err);
+    });
   }
 
   /**
    * Start a new game
    */
-  start(): void {
+  async start(): Promise<void> {
     // Reset everything
     this.entities.forEach(e => e.destroy(this.physics));
     this.entities = [];
@@ -81,7 +85,7 @@ export class GameEngine {
     this.player = new Player(this.physics, startX, startY, 10);
 
     // Apply starting upgrades
-    const upgrades = this.storage.getUpgrades();
+    const upgrades = await this.storage.getUpgrades();
     if (upgrades.starting_size) {
       this.player.stats.size += upgrades.starting_size * 2;
       this.player.size = this.player.stats.size;
@@ -90,12 +94,16 @@ export class GameEngine {
       this.player.stats.speed += upgrades.starting_speed * 0.5;
     }
 
+    // Cache essence for display
+    const currentEssence = await this.essenceManager.getAmount();
+
     this.state = {
       running: true,
       paused: false,
       score: 0,
       startTime: Date.now(),
       currentTime: 0,
+      cachedEssence: currentEssence,
     };
 
     this.camera = { x: startX, y: startY };
@@ -252,8 +260,10 @@ export class GameEngine {
             }
           }
         } else if (this.player.isEatenBy(entity)) {
-          // Player is eaten
-          this.endGame();
+          // Player is eaten - run async endGame
+          this.endGame().catch(err => {
+            console.error('Failed to end game:', err);
+          });
         }
       }
     });
@@ -267,14 +277,16 @@ export class GameEngine {
 
     // Die if too small (edge case)
     if (this.player.stats.size < 1) {
-      this.endGame();
+      this.endGame().catch(err => {
+        console.error('Failed to end game:', err);
+      });
     }
   }
 
   /**
    * End game and calculate rewards
    */
-  endGame(): void {
+  async endGame(): Promise<void> {
     if (!this.player || !this.state.running) return;
 
     this.state.running = false;
@@ -287,12 +299,16 @@ export class GameEngine {
       duration,
     });
 
-    this.essenceManager.add(essenceEarned);
-    this.storage.setHighScore(this.state.score);
+    await this.essenceManager.add(essenceEarned);
+    await this.storage.setHighScore(this.state.score);
+    
+    // Update cached essence
+    this.state.cachedEssence = await this.essenceManager.getAmount();
+    
     this.audio.playSound('death', 0.5);
 
     // Save run history
-    this.storage.addRunHistory({
+    await this.storage.addRunHistory({
       timestamp: Date.now(),
       score: this.state.score,
       essenceEarned,
@@ -382,7 +398,7 @@ export class GameEngine {
     p5.text(`Score: ${this.state.score}`, 10, 10);
     p5.text(`Size: ${Math.floor(this.player.stats.size)}`, 10, 30);
     p5.text(`Phase: ${this.phases.getCurrentConfig().name}`, 10, 50);
-    p5.text(`Essence: ${this.essenceManager.getAmount()}`, 10, 70);
+    p5.text(`Essence: ${this.state.cachedEssence ?? 0}`, 10, 70);
 
     // Mutations
     const activeMutations = this.mutations.getActiveMutations();

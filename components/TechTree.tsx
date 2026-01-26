@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { GameStorage } from '@/lib/meta/storage';
 import { EssenceManager } from '@/lib/meta/essence';
 import { UpgradeManager, UPGRADE_DEFINITIONS } from '@/lib/meta/upgrades';
@@ -24,9 +24,16 @@ const getUpgradeEffect = (id: string): string => {
   return effects[id] || 'Upgrade effect';
 };
 
+interface UpgradeState {
+  level: number;
+  cost: number;
+  canPurchase: boolean;
+}
+
 export default function TechTree() {
   const [upgrades, setUpgrades] = useState<Record<string, number>>({});
   const [essence, setEssence] = useState(0);
+  const [upgradeStates, setUpgradeStates] = useState<Record<string, UpgradeState>>({});
   const storage = GameStorage.getInstance();
   const essenceManager = new EssenceManager();
   
@@ -34,21 +41,55 @@ export default function TechTree() {
   const upgradeManagerRef = useRef(new UpgradeManager());
   const upgradeManager = upgradeManagerRef.current;
 
+  // Load initial data
   useEffect(() => {
-    setUpgrades(storage.getUpgrades());
-    setEssence(essenceManager.getAmount());
+    const loadData = async () => {
+      const currentUpgrades = await storage.getUpgrades();
+      const currentEssence = await essenceManager.getAmount();
+      setUpgrades(currentUpgrades);
+      setEssence(currentEssence);
+      
+      // Calculate upgrade states
+      await updateUpgradeStates(currentEssence);
+    };
+    
+    loadData();
   }, []);
 
-  const canPurchase = useCallback((upgradeId: string): boolean => {
-    return upgradeManager.canPurchase(upgradeId, essence);
-  }, [essence, upgradeManager]);
+  // Update upgrade states when essence changes
+  useEffect(() => {
+    updateUpgradeStates(essence);
+  }, [essence, upgrades]);
 
-  const purchaseUpgrade = (upgradeId: string) => {
-    const cost = upgradeManager.getCost(upgradeId);
-    if (upgradeManager.purchase(upgradeId, essence)) {
-      essenceManager.spend(cost);
-      setUpgrades(storage.getUpgrades());
-      setEssence(essenceManager.getAmount());
+  const updateUpgradeStates = async (currentEssence: number) => {
+    const states: Record<string, UpgradeState> = {};
+    
+    for (const upgrade of UPGRADE_DEFINITIONS) {
+      const level = await upgradeManager.getLevel(upgrade.id);
+      const cost = await upgradeManager.getCost(upgrade.id);
+      const canPurchase = await upgradeManager.canPurchase(upgrade.id, currentEssence);
+      
+      states[upgrade.id] = {
+        level,
+        cost,
+        canPurchase,
+      };
+    }
+    
+    setUpgradeStates(states);
+  };
+
+  const purchaseUpgrade = async (upgradeId: string) => {
+    const state = upgradeStates[upgradeId];
+    if (!state || !state.canPurchase) return;
+    
+    const purchased = await upgradeManager.purchase(upgradeId, essence);
+    if (purchased) {
+      await essenceManager.spend(state.cost);
+      const currentUpgrades = await storage.getUpgrades();
+      const currentEssence = await essenceManager.getAmount();
+      setUpgrades(currentUpgrades);
+      setEssence(currentEssence);
     }
   };
 
@@ -80,9 +121,10 @@ export default function TechTree() {
                 <h2 className="text-2xl font-bold text-white mb-4">{categoryNames[category]}</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {categoryUpgrades.map(upgrade => {
-                    const level = upgradeManager.getLevel(upgrade.id);
-                    const canBuy = canPurchase(upgrade.id);
-                    const cost = upgradeManager.getCost(upgrade.id);
+                    const state = upgradeStates[upgrade.id];
+                    if (!state) return null; // Still loading
+
+                    const { level, cost, canPurchase: canBuy } = state;
 
                     return (
                       <div

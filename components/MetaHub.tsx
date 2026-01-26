@@ -15,15 +15,24 @@ export default function MetaHub() {
   const essenceManager = new EssenceManager();
 
   useEffect(() => {
-    // Load data
-    setEssence(essenceManager.getAmount());
-    setHighScore(storage.getHighScore());
+    // Load data asynchronously
+    const loadData = async () => {
+      const currentEssence = await essenceManager.getAmount();
+      const currentHighScore = await storage.getHighScore();
+      setEssence(currentEssence);
+      setHighScore(currentHighScore);
+    };
+    
+    loadData();
 
     // Update on focus (in case essence changed in another tab)
-    const handleFocus = () => {
-      setEssence(essenceManager.getAmount());
-      setHighScore(storage.getHighScore());
+    const handleFocus = async () => {
+      const currentEssence = await essenceManager.getAmount();
+      const currentHighScore = await storage.getHighScore();
+      setEssence(currentEssence);
+      setHighScore(currentHighScore);
     };
+    
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
