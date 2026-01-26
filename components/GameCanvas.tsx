@@ -1,10 +1,19 @@
 /**
  * Game Canvas - Uses the same rendering as Fish Editor for consistency
+ * Now integrated with Run State Management System
  */
 'use client';
 
 import { useEffect, useState } from 'react';
 import FishEditorCanvas from './FishEditorCanvas';
+import type { RunState } from '@/lib/game/types';
+import { 
+  loadRunState, 
+  saveRunState, 
+  createNewRunState,
+  clearRunState 
+} from '@/lib/game/run-state';
+import { getCreature } from '@/lib/game/data/creatures';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -12,6 +21,7 @@ interface GameCanvasProps {
 
 export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   const [isClient, setIsClient] = useState(false);
+  const [runState, setRunState] = useState<RunState | null>(null);
   
   // Game state - using simplified state for now
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
@@ -21,9 +31,26 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   useEffect(() => {
     setIsClient(true);
     
-    // Load random assets on mount (same as fish editor)
-    const loadRandomAssets = async () => {
+    // Initialize or load run state
+    const initializeRunState = () => {
+      let currentRunState = loadRunState();
+      
+      if (!currentRunState) {
+        // No existing run, create new one with goldfish starter
+        currentRunState = createNewRunState('goldfish_starter');
+        if (currentRunState) {
+          saveRunState(currentRunState);
+        }
+      }
+      
+      setRunState(currentRunState);
+      return currentRunState;
+    };
+    
+    // Load assets based on run state
+    const loadGameAssets = async (currentRunState: RunState) => {
       try {
+        // Load background
         const bgResponse = await fetch('/api/list-assets?type=background');
         const bgData = await bgResponse.json();
         if (bgData.success && bgData.assets.length > 0) {
@@ -31,13 +58,18 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
           setSelectedBackground(randomBg.url);
         }
 
+        // Load player fish sprite from run state
+        const playerCreature = getCreature(currentRunState.selectedFishId);
+        if (playerCreature) {
+          setPlayerFishSprite(currentRunState.fishState.sprite);
+        }
+
+        // Spawn prey fish based on current level
         const fishResponse = await fetch('/api/list-assets?type=fish');
         const fishData = await fishResponse.json();
         if (fishData.success && fishData.assets.length > 0) {
           const assets = fishData.assets as Array<{ filename: string; url: string }>;
-          const randomFish = assets[Math.floor(Math.random() * assets.length)];
-          setPlayerFishSprite(randomFish.url);
-
+          
           // Spawn some prey fish
           const preyCandidates = assets.filter((a) =>
             a.filename.toLowerCase().includes('prey')
@@ -55,11 +87,14 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
           setSpawnedFish(defaults);
         }
       } catch (error) {
-        console.error('Failed to load random assets:', error);
+        console.error('Failed to load game assets:', error);
       }
     };
 
-    loadRandomAssets();
+    const currentRunState = initializeRunState();
+    if (currentRunState) {
+      loadGameAssets(currentRunState);
+    }
   }, []);
 
   if (!isClient) {
@@ -83,13 +118,19 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         gameMode={true}
         levelDuration={60000}
         onGameOver={(score) => {
+          // Clear run state on game over
+          clearRunState();
           if (onGameEnd) {
-            onGameEnd(score, 0); // For now, no essence calculation
+            onGameEnd(score, 0);
           }
         }}
         onLevelComplete={(score) => {
+          // Save run state on level complete
+          if (runState) {
+            saveRunState(runState);
+          }
           if (onGameEnd) {
-            onGameEnd(score, score); // Simple essence = score for now
+            onGameEnd(score, score);
           }
         }}
       />
