@@ -704,6 +704,61 @@ export default function FishEditorControls({
         )}
       </div>
 
+      {/* Load Saved Fish */}
+      {savedFish.length > 0 && (
+        <div className="border-t border-gray-700 pt-4">
+          <label className="block text-sm font-bold text-white mb-2">Load Saved Fish</label>
+          <select
+            onChange={(e) => {
+              const selectedIndex = e.target.selectedIndex - 1; // -1 for the "Select..." option
+              if (selectedIndex >= 0) {
+                const fish = savedFish[selectedIndex];
+                setGeneratedFish(fish.url);
+                setLoadedFishFilename(fish.filename);
+                setStatus('✅ Loaded saved fish');
+              }
+            }}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 text-sm"
+            defaultValue=""
+          >
+            <option value="">Select a saved fish...</option>
+            {savedFish.map((fish) => (
+              <option key={fish.url} value={fish.url}>
+                {fish.filename}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Load Saved Backgrounds */}
+      {savedBackgrounds.length > 0 && (
+        <div className="border-t border-gray-700 pt-4">
+          <label className="block text-sm font-bold text-white mb-2">Load Saved Background</label>
+          <select
+            onChange={(e) => {
+              const selectedIndex = e.target.selectedIndex - 1; // -1 for the "Select..." option
+              if (selectedIndex >= 0) {
+                const bg = savedBackgrounds[selectedIndex];
+                setGeneratedBg(bg.url);
+                setLoadedBgFilename(bg.filename);
+                onSetBackground(bg.url);
+                setStatus('✅ Loaded saved background');
+              }
+            }}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 text-sm"
+            defaultValue=""
+          >
+            <option value="">Select a saved background...</option>
+            {savedBackgrounds.map((bg) => (
+              <option key={bg.url} value={bg.url}>
+                {bg.filename}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Scene Controls */}
       <div className="border-t border-gray-700 pt-4">
         <h3 className="text-sm font-bold text-white mb-2">Scene Controls</h3>

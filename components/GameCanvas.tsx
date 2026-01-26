@@ -1,144 +1,67 @@
 /**
- * React component wrapper for p5.js game canvas
+ * Game Canvas - Uses the same rendering as Fish Editor for consistency
  */
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { GameEngine } from '@/lib/game/engine';
-import { getAudioManager } from '@/lib/game/audio';
-import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
+import FishEditorCanvas from './FishEditorCanvas';
+import AnalogJoystick from './AnalogJoystick';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
 }
 
 export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const p5InstanceRef = useRef<any>(null);
-  const gameEngineRef = useRef<GameEngine | null>(null);
   const [isClient, setIsClient] = useState(false);
-
-  // Joystick threshold for converting analog input to key presses
-  const VELOCITY_THRESHOLD = 0.3;
-
-  const handleJoystickChange = (output: AnalogJoystickOutput) => {
-    if (!gameEngineRef.current) return;
-
-    // Release all keys first
-    ['w', 'a', 's', 'd'].forEach(key => {
-      gameEngineRef.current?.handleKeyUp(key);
-    });
-
-    if (!output.isActive) return;
-
-    // Use velocity for smooth analog control
-    if (Math.abs(output.velocity.x) > VELOCITY_THRESHOLD) {
-      if (output.velocity.x > 0) {
-        gameEngineRef.current.handleKeyDown('d');
-      } else {
-        gameEngineRef.current.handleKeyDown('a');
-      }
-    }
-    if (Math.abs(output.velocity.y) > VELOCITY_THRESHOLD) {
-      if (output.velocity.y > 0) {
-        gameEngineRef.current.handleKeyDown('s');
-      } else {
-        gameEngineRef.current.handleKeyDown('w');
-      }
-    }
-  };
+  
+  // Game state - using simplified state for now
+  const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
+  const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
+  const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
-
-  useEffect(() => {
-    if (!containerRef.current || !isClient) return;
-
-    // Dynamically import p5 only on client
-    import('p5').then((p5Module) => {
-      const p5 = p5Module.default;
-
-      // Initialize audio (load placeholder sounds - can be replaced with actual files)
-      const audio = getAudioManager();
-      // Note: In production, load actual sound files from public/sounds/
-      // audio.loadSound('bite', '/sounds/bite.mp3');
-      // audio.loadSound('mutation', '/sounds/mutation.mp3');
-      // audio.loadSound('phase_transition', '/sounds/phase.mp3');
-      // audio.loadSound('death', '/sounds/death.mp3');
-
-      // Create game engine
-      const gameEngine = new GameEngine();
-      gameEngineRef.current = gameEngine;
-
-      // Create p5 instance
-      const sketch = (p: typeof p5.prototype) => {
-      p.setup = () => {
-        // Responsive canvas sizing
-        const width = Math.min(800, window.innerWidth);
-        const height = Math.min(600, window.innerHeight - 100);
-        const canvas = p.createCanvas(width, height);
-        canvas.parent(containerRef.current!);
-        gameEngine.initialize(p);
-      };
-
-      p.draw = () => {
-        try {
-          gameEngine.update();
-          gameEngine.render();
-        } catch (error) {
-          console.error('Game error:', error);
-          // Show error on canvas
-          p.background(0);
-          p.fill(255, 0, 0);
-          p.textAlign(p.CENTER, p.CENTER);
-          p.text('Game Error - Please refresh', p.width / 2, p.height / 2);
-        }
-      };
-
-      p.keyPressed = () => {
-        gameEngine.handleKeyDown(p.key);
-      };
-
-      p.keyReleased = () => {
-        gameEngine.handleKeyUp(p.key);
-      };
-
-      // Handle window resize
-      p.windowResized = () => {
-        const width = Math.min(800, window.innerWidth);
-        const height = Math.min(600, window.innerHeight - 100);
-        p.resizeCanvas(width, height);
-      };
-    };
-
-      let p5Instance: typeof p5.prototype | null = null;
+    
+    // Load random assets on mount (same as fish editor)
+    const loadRandomAssets = async () => {
       try {
-        p5Instance = new p5(sketch);
-        p5InstanceRef.current = p5Instance as any;
-      } catch (error) {
-        console.error('Failed to initialize p5:', error);
-      }
-    });
+        const bgResponse = await fetch('/api/list-assets?type=background');
+        const bgData = await bgResponse.json();
+        if (bgData.success && bgData.assets.length > 0) {
+          const randomBg = bgData.assets[Math.floor(Math.random() * bgData.assets.length)];
+          setSelectedBackground(randomBg.url);
+        }
 
-    // Cleanup
-    return () => {
-      if (p5InstanceRef.current) {
-        try {
-          (p5InstanceRef.current as any).remove();
-        } catch (e) {
-          console.error('Error cleaning up p5:', e);
+        const fishResponse = await fetch('/api/list-assets?type=fish');
+        const fishData = await fishResponse.json();
+        if (fishData.success && fishData.assets.length > 0) {
+          const assets = fishData.assets as Array<{ filename: string; url: string }>;
+          const randomFish = assets[Math.floor(Math.random() * assets.length)];
+          setPlayerFishSprite(randomFish.url);
+
+          // Spawn some prey fish
+          const preyCandidates = assets.filter((a) =>
+            a.filename.toLowerCase().includes('prey')
+          );
+          const pool = preyCandidates.length >= 6 ? preyCandidates : assets;
+          const defaults = [];
+          for (let i = 0; i < 6; i++) {
+            const pick = pool[i % pool.length];
+            defaults.push({
+              id: `prey_${Date.now()}_${i}`,
+              sprite: pick.url,
+              type: 'prey' as const,
+            });
+          }
+          setSpawnedFish(defaults);
         }
-      }
-      if (gameEngineRef.current) {
-        try {
-          gameEngineRef.current.destroy();
-        } catch (e) {
-          console.error('Error destroying game engine:', e);
-        }
+      } catch (error) {
+        console.error('Failed to load random assets:', error);
       }
     };
-  }, [onGameEnd, isClient]);
+
+    loadRandomAssets();
+  }, []);
 
   if (!isClient) {
     return (
@@ -149,15 +72,16 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   }
 
   return (
-    <div className="relative w-full h-full bg-black" style={{ minHeight: '600px' }}>
-      <div
-        ref={containerRef}
-        className="w-full h-full flex items-center justify-center"
-        style={{ touchAction: 'none' }}
+    <div className="relative w-full h-full bg-black">
+      <FishEditorCanvas
+        background={selectedBackground}
+        playerFishSprite={playerFishSprite}
+        spawnedFish={spawnedFish}
+        chromaTolerance={50}
+        zoom={1}
+        enableWaterDistortion={false}
+        deformationIntensity={1}
       />
-      {isClient && (
-        <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" />
-      )}
     </div>
   );
 }
