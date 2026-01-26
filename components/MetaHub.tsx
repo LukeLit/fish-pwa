@@ -17,11 +17,11 @@ export default function MetaHub() {
   const router = useRouter();
 
   useEffect(() => {
-    const storage = GameStorage.getInstance();
-    const essenceManager = new EssenceManager();
-    
     // Load data asynchronously
     const loadData = async () => {
+      const storage = GameStorage.getInstance();
+      const essenceManager = new EssenceManager();
+      
       const currentEssence = await essenceManager.getAmount();
       const currentHighScore = await storage.getHighScore();
       const runExists = hasActiveRun();
@@ -33,13 +33,8 @@ export default function MetaHub() {
     loadData();
 
     // Update on focus (in case essence changed in another tab)
-    const handleFocus = async () => {
-      const currentEssence = await essenceManager.getAmount();
-      const currentHighScore = await storage.getHighScore();
-      const runExists = hasActiveRun();
-      setEssence(currentEssence);
-      setHighScore(currentHighScore);
-      setHasRun(runExists);
+    const handleFocus = () => {
+      loadData();
     };
     
     window.addEventListener('focus', handleFocus);
@@ -117,18 +112,16 @@ export default function MetaHub() {
           </button>
 
           {/* Options Button */}
-          <Link
-            href="#"
+          <button
             onClick={(e) => {
               e.preventDefault();
               // TODO: Navigate to Options screen when implemented
-              alert('Options screen coming soon!');
             }}
-            className="group relative bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-6 px-8 rounded-lg text-center text-2xl uppercase tracking-wider transition-all transform hover:scale-105 border-4 border-purple-400/50 shadow-[0_0_25px_rgba(147,51,234,0.4)] hover:shadow-[0_0_35px_rgba(147,51,234,0.6)]"
+            disabled
+            className="group relative bg-gray-800/50 text-gray-600 border-gray-700/50 font-bold py-6 px-8 rounded-lg text-center text-2xl uppercase tracking-wider transition-all border-4 cursor-not-allowed"
           >
             <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Options</span>
-            <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          </Link>
+          </button>
 
           {/* Fish Editor Button */}
           <Link
