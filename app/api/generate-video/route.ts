@@ -96,24 +96,25 @@ export async function GET(request: NextRequest) {
     });
 
     // Get the operation status
-    const operation = await ai.operations.getVideosOperation({ operation: operationName });
+    // Create an operation object with the name for polling
+    const operation = await ai.operations.getVideosOperation({ 
+      operation: { name: operationName } as any 
+    });
 
     // Check if operation is complete
     if (operation.done) {
       if (operation.response?.generatedVideos && operation.response.generatedVideos.length > 0) {
         const video = operation.response.generatedVideos[0].video;
         
-        // The video object contains a file reference that needs to be downloaded
-        // For now, return the file reference - the client can download it
+        // The video object contains a URI that can be used to download the file
+        // Return the video information to the client
         return NextResponse.json({
           success: true,
           status: 'completed',
-          video: {
-            name: video.name,
+          video: video ? {
             uri: video.uri,
-          },
-          // Note: The actual video file needs to be downloaded using ai.files.download()
-          // This is typically done on the client side or in a separate download endpoint
+            mimeType: video.mimeType,
+          } : undefined,
         });
       }
 

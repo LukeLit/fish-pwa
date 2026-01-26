@@ -31,24 +31,30 @@ export async function GET(request: NextRequest) {
       apiKey: apiKey,
     });
 
-    // Download the video file
-    // The file object from the operation response should be passed
-    // For now, we'll construct it from the file name
-    // Note: The actual file object structure may need adjustment based on SDK behavior
-    const videoBuffer = await ai.files.download({
-      file: { name: fileName } as any,
-    });
+    // Get the file metadata to retrieve the download URI
+    // The fileName should be in the format "files/xyz123"
+    const fileMetadata = await ai.files.get({ name: fileName });
 
-    // The SDK download method may return a Buffer or Uint8Array
-    // Convert to a proper response
-    const buffer = videoBuffer instanceof Uint8Array 
-      ? Buffer.from(videoBuffer) 
-      : videoBuffer;
+    if (!fileMetadata.downloadUri) {
+      return NextResponse.json(
+        { error: 'File is not downloadable or not ready yet' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch the video file from the download URI
+    const response = await fetch(fileMetadata.downloadUri);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file: ${response.statusText}`);
+    }
+
+    const videoBuffer = await response.arrayBuffer();
 
     // Return the video as a blob
-    return new NextResponse(buffer, {
+    return new NextResponse(videoBuffer, {
       headers: {
-        'Content-Type': 'video/mp4',
+        'Content-Type': fileMetadata.mimeType || 'video/mp4',
         'Content-Disposition': `attachment; filename="video-${Date.now()}.mp4"`,
       },
     });
