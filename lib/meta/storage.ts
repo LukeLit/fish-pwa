@@ -41,6 +41,7 @@ export class GameStorage {
   private data: StorageData | null = null;
   private saveTimeout: NodeJS.Timeout | null = null;
   private loadingPromise: Promise<void> | null = null;
+  private loaded: boolean = false;
 
   private constructor() {
     // Initialize with default data, actual loading happens on first use
@@ -65,14 +66,14 @@ export class GameStorage {
   }
 
   private async ensureLoaded(): Promise<void> {
-    if (this.loadingPromise) {
-      // Already loading, wait for it
-      await this.loadingPromise;
+    if (this.loaded) {
+      // Already loaded
       return;
     }
 
-    if (this.data && this.data.essence !== 0) {
-      // Already loaded (non-default data exists)
+    if (this.loadingPromise) {
+      // Already loading, wait for it
+      await this.loadingPromise;
       return;
     }
 
@@ -100,6 +101,7 @@ export class GameStorage {
         settings,
         highScore,
       };
+      this.loaded = true;
     } catch (error) {
       console.error('Failed to load game data:', error);
       this.data = {
@@ -109,6 +111,7 @@ export class GameStorage {
         settings: DEFAULT_SETTINGS,
         highScore: 0,
       };
+      this.loaded = true; // Mark as loaded even on error to avoid infinite retries
     }
   }
 

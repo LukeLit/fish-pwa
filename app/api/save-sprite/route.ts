@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadAsset, listAssets } from '@/lib/storage/blob-storage';
+import { uploadAsset, listAssets, assetExists } from '@/lib/storage/blob-storage';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,14 +22,18 @@ export async function POST(request: NextRequest) {
       : `fish/${filename}`;
 
     // Check if file already exists in blob storage
-    const existingAssets = await listAssets(blobPath);
-    if (existingAssets.length > 0) {
-      console.log('[SaveSprite] Asset already exists:', existingAssets[0].url);
-      return NextResponse.json({
-        success: true,
-        localPath: existingAssets[0].url,
-        cached: true,
-      });
+    const exists = await assetExists(blobPath);
+    if (exists) {
+      // Need to get the full URL - list with specific prefix
+      const assets = await listAssets(blobPath);
+      if (assets.length > 0) {
+        console.log('[SaveSprite] Asset already exists:', assets[0].url);
+        return NextResponse.json({
+          success: true,
+          localPath: assets[0].url,
+          cached: true,
+        });
+      }
     }
 
     let buffer: Buffer;
