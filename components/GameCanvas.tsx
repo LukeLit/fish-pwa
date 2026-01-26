@@ -83,8 +83,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, GameCanvasProps>(({ onLevelCompl
             engine.endGame().then(() => {
               const finalState = engine.getState();
               onGameOver(finalState.score, finalState.cachedEssence ?? 0);
-            }).catch(err => {
-              console.error('Failed to end game:', err);
+            }).catch(() => {
+              // Failed to end game properly, still call callback with current state
+              const finalState = engine.getState();
+              onGameOver(finalState.score, finalState.cachedEssence ?? 0);
             });
           }
         };

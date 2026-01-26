@@ -104,14 +104,13 @@ export class GameEngine {
           const randomBg = data.assets[Math.floor(Math.random() * data.assets.length)];
           this.p5Instance.loadImage(randomBg.url, (img: p5.Image) => {
             this.backgroundImage = img;
-            console.log('Background loaded:', randomBg.url);
           }, () => {
-            console.warn('Failed to load background image');
+            // Failed to load background, will use solid color fallback
           });
         }
       })
       .catch(err => {
-        console.error('Failed to fetch background assets:', err);
+        // Failed to fetch background assets, will use solid color fallback
       })
       .finally(() => {
         this.isLoadingBackground = false;
@@ -716,13 +715,6 @@ export class GameEngine {
    */
   getState(): GameState {
     return { ...this.state };
-  }
-
-  /**
-   * Get game engine for external access (for nextLevel, etc.)
-   */
-  getEngine(): GameEngine {
-    return this;
   }
 
   /**
