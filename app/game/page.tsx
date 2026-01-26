@@ -10,25 +10,21 @@ import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import GameCanvas, { type GameCanvasHandle } from '@/components/GameCanvas';
 import { EssenceManager } from '@/lib/meta/essence';
-import { UpgradeManager, UPGRADE_DEFINITIONS } from '@/lib/meta/upgrades';
 
 export default function GamePage() {
   const router = useRouter();
   const gameCanvasRef = useRef<GameCanvasHandle>(null);
   const [showLevelComplete, setShowLevelComplete] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
-  const [showUpgradeMenu, setShowUpgradeMenu] = useState(false);
   const [endScore, setEndScore] = useState(0);
   const [endEssence, setEndEssence] = useState(0);
   const [currentLevel, setCurrentLevel] = useState(1);
   const essenceManager = new EssenceManager();
-  const upgradeManager = new UpgradeManager();
 
   const handleLevelComplete = (score: number, level: number) => {
     setEndScore(score);
     setCurrentLevel(level);
     setShowLevelComplete(true);
-    setShowUpgradeMenu(true);
   };
 
   const handleGameOver = async (score: number, essence: number) => {
@@ -43,21 +39,9 @@ export default function GamePage() {
 
   const handleNextLevel = () => {
     setShowLevelComplete(false);
-    setShowUpgradeMenu(false);
     // Call nextLevel on the game canvas
     if (gameCanvasRef.current) {
       gameCanvasRef.current.nextLevel();
-    }
-  };
-
-  const handlePurchaseUpgrade = async (upgradeId: string) => {
-    const currentEssence = await essenceManager.getAmount();
-    const cost = await upgradeManager.getCost(upgradeId);
-    const purchased = await upgradeManager.purchase(upgradeId, currentEssence);
-    if (purchased) {
-      await essenceManager.spend(cost);
-      // Refresh the page to show updated upgrades
-      window.location.reload();
     }
   };
 

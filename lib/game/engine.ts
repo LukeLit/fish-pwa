@@ -57,6 +57,8 @@ export class GameEngine {
   private particles: Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string }> = [];
   private audio = getAudioManager();
   private fxhash = getFxhash();
+  private backgroundImage: p5.Image | null = null;
+  private isLoadingBackground: boolean = false;
   
   // World bounds (larger world for better gameplay)
   private worldBounds = {
@@ -80,10 +82,40 @@ export class GameEngine {
    */
   initialize(p5Instance: p5): void {
     this.p5Instance = p5Instance;
+    // Load background image
+    this.loadBackgroundImage();
     // Start game asynchronously
     this.start().catch(err => {
       console.error('Failed to start game:', err);
     });
+  }
+
+  /**
+   * Load random background image
+   */
+  private loadBackgroundImage(): void {
+    if (this.isLoadingBackground || !this.p5Instance) return;
+    this.isLoadingBackground = true;
+
+    fetch('/api/list-assets?type=background')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.assets.length > 0 && this.p5Instance) {
+          const randomBg = data.assets[Math.floor(Math.random() * data.assets.length)];
+          this.p5Instance.loadImage(randomBg.url, (img: p5.Image) => {
+            this.backgroundImage = img;
+            console.log('Background loaded:', randomBg.url);
+          }, () => {
+            console.warn('Failed to load background image');
+          });
+        }
+      })
+      .catch(err => {
+        console.error('Failed to fetch background assets:', err);
+      })
+      .finally(() => {
+        this.isLoadingBackground = false;
+      });
   }
 
   /**
@@ -548,8 +580,37 @@ export class GameEngine {
     const p5 = this.p5Instance;
     const phaseConfig = this.phases.getCurrentConfig();
 
-    // Background
-    p5.background(phaseConfig.backgroundColor);
+    // Background with parallax
+    if (this.backgroundImage) {
+      // Calculate parallax offset (background moves slower than camera)
+      const parallaxFactor = 0.3; // Background moves at 30% of camera speed
+      const bgOffsetX = this.camera.x * parallaxFactor;
+      const bgOffsetY = this.camera.y * parallaxFactor;
+
+      // Calculate scaling to maintain aspect ratio and cover screen
+      const imgAspect = this.backgroundImage.width / this.backgroundImage.height;
+      const screenAspect = p5.width / p5.height;
+      
+      let drawWidth, drawHeight;
+      if (imgAspect > screenAspect) {
+        // Image is wider than screen
+        drawHeight = p5.height * 1.5; // Make it bigger to allow parallax
+        drawWidth = drawHeight * imgAspect;
+      } else {
+        // Image is taller than screen
+        drawWidth = p5.width * 1.5; // Make it bigger to allow parallax
+        drawHeight = drawWidth / imgAspect;
+      }
+
+      // Center background with parallax offset
+      const bgX = (p5.width - drawWidth) / 2 - bgOffsetX;
+      const bgY = (p5.height - drawHeight) / 2 - bgOffsetY;
+
+      p5.image(this.backgroundImage, bgX, bgY, drawWidth, drawHeight);
+    } else {
+      // Fallback to solid color
+      p5.background(phaseConfig.backgroundColor);
+    }
 
     // Translate to camera
     p5.push();
