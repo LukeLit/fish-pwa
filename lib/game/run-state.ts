@@ -11,7 +11,7 @@
  * @module run-state
  */
 import type { RunState } from './types';
-import { getCreature } from './data/creatures';
+import { getCreature } from './data';
 
 /**
  * Create a new run state with default values

@@ -13,7 +13,7 @@ import {
   createNewRunState,
   clearRunState 
 } from '@/lib/game/run-state';
-import { getCreature } from '@/lib/game/data/creatures';
+import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -36,8 +36,8 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
       let currentRunState = loadRunState();
       
       if (!currentRunState) {
-        // No existing run, create new one with goldfish starter
-        currentRunState = createNewRunState('goldfish_starter');
+        // No existing run, create new one with default starter fish
+        currentRunState = createNewRunState(DEFAULT_STARTER_FISH_ID);
         if (currentRunState) {
           saveRunState(currentRunState);
         }
