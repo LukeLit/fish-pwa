@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
 
 export async function POST(request: NextRequest) {
   try {
@@ -96,24 +96,28 @@ export async function GET(request: NextRequest) {
     });
 
     // Get the operation status
-    const operation = await ai.operations.getVideosOperation({ operation: operationName });
+    // The SDK requires an operation object with at least the 'name' field for polling
+    // This is the documented pattern in the SDK examples
+    const operationInput: Partial<GenerateVideosOperation> = { name: operationName };
+    const operation = await ai.operations.getVideosOperation({ 
+      operation: operationInput as GenerateVideosOperation
+    });
 
     // Check if operation is complete
     if (operation.done) {
       if (operation.response?.generatedVideos && operation.response.generatedVideos.length > 0) {
-        const video = operation.response.generatedVideos[0].video;
+        const generatedVideo = operation.response.generatedVideos[0];
+        const video = generatedVideo?.video;
         
-        // The video object contains a file reference that needs to be downloaded
-        // For now, return the file reference - the client can download it
+        // The video object contains a URI that can be used to download the file
+        // Return the video information to the client
         return NextResponse.json({
           success: true,
           status: 'completed',
-          video: {
-            name: video.name,
+          video: video ? {
             uri: video.uri,
-          },
-          // Note: The actual video file needs to be downloaded using ai.files.download()
-          // This is typically done on the client side or in a separate download endpoint
+            mimeType: video.mimeType,
+          } : undefined,
         });
       }
 

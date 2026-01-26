@@ -57,10 +57,13 @@ export default function FishEditOverlay({
       if (!prev) return null;
       if (field.includes('.')) {
         const [parent, child] = field.split('.');
+        const parentValue = prev[parent as keyof FishData];
+        // Ensure parentValue is an object before spreading
+        const parentObj = typeof parentValue === 'object' && parentValue !== null ? parentValue : {};
         return {
           ...prev,
           [parent]: {
-            ...prev[parent as keyof FishData],
+            ...parentObj,
             [child]: value,
           },
         };
