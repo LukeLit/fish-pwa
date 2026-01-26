@@ -3,9 +3,8 @@
  */
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import FishEditorCanvas from './FishEditorCanvas';
-import AnalogJoystick from './AnalogJoystick';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
