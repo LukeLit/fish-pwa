@@ -131,8 +131,8 @@ export default function AnalogJoystick({
 
   // Touch handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
     if (touchIdRef.current === null && e.touches.length > 0) {
+      e.preventDefault(); // Only prevent when handling the joystick
       const touch = e.touches[0];
       handleStart(touch.clientX, touch.clientY, touch.identifier);
     }
@@ -149,8 +149,8 @@ export default function AnalogJoystick({
   }, [handleMove]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
     if (touchIdRef.current !== null) {
+      e.preventDefault(); // Only prevent when handling the joystick
       const touch = Array.from(e.changedTouches).find(t => t.identifier === touchIdRef.current);
       if (touch) {
         handleEnd();
@@ -160,7 +160,7 @@ export default function AnalogJoystick({
 
   // Mouse handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // Only prevent when handling the joystick
     handleStart(e.clientX, e.clientY);
   }, [handleStart]);
 

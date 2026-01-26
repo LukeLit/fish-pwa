@@ -4,7 +4,7 @@
  */
 'use client';
 
-import { useRef, useState, useEffect, ReactNode } from 'react';
+import { useRef, useState, useEffect, useCallback, ReactNode } from 'react';
 
 interface BottomSheetProps {
   children: ReactNode;
@@ -41,15 +41,16 @@ export default function BottomSheet({
     }
   };
 
+  const calculateNewHeight = useCallback((clientY: number): number => {
+    const containerHeight = window.innerHeight;
+    const deltaY = startYRef.current - clientY;
+    const deltaPercent = (deltaY / containerHeight) * 100;
+    return Math.min(maxHeight, Math.max(minHeight, startHeightRef.current + deltaPercent));
+  }, [maxHeight, minHeight]);
+
   const handleDragMove = (clientY: number) => {
     if (!isDragging || !containerRef.current) return;
-
-    const containerHeight = window.innerHeight;
-    const deltaY = startYRef.current - clientY; // Inverted: dragging up increases height
-    const deltaPercent = (deltaY / containerHeight) * 100;
-    const newHeight = Math.min(maxHeight, Math.max(minHeight, startHeightRef.current + deltaPercent));
-    
-    setHeight(newHeight);
+    setHeight(calculateNewHeight(clientY));
   };
 
   const handleDragEnd = () => {
@@ -94,11 +95,7 @@ export default function BottomSheet({
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
-      const containerHeight = window.innerHeight;
-      const deltaY = startYRef.current - e.clientY;
-      const deltaPercent = (deltaY / containerHeight) * 100;
-      const newHeight = Math.min(maxHeight, Math.max(minHeight, startHeightRef.current + deltaPercent));
-      setHeight(newHeight);
+      setHeight(calculateNewHeight(e.clientY));
     };
 
     const handleMouseUp = () => {
@@ -113,7 +110,7 @@ export default function BottomSheet({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, maxHeight, minHeight]);
+  }, [isDragging, maxHeight, minHeight, calculateNewHeight]);
 
   return (
     <div
