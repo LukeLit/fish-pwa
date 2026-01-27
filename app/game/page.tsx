@@ -8,12 +8,13 @@
 export const dynamic = 'force-dynamic';
 export const ssr = false;
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import GameCanvas from '@/components/GameCanvas';
 import DeathScreen, { type DeathStats } from '@/components/DeathScreen';
 import DigestionScreen from '@/components/DigestionScreen';
 import UpgradeSelectionScreen from '@/components/UpgradeSelectionScreen';
+import EvolutionScreen from '@/components/EvolutionScreen';
 import { EssenceManager } from '@/lib/meta/essence';
 import { 
   clearRunState, 
@@ -31,6 +32,7 @@ export default function GamePage() {
   const [showDeathScreen, setShowDeathScreen] = useState(false);
   const [showDigestionScreen, setShowDigestionScreen] = useState(false);
   const [showUpgradeScreen, setShowUpgradeScreen] = useState(false);
+  const [showEvolutionScreen, setShowEvolutionScreen] = useState(false);
   const [deathStats, setDeathStats] = useState<DeathStats | null>(null);
   const [endScore, setEndScore] = useState(0);
   const [endEssence, setEndEssence] = useState(0);
@@ -86,21 +88,33 @@ export default function GamePage() {
       setCurrentUpgradeType(remainingLevelUps[0]);
       // Screen stays open, new upgrades will be generated
     } else {
-      // All upgrades selected, proceed to next level
+      // All upgrades selected, show evolution screen
       setShowUpgradeScreen(false);
-      proceedToNextLevel();
+      
+      // Increment evolution level before showing evolution screen
+      runState.evolutionLevel += 1;
+      saveRunState(runState);
+      setCurrentRunState(runState);
+      
+      setShowEvolutionScreen(true);
     }
   };
 
   const handleReroll = () => {
-    let runState = loadRunState();
+    const runState = loadRunState();
     if (!runState) return;
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const updated = useReroll(runState);
     if (updated) {
       saveRunState(updated);
       setCurrentRunState(updated);
     }
+  };
+
+  const handleEvolutionComplete = () => {
+    setShowEvolutionScreen(false);
+    proceedToNextLevel();
   };
 
   const proceedToNextLevel = () => {
@@ -113,6 +127,7 @@ export default function GamePage() {
     // Reset screens and reload game
     setShowDigestionScreen(false);
     setShowUpgradeScreen(false);
+    setShowEvolutionScreen(false);
     setPendingLevelUps([]);
     window.location.reload();
   };
@@ -155,7 +170,7 @@ export default function GamePage() {
       />
       
       {/* Fish Editor Menu Button (top right) */}
-      {!showDeathScreen && !showEndScreen && !showDigestionScreen && !showUpgradeScreen && (
+      {!showDeathScreen && !showEndScreen && !showDigestionScreen && !showUpgradeScreen && !showEvolutionScreen && (
         <button
           onClick={() => router.push('/fish-editor')}
           className="fixed top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-40 border border-gray-600"
@@ -185,6 +200,15 @@ export default function GamePage() {
           rerollsRemaining={currentRunState.rerollsRemaining}
           onUpgradeSelected={handleUpgradeSelected}
           onReroll={handleReroll}
+        />
+      )}
+
+      {/* Evolution Screen */}
+      {showEvolutionScreen && currentRunState && (
+        <EvolutionScreen
+          runState={currentRunState}
+          selectedUpgrades={currentRunState.selectedUpgrades}
+          onContinue={handleEvolutionComplete}
         />
       )}
       
