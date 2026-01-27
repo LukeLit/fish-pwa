@@ -1,11 +1,12 @@
 /**
  * Game Canvas - Uses the same rendering as Fish Editor for consistency
- * Now integrated with Run State Management System
+ * Now integrated with Run State Management System and GameHUD
  */
 'use client';
 
 import { useEffect, useState } from 'react';
 import FishEditorCanvas from './FishEditorCanvas';
+import GameHUD from './GameHUD';
 import type { RunState } from '@/lib/game/types';
 import { 
   loadRunState, 
@@ -27,6 +28,12 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
   const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
+  
+  // HUD state
+  const [score, setScore] = useState(0);
+  const [playerSize, setPlayerSize] = useState(20); // Start small for Level 1-1
+  const [startTime, setStartTime] = useState(Date.now());
+  const [hunger, setHunger] = useState(100);
 
   useEffect(() => {
     setIsClient(true);
@@ -36,16 +43,20 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
       let currentRunState = loadRunState();
       
       if (!currentRunState) {
-        // No existing run, create new one with default starter fish
+        // No existing run, create new one with default starter fish (Goldfish, size 20)
         currentRunState = createNewRunState(DEFAULT_STARTER_FISH_ID);
         if (!currentRunState) {
           console.error(`Failed to create new run state with fish ID: ${DEFAULT_STARTER_FISH_ID}`);
           return null;
         }
+        // Override size to 20 for Level 1-1 (small Goldfish)
+        currentRunState.fishState.size = 20;
         saveRunState(currentRunState);
       }
       
       setRunState(currentRunState);
+      setPlayerSize(currentRunState.fishState.size);
+      setStartTime(Date.now());
       return currentRunState;
     };
     
@@ -102,6 +113,17 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
     if (currentRunState) {
       loadGameAssets(currentRunState);
     }
+    
+    // Poll for game state updates
+    const interval = setInterval(() => {
+      const state = loadRunState();
+      if (state) {
+        setPlayerSize(state.fishState.size);
+        setHunger(state.hunger);
+      }
+    }, 100);
+    
+    return () => clearInterval(interval);
   }, []);
 
   if (!isClient) {
@@ -123,23 +145,34 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         enableWaterDistortion={false}
         deformationIntensity={1}
         gameMode={true}
-        levelDuration={60000}
-        onGameOver={(score) => {
+        levelDuration={60000} // 60 seconds for Level 1-1
+        onGameOver={(finalScore) => {
           // Clear run state on game over
           clearRunState();
           if (onGameEnd) {
-            onGameEnd(score, 0);
+            onGameEnd(finalScore, 0);
           }
         }}
-        onLevelComplete={(score) => {
+        onLevelComplete={(finalScore) => {
           // Save run state on level complete
           if (runState) {
             saveRunState(runState);
           }
+          setScore(finalScore);
           if (onGameEnd) {
-            onGameEnd(score, score);
+            onGameEnd(finalScore, finalScore);
           }
         }}
+      />
+      
+      {/* Game HUD Overlay */}
+      <GameHUD
+        score={score}
+        playerSize={playerSize}
+        levelDuration={60000}
+        startTime={startTime}
+        hunger={hunger}
+        showTimer={true}
       />
     </div>
   );

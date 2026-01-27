@@ -628,6 +628,17 @@ export class GameEngine {
   }
 
   /**
+   * Get player stats for HUD
+   */
+  getPlayerStats(): { size: number; hunger: number } | null {
+    if (!this.player) return null;
+    return {
+      size: this.player.stats.size,
+      hunger: this.player.stamina, // Using stamina as hunger for now
+    };
+  }
+
+  /**
    * Render game
    */
   render(): void {
