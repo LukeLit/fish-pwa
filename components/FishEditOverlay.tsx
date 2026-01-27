@@ -4,6 +4,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { saveCreatureToLocal } from '@/lib/storage/local-fish-storage';
 
 export interface FishData {
   id: string;
@@ -136,14 +137,49 @@ export default function FishEditOverlay({
           setEditedFish(prev => prev ? { ...prev, sprite: result.spriteUrl } : null);
         }
       } else {
-        const errorMsg = result.requiresToken 
-          ? 'Configuration required: Set BLOB_READ_WRITE_TOKEN in .env.local. See .env.example for details.'
-          : (result.message || result.error || 'Unknown error');
-        setSaveMessage('✗ Failed to save: ' + errorMsg);
+        // If blob storage fails, save to localStorage as fallback
+        if (result.requiresToken) {
+          console.log('[FishEditor] Blob storage not available, using localStorage fallback');
+          const creatureData = {
+            ...editedFish,
+            rarity: editedFish.rarity || 'common',
+            playable: editedFish.playable ?? false,
+            biomeId: editedFish.biomeId || 'shallow',
+            essenceTypes: editedFish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
+            grantedAbilities: [],
+            spawnRules: editedFish.spawnRules || {
+              canAppearIn: [editedFish.biomeId || 'shallow'],
+              spawnWeight: 10,
+            },
+          };
+          saveCreatureToLocal(creatureData);
+          setSaveMessage('✓ Saved to local storage (blob storage not configured). Fish will be available in fish selection.');
+        } else {
+          const errorMsg = result.message || result.error || 'Unknown error';
+          setSaveMessage('✗ Failed to save: ' + errorMsg);
+        }
       }
     } catch (error) {
       console.error('Save error:', error);
-      setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      // On any error, try localStorage fallback
+      try {
+        const creatureData = {
+          ...editedFish,
+          rarity: editedFish.rarity || 'common',
+          playable: editedFish.playable ?? false,
+          biomeId: editedFish.biomeId || 'shallow',
+          essenceTypes: editedFish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
+          grantedAbilities: [],
+          spawnRules: editedFish.spawnRules || {
+            canAppearIn: [editedFish.biomeId || 'shallow'],
+            spawnWeight: 10,
+          },
+        };
+        saveCreatureToLocal(creatureData);
+        setSaveMessage('✓ Saved to local storage. Fish will be available in fish selection.');
+      } catch (localError) {
+        setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
     } finally {
       setIsSaving(false);
     }

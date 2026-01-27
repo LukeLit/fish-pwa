@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { loadPlayerState } from '@/lib/game/player-state';
+import { getPlayableCreaturesFromLocal } from '@/lib/storage/local-fish-storage';
 import type { PlayerState, Creature } from '@/lib/game/types';
 
 export default function FishSelectionScreen() {
@@ -24,21 +25,43 @@ export default function FishSelectionScreen() {
       const state = loadPlayerState();
       setPlayerState(state);
       
+      // First, try to load from localStorage
+      const localFish = getPlayableCreaturesFromLocal();
+      console.log('[FishSelection] Loaded from localStorage:', localFish.length, 'playable fish');
+      
       try {
         // Fetch playable fish from the API
         const response = await fetch('/api/list-creatures?playable=true');
         const data = await response.json();
         
         if (data.success && data.creatures && data.creatures.length > 0) {
-          setPlayableFish(data.creatures);
+          // Combine API fish with local fish (API fish take precedence)
+          const apiFish = data.creatures;
+          const combinedFish = [...apiFish];
+          
+          // Add local fish that aren't already in API results
+          localFish.forEach(localCreature => {
+            if (!apiFish.find((f: Creature) => f.id === localCreature.id)) {
+              combinedFish.push(localCreature);
+            }
+          });
+          
+          console.log('[FishSelection] Combined fish count:', combinedFish.length);
+          setPlayableFish(combinedFish);
           
           // Set initial selected fish to first playable fish
-          const firstFish = data.creatures[0];
+          const firstFish = combinedFish[0];
           setSelectedFishId(firstFish.id);
           setSelectedFish(firstFish);
+        } else if (localFish.length > 0) {
+          // Use localStorage fish if API returns no results
+          console.log('[FishSelection] Using localStorage fish only');
+          setPlayableFish(localFish);
+          setSelectedFishId(localFish[0].id);
+          setSelectedFish(localFish[0]);
         } else {
-          // Fallback: Use hardcoded goldfish if API returns no playable fish
-          console.warn('No playable fish from API, using fallback goldfish');
+          // Fallback: Use hardcoded goldfish if no fish available
+          console.warn('No playable fish from API or localStorage, using fallback goldfish');
           const fallbackFish: Creature = {
             id: 'goldfish_starter',
             name: 'Goldfish',
@@ -73,40 +96,48 @@ export default function FishSelectionScreen() {
           setSelectedFish(fallbackFish);
         }
       } catch (error) {
-        console.error('Failed to load playable fish:', error);
-        // Fallback: Use hardcoded goldfish on error
-        const fallbackFish: Creature = {
-          id: 'goldfish_starter',
-          name: 'Goldfish',
-          description: 'A small, hardy fish perfect for beginners. Fast and agile.',
-          type: 'prey',
-          rarity: 'common',
-          sprite: '/sprites/fish/goldfish.svg',
-          biomeId: 'shallow',
-          playable: true,
-          stats: {
-            size: 20,
-            speed: 7,
-            health: 15,
-            damage: 3,
-          },
-          essenceTypes: [
-            {
-              type: 'shallow',
-              baseYield: 3,
+        console.error('Failed to load playable fish from API:', error);
+        // On error, use localStorage fish or fallback
+        if (localFish.length > 0) {
+          console.log('[FishSelection] API failed, using localStorage fish');
+          setPlayableFish(localFish);
+          setSelectedFishId(localFish[0].id);
+          setSelectedFish(localFish[0]);
+        } else {
+          // Fallback: Use hardcoded goldfish on error
+          const fallbackFish: Creature = {
+            id: 'goldfish_starter',
+            name: 'Goldfish',
+            description: 'A small, hardy fish perfect for beginners. Fast and agile.',
+            type: 'prey',
+            rarity: 'common',
+            sprite: '/sprites/fish/goldfish.svg',
+            biomeId: 'shallow',
+            playable: true,
+            stats: {
+              size: 20,
+              speed: 7,
+              health: 15,
+              damage: 3,
             },
-          ],
-          grantedAbilities: [],
-          spawnRules: {
-            canAppearIn: ['shallow'],
-            spawnWeight: 10,
-            minDepth: 0,
-            maxDepth: 50,
-          },
-        };
-        setPlayableFish([fallbackFish]);
-        setSelectedFishId(fallbackFish.id);
-        setSelectedFish(fallbackFish);
+            essenceTypes: [
+              {
+                type: 'shallow',
+                baseYield: 3,
+              },
+            ],
+            grantedAbilities: [],
+            spawnRules: {
+              canAppearIn: ['shallow'],
+              spawnWeight: 10,
+              minDepth: 0,
+              maxDepth: 50,
+            },
+          };
+          setPlayableFish([fallbackFish]);
+          setSelectedFishId(fallbackFish.id);
+          setSelectedFish(fallbackFish);
+        }
       } finally {
         setLoading(false);
       }
