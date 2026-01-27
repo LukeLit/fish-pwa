@@ -5,7 +5,7 @@ import p5 from 'p5';
 import Matter from 'matter-js';
 import { PhysicsEngine } from './physics';
 import { Player } from './player';
-import { Entity, Fish, Food, EssenceOrb } from './entities';
+import { Entity, Fish, EssenceOrb } from './entities';
 import { MutationSystem } from './mutations';
 import { PhaseManager } from './phases';
 import { SeededRNG, generateSeed } from './procgen';
@@ -162,14 +162,33 @@ export class GameEngine {
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
     this.player = new Player(this.physics, startX, startY, 10);
 
-    // Apply starting upgrades
-    const upgrades = await this.storage.getUpgrades();
-    if (upgrades.starting_size) {
-      this.player.stats.size += upgrades.starting_size * 2;
+    // Apply meta upgrades from player state (purchased with Evo Points)
+    const { loadPlayerState } = await import('./player-state');
+    const playerState = loadPlayerState();
+    const metaUpgrades = playerState.metaUpgrades;
+    
+    // Apply starting size upgrade
+    if (metaUpgrades.meta_starting_size) {
+      const sizeBonus = metaUpgrades.meta_starting_size * 5;
+      this.player.stats.size += sizeBonus;
       this.player.size = this.player.stats.size;
     }
-    if (upgrades.starting_speed) {
-      this.player.stats.speed += upgrades.starting_speed * 0.5;
+    
+    // Apply starting speed upgrade
+    if (metaUpgrades.meta_starting_speed) {
+      const speedBonus = metaUpgrades.meta_starting_speed * 1;
+      this.player.stats.speed += speedBonus;
+    }
+    
+    // Apply essence multiplier (stored for later use when collecting essence)
+    // Note: This is applied in dropEssenceFromFish and collectEssenceOrb methods
+    
+    // Apply hunger reduction
+    if (metaUpgrades.meta_hunger_reduction) {
+      // Hunger drain modifier is applied in Player.update()
+      // Store it in player for reference
+      const hungerDrainModifier = 1 - (metaUpgrades.meta_hunger_reduction * 0.1);
+      Object.assign(this.player, { hungerDrainModifier });
     }
 
     // Cache essence for display
@@ -190,6 +209,9 @@ export class GameEngine {
     this.camera = { x: startX, y: startY };
     this.lastSpawnTime = Date.now();
     this.lastEssenceOrbSpawn = Date.now();
+    
+    // Apply initial difficulty scaling for level 1
+    this.applyLevelDifficultyScaling(1);
   }
 
   /**
@@ -294,30 +316,25 @@ export class GameEngine {
    * Constrain entity to world bounds
    */
   private constrainToBounds(entity: Entity): void {
-    let constrained = false;
     if (entity.x < this.worldBounds.minX) {
       entity.x = this.worldBounds.minX;
       Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
       Matter.Body.setVelocity(entity.body, { x: 0, y: entity.body.velocity.y });
-      constrained = true;
     }
     if (entity.x > this.worldBounds.maxX) {
       entity.x = this.worldBounds.maxX;
       Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
       Matter.Body.setVelocity(entity.body, { x: 0, y: entity.body.velocity.y });
-      constrained = true;
     }
     if (entity.y < this.worldBounds.minY) {
       entity.y = this.worldBounds.minY;
       Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
       Matter.Body.setVelocity(entity.body, { x: entity.body.velocity.x, y: 0 });
-      constrained = true;
     }
     if (entity.y > this.worldBounds.maxY) {
       entity.y = this.worldBounds.maxY;
       Matter.Body.setPosition(entity.body, { x: entity.x, y: entity.y });
       Matter.Body.setVelocity(entity.body, { x: entity.body.velocity.x, y: 0 });
-      constrained = true;
     }
   }
 
@@ -395,6 +412,12 @@ export class GameEngine {
         size,
         type: selectedCreature.type === 'mutant' ? 'predator' : selectedCreature.type,
         speed: selectedCreature.stats.speed * (0.9 + Math.random() * 0.2), // Add slight speed variance
+      });
+      
+      // Store creature ID for essence drops and other references
+      Object.assign(fish, {
+        creatureId: selectedCreature.id,
+        rarity: selectedCreature.rarity,
       });
       
       this.entities.push(fish);
@@ -597,27 +620,79 @@ export class GameEngine {
 
   /**
    * Drop essence when fish is eaten
+   * Uses full formula from ROGUELITE_DESIGN.md:
+   * Base Yield = Creature Size × Biome Multiplier
+   * Quality Multiplier: Standard (1.0x), Perfect (1.5x), Combo (2.0x)
+   * Rarity Multiplier: Common (1.0x), Rare (1.5x), Epic (2.0x), Legendary (3.0x)
    */
   private dropEssenceFromFish(fish: Fish): void {
     if (!this.player) return;
 
-    // For vertical slice, use simplified formula: yield = size * 0.1
-    const essenceYield = Math.max(1, Math.floor(fish.size * 0.1));
-    
-    // Add essence to run state
-    let runState = loadRunState();
-    if (runState) {
-      runState = addEssenceToRun(runState, 'shallow', essenceYield);
-      saveRunState(runState);
-      
-      // Create visual feedback
-      this.createFloatingText(
-        fish.x,
-        fish.y,
-        `+${essenceYield} Shallow`,
-        ESSENCE_TYPES['shallow']?.color || DEFAULT_ESSENCE_COLOR
-      );
-    }
+    // Get creature data to access essence types
+    const creatureId = (fish as unknown as Record<string, unknown>).creatureId as string || 'unknown';
+    const creature = (async () => {
+      const { getCreature } = await import('./data/creatures');
+      return getCreature(creatureId);
+    })();
+
+    void creature.then(creatureData => {
+      if (!creatureData) {
+        console.warn(`Creature ${creatureId} not found for essence drop`);
+        return;
+      }
+
+      // Get biome multiplier (default 1.0 for now)
+      // const biomeMultiplier = 1.0;
+
+      // Calculate base yield - unused for now but kept for future enhancement
+      // const baseYield = fish.size * biomeMultiplier;
+
+      // Quality multiplier (for now, always standard; can be enhanced with combo detection)
+      const qualityMultiplier = 1.0; // Standard kill
+
+      // Rarity multiplier
+      const rarityMultipliers: Record<string, number> = {
+        common: 1.0,
+        uncommon: 1.5,
+        rare: 1.5,
+        epic: 2.0,
+        legendary: 3.0,
+      };
+      const rarityMultiplier = rarityMultipliers[creatureData.rarity] || 1.0;
+
+      // Apply meta upgrade essence multiplier
+      const { loadPlayerState } = require('./player-state') as { loadPlayerState: () => { metaUpgrades: Record<string, number> } };
+      const playerState = loadPlayerState();
+      const essenceMultiplierLevel = playerState.metaUpgrades.meta_essence_multiplier || 0;
+      const metaMultiplier = 1 + (essenceMultiplierLevel * 0.1); // +10% per level
+
+      // Grant all essence types from creature
+      let runState = loadRunState();
+      if (runState) {
+        creatureData.essenceTypes.forEach(essenceConfig => {
+          // Calculate final yield for this essence type
+          const essenceYield = Math.max(
+            1,
+            Math.floor(essenceConfig.baseYield * qualityMultiplier * rarityMultiplier * metaMultiplier)
+          );
+
+          // Add essence to run state
+          runState = addEssenceToRun(runState!, essenceConfig.type, essenceYield);
+
+          // Create visual feedback
+          this.createFloatingText(
+            fish.x,
+            fish.y - 20 * creatureData.essenceTypes.indexOf(essenceConfig), // Offset for multiple types
+            `+${essenceYield} ${ESSENCE_TYPES[essenceConfig.type]?.name || essenceConfig.type}`,
+            ESSENCE_TYPES[essenceConfig.type]?.color || DEFAULT_ESSENCE_COLOR
+          );
+        });
+
+        saveRunState(runState);
+      }
+    }).catch((err: Error) => {
+      console.error('Error processing essence drop:', err);
+    });
   }
 
   /**
@@ -663,12 +738,16 @@ export class GameEngine {
 
   /**
    * Start next level after upgrade selection
+   * Implements difficulty scaling per ROGUELITE_DESIGN.md
    */
   async nextLevel(): Promise<void> {
     if (!this.player) return;
 
     // Increment level
     this.state.level += 1;
+    
+    // Apply difficulty scaling based on level
+    this.applyLevelDifficultyScaling(this.state.level);
     
     // Reset level-specific state but keep player progress
     this.entities.forEach(e => e.destroy(this.physics));
@@ -683,9 +762,46 @@ export class GameEngine {
     this.state.currentTime = 0;
     this.lastSpawnTime = Date.now();
     this.lastEssenceOrbSpawn = Date.now();
+  }
 
-    // Make enemies slightly harder each level
-    this.spawnInterval = Math.max(300, this.spawnInterval - 20);
+  /**
+   * Apply difficulty scaling based on level
+   * Following ROGUELITE_DESIGN.md progression table
+   */
+  private applyLevelDifficultyScaling(level: number): void {
+    // Difficulty scaling configuration
+    const difficultyConfig: Record<number, {
+      spawnInterval: number;
+      maxEntities: number;
+      levelDuration: number;
+    }> = {
+      1: { // Level 1-1
+        spawnInterval: 600,
+        maxEntities: 40,
+        levelDuration: 60000, // 60 seconds
+      },
+      2: { // Level 1-2
+        spawnInterval: 500,
+        maxEntities: 50,
+        levelDuration: 75000, // 75 seconds
+      },
+      3: { // Level 1-3
+        spawnInterval: 400,
+        maxEntities: 60,
+        levelDuration: 90000, // 90 seconds
+      },
+      // Future levels can scale further
+    };
+
+    const config = difficultyConfig[level] || {
+      spawnInterval: Math.max(300, 600 - (level * 50)),
+      maxEntities: Math.min(80, 40 + (level * 10)),
+      levelDuration: 60000 + (level * 15000),
+    };
+
+    this.spawnInterval = config.spawnInterval;
+    this.maxEntities = config.maxEntities;
+    this.state.levelDuration = config.levelDuration;
   }
 
   /**
