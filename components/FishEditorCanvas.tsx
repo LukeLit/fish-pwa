@@ -28,7 +28,7 @@ interface FishEditorCanvasProps {
   // Game mode features
   gameMode?: boolean;
   levelDuration?: number; // in milliseconds
-  onGameOver?: (score: number) => void;
+  onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
   onLevelComplete?: (score: number) => void;
   // Edit mode features
   editMode?: boolean;
@@ -255,6 +255,8 @@ export default function FishEditorCanvas({
   const gameOverFiredRef = useRef<boolean>(false);
   const levelCompleteFiredRef = useRef<boolean>(false);
   const scoreRef = useRef<number>(0);
+  const fishEatenRef = useRef<number>(0);
+  const essenceCollectedRef = useRef<number>(0);
   const cameraRef = useRef({ x: 0, y: 0 });
   const worldBoundsRef = useRef({
     minX: -2000,
@@ -525,6 +527,9 @@ export default function FishEditorCanvas({
       // Initialize game start time in game mode
       if (gameMode && gameStartTimeRef.current === 0) {
         gameStartTimeRef.current = Date.now();
+        fishEatenRef.current = 0;
+        essenceCollectedRef.current = 0;
+        scoreRef.current = 0;
       }
       
       // Check game timer in game mode
@@ -602,7 +607,15 @@ export default function FishEditorCanvas({
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
           gameOverFiredRef.current = true;
           if (onGameOver) {
-            onGameOver(scoreRef.current);
+            const timeSurvived = Math.floor((now - gameStartTimeRef.current) / 1000);
+            onGameOver({
+              score: scoreRef.current,
+              cause: 'starved',
+              size: player.size,
+              fishEaten: fishEatenRef.current,
+              essenceCollected: essenceCollectedRef.current,
+              timeSurvived,
+            });
           }
           return;
         }
@@ -625,12 +638,21 @@ export default function FishEditorCanvas({
               if (!gameOverFiredRef.current) {
                 gameOverFiredRef.current = true;
                 if (onGameOver) {
-                  onGameOver(scoreRef.current);
+                  const timeSurvived = Math.floor((now - gameStartTimeRef.current) / 1000);
+                  onGameOver({
+                    score: scoreRef.current,
+                    cause: 'eaten',
+                    size: player.size,
+                    fishEaten: fishEatenRef.current,
+                    essenceCollected: essenceCollectedRef.current,
+                    timeSurvived,
+                  });
                 }
               }
               return; // Stop game loop
             } else if (player.size > fish.size * 1.2) {
               // Player eats fish
+              fishEatenRef.current += 1;
               eatenIdsRef.current.add(fish.id);
               fishListRef.current.splice(idx, 1);
               player.size = Math.min(150, player.size + fish.size * 0.1);

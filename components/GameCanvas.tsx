@@ -17,9 +17,10 @@ import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
+  onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
 }
 
-export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
+export default function GameCanvas({ onGameEnd, onGameOver }: GameCanvasProps) {
   const [isClient, setIsClient] = useState(false);
   const [runState, setRunState] = useState<RunState | null>(null);
   
@@ -124,11 +125,10 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         deformationIntensity={1}
         gameMode={true}
         levelDuration={60000}
-        onGameOver={(score) => {
-          // Clear run state on game over
+        onGameOver={(stats) => {
           clearRunState();
-          if (onGameEnd) {
-            onGameEnd(score, 0);
+          if (onGameOver) {
+            onGameOver(stats);
           }
         }}
         onLevelComplete={(score) => {
@@ -137,7 +137,7 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
             saveRunState(runState);
           }
           if (onGameEnd) {
-            onGameEnd(score, score);
+            onGameEnd(score, 0);
           }
         }}
       />

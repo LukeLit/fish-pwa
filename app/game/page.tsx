@@ -10,12 +10,15 @@ export const ssr = false;
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import GameCanvas from '@/components/GameCanvas';
+import DeathScreen, { type DeathStats } from '@/components/DeathScreen';
 import { EssenceManager } from '@/lib/meta/essence';
 import { clearRunState } from '@/lib/game/run-state';
 
 export default function GamePage() {
   const router = useRouter();
   const [showEndScreen, setShowEndScreen] = useState(false);
+  const [showDeathScreen, setShowDeathScreen] = useState(false);
+  const [deathStats, setDeathStats] = useState<DeathStats | null>(null);
   const [endScore, setEndScore] = useState(0);
   const [endEssence, setEndEssence] = useState(0);
   const essenceManager = new EssenceManager();
@@ -27,6 +30,11 @@ export default function GamePage() {
     // Run state is already cleared by GameCanvas on game over
   };
 
+  const handleReturnToMenu = () => {
+    clearRunState();
+    router.push('/');
+  };
+
   const handleContinue = () => {
     router.push('/');
   };
@@ -35,22 +43,39 @@ export default function GamePage() {
     // Clear run state to start fresh
     clearRunState();
     setShowEndScreen(false);
+    setShowDeathScreen(false);
+    setDeathStats(null);
     window.location.reload();
   };
 
   return (
     <div className="relative w-full h-screen bg-black">
-      <GameCanvas onGameEnd={handleGameEnd} />
+      <GameCanvas 
+        onGameEnd={handleGameEnd}
+        onGameOver={(stats) => {
+          setDeathStats(stats);
+          setShowDeathScreen(true);
+          clearRunState();
+        }}
+      />
       
       {/* Fish Editor Menu Button (top right) */}
-      <button
-        onClick={() => router.push('/fish-editor')}
-        className="fixed top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-40 border border-gray-600"
-      >
-        Fish Editor
-      </button>
+      {!showDeathScreen && !showEndScreen && (
+        <button
+          onClick={() => router.push('/fish-editor')}
+          className="fixed top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-40 border border-gray-600"
+        >
+          Fish Editor
+        </button>
+      )}
       
-      {showEndScreen && (
+      {/* Death Screen */}
+      {showDeathScreen && deathStats && (
+        <DeathScreen stats={deathStats} onReturnToMenu={handleReturnToMenu} />
+      )}
+      
+      {/* Level Complete Screen */}
+      {showEndScreen && !showDeathScreen && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-gradient-to-br from-blue-900 to-indigo-900 rounded-lg p-8 max-w-md w-full mx-4 border-2 border-blue-600">
             <h2 className="text-3xl font-bold text-white mb-4 text-center">Run Complete!</h2>
