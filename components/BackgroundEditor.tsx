@@ -4,6 +4,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import ArtSelectorPanel from './ArtSelectorPanel';
 
 interface BackgroundEditorProps {
   currentBackground: string | null;
@@ -25,6 +26,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
   const [operationName, setOperationName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const [showArtSelector, setShowArtSelector] = useState(false);
 
   const biomes = [
     { id: 'shallow', name: 'Shallow' },
@@ -304,6 +306,15 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
             </button>
           </div>
           
+          <div>
+            <button
+              onClick={() => setShowArtSelector(true)}
+              className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded text-sm font-medium transition-colors"
+            >
+              Select Existing Background
+            </button>
+          </div>
+          
           <div className="text-xs text-gray-400 text-center">or use AI generation in the main controls</div>
         </div>
       )}
@@ -390,6 +401,20 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
         }`}>
           {message}
         </div>
+      )}
+
+      {/* Art Selector Modal */}
+      {showArtSelector && (
+        <ArtSelectorPanel
+          type="background"
+          onSelect={(url, filename) => {
+            onBackgroundChange(url, 'image');
+            setBackgroundType('image');
+            setShowArtSelector(false);
+            setMessage('✅ Background selected. Click "Save to Biome" to associate with a biome.');
+          }}
+          onCancel={() => setShowArtSelector(false)}
+        />
       )}
     </div>
   );

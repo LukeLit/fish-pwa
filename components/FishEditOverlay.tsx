@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { saveCreatureToLocal } from '@/lib/storage/local-fish-storage';
+import ArtSelectorPanel from './ArtSelectorPanel';
 
 export interface FishData {
   id: string;
@@ -71,6 +72,7 @@ export default function FishEditOverlay({
   const [editedFish, setEditedFish] = useState<FishData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string>('');
+  const [showArtSelector, setShowArtSelector] = useState(false);
 
   useEffect(() => {
     if (fish) {
@@ -274,6 +276,33 @@ export default function FishEditOverlay({
             rows={4}
             placeholder="Enter fish description"
           />
+        </div>
+
+        {/* Sprite Selection */}
+        <div>
+          <label className="block text-sm font-bold text-white mb-2">Sprite</label>
+          <div className="flex gap-2">
+            {editedFish.sprite && (
+              <div className="w-20 h-20 bg-gray-800 rounded border border-gray-600 flex items-center justify-center overflow-hidden">
+                <img 
+                  src={editedFish.sprite} 
+                  alt="Current sprite"
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            )}
+            <div className="flex-1 flex flex-col gap-2">
+              <button
+                onClick={() => setShowArtSelector(true)}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {editedFish.sprite ? 'Change Art' : 'Select Existing Art'}
+              </button>
+              <p className="text-xs text-gray-400">
+                {editedFish.sprite ? 'Art selected' : 'No art selected - choose existing or generate new'}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Type */}
@@ -655,6 +684,19 @@ export default function FishEditOverlay({
           Next →
         </button>
       </div>
+
+      {/* Art Selector Modal */}
+      {showArtSelector && (
+        <ArtSelectorPanel
+          type="fish"
+          onSelect={(url, filename) => {
+            updateField('sprite', url);
+            setShowArtSelector(false);
+            setSaveMessage('✓ Art selected. Remember to save changes.');
+          }}
+          onCancel={() => setShowArtSelector(false)}
+        />
+      )}
     </div>
   );
 }
