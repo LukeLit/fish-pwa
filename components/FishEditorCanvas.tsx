@@ -258,6 +258,12 @@ export default function FishEditorCanvas({
   const scoreRef = useRef<number>(0);
   const fishEatenRef = useRef<number>(0);
   const essenceCollectedRef = useRef<number>(0);
+  
+  // FPS tracking
+  const fpsRef = useRef<number>(60);
+  const lastFrameTimeRef = useRef<number>(0);
+  const frameTimesRef = useRef<number[]>([]);
+  const [showFPS, setShowFPS] = useState<boolean>(false);
   const cameraRef = useRef({ x: 0, y: 0 });
   const worldBoundsRef = useRef({
     minX: -2000,
@@ -502,6 +508,11 @@ export default function FishEditorCanvas({
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       keyKeysRef.current.add(key);
+      
+      // Toggle FPS with F key
+      if (key === 'f') {
+        setShowFPS(prev => !prev);
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -522,6 +533,17 @@ export default function FishEditorCanvas({
     const gameLoop = () => {
       const player = playerRef.current;
       const isPaused = pausedRef.current;
+      
+      // Calculate FPS
+      const currentTime = performance.now();
+      if (lastFrameTimeRef.current > 0) {
+        const frameDelta = currentTime - lastFrameTimeRef.current;
+        frameTimesRef.current.push(frameDelta);
+        if (frameTimesRef.current.length > 60) frameTimesRef.current.shift();
+        const avgFrameTime = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
+        fpsRef.current = Math.round(1000 / avgFrameTime);
+      }
+      lastFrameTimeRef.current = currentTime;
       
       // Skip game state updates if paused, but continue to render
       
@@ -1258,6 +1280,20 @@ export default function FishEditorCanvas({
       <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
         <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
       </div>
+      {/* FPS Counter */}
+      {showFPS && (
+        <div className="absolute top-2 right-2 bg-black/70 px-3 py-1 rounded border border-cyan-400 text-cyan-300 text-sm font-mono z-30">
+          {fpsRef.current} FPS
+        </div>
+      )}
+      {/* FPS Toggle Button (small, bottom-right) */}
+      <button
+        onClick={() => setShowFPS(!showFPS)}
+        className="absolute bottom-2 right-2 bg-black/70 px-2 py-1 rounded border border-gray-600 text-gray-400 text-xs font-mono z-30 hover:border-cyan-400 hover:text-cyan-300 transition-colors"
+        title="Toggle FPS counter (or press F)"
+      >
+        FPS
+      </button>
     </div>
   );
 }
