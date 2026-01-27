@@ -137,6 +137,19 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
               <span className="text-yellow-200 uppercase tracking-wide">Total Evo Points:</span>
               <span className="text-yellow-400 text-2xl font-bold">{totalEvoPoints.toLocaleString()}</span>
             </div>
+            
+            {/* CTA to spend Evo Points */}
+            <div className="mt-4 pt-4 border-t border-yellow-400/30">
+              <a
+                href="/tech-tree"
+                className="block text-center bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 px-6 rounded-lg uppercase tracking-wide transition-colors shadow-lg"
+              >
+                🔧 Spend Evo Points
+              </a>
+              <p className="text-yellow-200 text-xs text-center mt-2">
+                Purchase permanent upgrades for future runs
+              </p>
+            </div>
           </div>
         </div>
 
