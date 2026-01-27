@@ -7,7 +7,7 @@ import { PhysicsEngine } from './physics';
 import { Entity } from './entities';
 import { FishGenerator, FishShape } from '../assets/fish-generator';
 import { getAssetManager } from '../ai/asset-manager';
-import { HUNGER_RESTORE_MULTIPLIER } from './hunger-constants';
+import { HUNGER_RESTORE_MULTIPLIER, HUNGER_DRAIN_RATE } from './hunger-constants';
 
 export interface PlayerStats {
   size: number;
@@ -47,7 +47,7 @@ export class Player extends Entity {
       speed: 3,
       growthMultiplier: 1,
       hunger: 100,
-      hungerDrainRate: 1.5,
+      hungerDrainRate: HUNGER_DRAIN_RATE,
     };
 
     // Initialize fish generator with a seed based on player ID

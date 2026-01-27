@@ -13,6 +13,7 @@ import {
   HUNGER_WARNING_PULSE_FREQUENCY,
   HUNGER_WARNING_PULSE_BASE,
   HUNGER_WARNING_INTENSITY,
+  HUNGER_FRAME_RATE,
 } from '@/lib/game/hunger-constants';
 
 interface FishEditorCanvasProps {
@@ -594,8 +595,7 @@ export default function FishEditorCanvas({
 
       // Update hunger in game mode
       if (gameMode && !isPaused) {
-        const FRAME_RATE = 60; // Expected frame rate
-        player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / FRAME_RATE));
+        player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / HUNGER_FRAME_RATE));
         
         // Check starvation death
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
