@@ -542,7 +542,7 @@ export default function FishEditorCanvas({
         if (frameTimesRef.current.length > 60) frameTimesRef.current.shift();
         if (frameTimesRef.current.length > 0) {
           const avgFrameTime = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
-          fpsRef.current = avgFrameTime > 0 ? Math.round(1000 / avgFrameTime) : 60;
+          fpsRef.current = Math.round(1000 / avgFrameTime);
         }
       }
       lastFrameTimeRef.current = currentTime;

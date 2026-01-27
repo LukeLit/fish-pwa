@@ -351,7 +351,7 @@ export class GameEngine {
       // Select creature based on spawn weights
       const totalWeight = availableCreatures.reduce((sum, c) => sum + c.spawnRules.spawnWeight, 0);
       let randomWeight = Math.random() * totalWeight;
-      let selectedCreature = availableCreatures[0];
+      let selectedCreature = availableCreatures[0]; // Default to first creature
       
       for (const creature of availableCreatures) {
         randomWeight -= creature.spawnRules.spawnWeight;
@@ -359,11 +359,6 @@ export class GameEngine {
           selectedCreature = creature;
           break;
         }
-      }
-      
-      // Fallback to last creature if loop didn't select one
-      if (!selectedCreature && availableCreatures.length > 0) {
-        selectedCreature = availableCreatures[availableCreatures.length - 1];
       }
 
       // Spawn away from player but within visible range
