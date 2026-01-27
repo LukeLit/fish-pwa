@@ -14,8 +14,9 @@ export const CREATURE_GOLDFISH: Creature = {
   description: 'A small, hardy fish perfect for beginners. Fast and agile.',
   type: 'prey',
   rarity: 'common',
-  sprite: '/sprites/fish/goldfish.png',
+  sprite: '/sprites/fish/goldfish.svg',
   biomeId: 'shallow',
+  playable: true, // Can be selected as player fish
   stats: {
     size: 20, // Very small - smaller than most fish
     speed: 7, // Fast for survival
@@ -46,7 +47,7 @@ export const CREATURE_SMALL_PREY: Creature = {
   description: 'A tiny fish, easy prey for larger fish.',
   type: 'prey',
   rarity: 'common',
-  sprite: '/sprites/fish/minnow.png',
+  sprite: '/sprites/fish/minnow.svg',
   biomeId: 'shallow',
   stats: {
     size: 10, // Very small
@@ -77,7 +78,7 @@ export const CREATURE_MEDIUM_PREDATOR: Creature = {
   description: 'A medium-sized predator, dangerous to small fish.',
   type: 'predator',
   rarity: 'common',
-  sprite: '/sprites/fish/bass.png',
+  sprite: '/sprites/fish/bass.svg',
   biomeId: 'shallow',
   stats: {
     size: 40, // Larger than starter
