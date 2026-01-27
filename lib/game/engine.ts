@@ -22,6 +22,7 @@ import {
   HUNGER_WARNING_INTENSITY,
 } from './hunger-constants';
 import { getBiome } from './data/biomes';
+import { getCreaturesByBiome } from './data/creatures';
 
 export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
 
@@ -319,7 +320,7 @@ export class GameEngine {
   }
 
   /**
-   * Spawn entities based on phase
+   * Spawn entities based on biome creature rules
    */
   private spawnEntities(): void {
     if (!this.p5Instance || !this.player) return;
@@ -333,19 +334,33 @@ export class GameEngine {
       return;
     }
 
-    const params = this.phases.getSpawnParams();
+    const biome = getBiome(this.currentBiomeId);
+    if (!biome) return;
+
+    // Get creatures available in this biome
+    const availableCreatures = getCreaturesByBiome(this.currentBiomeId);
+    if (availableCreatures.length === 0) return;
+
     // Spawn 1-3 fish per interval, but respect entity limit
     const maxToSpawn = Math.min(3, this.maxEntities - this.entities.length);
     const spawnCount = Math.floor(Math.random() * maxToSpawn) + 1;
     
     for (let i = 0; i < spawnCount; i++) {
-      const phaseConfig = this.phases.getCurrentConfig();
-      const worldWidth = this.worldBounds.maxX - this.worldBounds.minX;
-      const worldHeight = this.worldBounds.maxY - this.worldBounds.minY;
+      // Select creature based on spawn weights
+      const totalWeight = availableCreatures.reduce((sum, c) => sum + c.spawnRules.spawnWeight, 0);
+      let randomWeight = Math.random() * totalWeight;
+      let selectedCreature = availableCreatures[0];
+      
+      for (const creature of availableCreatures) {
+        randomWeight -= creature.spawnRules.spawnWeight;
+        if (randomWeight <= 0) {
+          selectedCreature = creature;
+          break;
+        }
+      }
 
       // Spawn away from player but within visible range
       const angle = Math.random() * Math.PI * 2;
-      // Spawn at a distance between 200-600 pixels from player (visible on screen)
       const distance = 200 + Math.random() * 400;
       let x = this.player.x + Math.cos(angle) * distance;
       let y = this.player.y + Math.sin(angle) * distance;
@@ -354,38 +369,33 @@ export class GameEngine {
       x = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
       y = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
 
-      const type = this.rng.pick(params.types);
-      
-      // Spawn fish both smaller and larger than player for variety
+      // Calculate size based on creature size and player size for variety
       const playerSize = this.player.stats.size;
-      let size: number;
-      if (Math.random() < 0.4) {
-        // Smaller fish (prey)
-        size = this.rng.randomFloat(playerSize * 0.3, playerSize * 0.8);
-      } else if (Math.random() < 0.7) {
-        // Similar size (competition)
-        size = this.rng.randomFloat(playerSize * 0.8, playerSize * 1.3);
-      } else {
-        // Larger fish (predators)
-        size = this.rng.randomFloat(playerSize * 1.3, playerSize * 2.5);
-      }
+      const creatureBaseSize = selectedCreature.stats.size;
+      let size = creatureBaseSize;
       
-      // Ensure minimum and maximum sizes
-      size = Math.max(params.minSize, Math.min(params.maxSize, size));
-
-      if (type === 'food') {
-        const food = new Food(this.physics, { x, y, size: size * 0.3, type: 'food' });
-        this.entities.push(food);
+      // Add size variance based on player size
+      if (creatureBaseSize < playerSize * 0.8) {
+        // Small prey - keep close to base size
+        size = creatureBaseSize * (0.9 + Math.random() * 0.2); // 90-110% of base
+      } else if (creatureBaseSize > playerSize * 1.2) {
+        // Large predator - keep threatening
+        size = creatureBaseSize * (1.0 + Math.random() * 0.3); // 100-130% of base
       } else {
-        const fish = new Fish(this.physics, {
-          x,
-          y,
-          size,
-          type: type as 'prey' | 'predator',
-          speed: this.rng.randomFloat(1, 3),
-        });
-        this.entities.push(fish);
+        // Similar size - add more variance
+        size = creatureBaseSize * (0.8 + Math.random() * 0.4); // 80-120% of base
       }
+
+      // Create fish entity with creature data
+      const fish = new Fish(this.physics, {
+        x,
+        y,
+        size,
+        type: selectedCreature.type === 'mutant' ? 'predator' : selectedCreature.type,
+        speed: selectedCreature.stats.speed * (0.9 + Math.random() * 0.2), // Add slight speed variance
+      });
+      
+      this.entities.push(fish);
     }
 
     this.lastSpawnTime = now;
