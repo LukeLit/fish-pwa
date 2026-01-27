@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
 import { type FishData } from './FishEditOverlay';
 import {
+  HUNGER_MAX,
   HUNGER_DRAIN_RATE,
   HUNGER_RESTORE_MULTIPLIER,
   HUNGER_LOW_THRESHOLD,
@@ -276,7 +277,7 @@ export default function FishEditorCanvas({
     animTime: 0,
     chompPhase: 0, // 0–1, drives bulge + CHOMP
     chompEndTime: 0,
-    hunger: 100, // 0-100 hunger meter
+    hunger: HUNGER_MAX, // 0-100 hunger meter
     hungerDrainRate: HUNGER_DRAIN_RATE, // % per second
   });
 
@@ -635,8 +636,8 @@ export default function FishEditorCanvas({
               player.size = Math.min(150, player.size + fish.size * 0.1);
               
               // Restore hunger based on fish size
-              const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, 100 - player.hunger);
-              player.hunger = Math.min(100, player.hunger + hungerRestore);
+              const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger);
+              player.hunger = Math.min(HUNGER_MAX, player.hunger + hungerRestore);
               
               player.chompPhase = 1;
               player.chompEndTime = now + 280;
