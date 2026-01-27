@@ -344,3 +344,79 @@ export class Food extends Entity {
     p5.pop();
   }
 }
+
+export class EssenceOrb extends Entity {
+  public essenceType: string;
+  public essenceAmount: number;
+  private pulseTime: number = 0;
+  
+  constructor(
+    physics: PhysicsEngine, 
+    x: number, 
+    y: number, 
+    essenceType: string = 'shallow',
+    essenceAmount: number = 1
+  ) {
+    // Essence orbs are small, bright objects
+    const orbColor = EssenceOrb.getEssenceColor(essenceType);
+    super(physics, {
+      x,
+      y,
+      size: 8,
+      type: 'food', // Use 'food' type so they don't interact with AI
+      color: orbColor,
+      speed: 0,
+    });
+    
+    this.essenceType = essenceType;
+    this.essenceAmount = essenceAmount;
+    
+    // Make orb static (doesn't move)
+    Matter.Body.setStatic(this.body, true);
+  }
+  
+  static getEssenceColor(essenceType: string): string {
+    const colors: Record<string, string> = {
+      shallow: '#fbbf24', // gold/yellow
+      deep_sea: '#1a237e', // deep blue
+      tropical: '#10b981', // tropical green
+      polluted: '#6b7280', // gray
+      cosmic: '#8b5cf6', // purple
+      demonic: '#ef4444', // red
+      robotic: '#06b6d4', // cyan
+    };
+    return colors[essenceType] || '#fbbf24';
+  }
+  
+  update(deltaTime: number, physics?: PhysicsEngine): void {
+    super.update(deltaTime, physics);
+    this.pulseTime += deltaTime * 0.003; // Slow pulse animation
+  }
+  
+  render(p5: p5): void {
+    p5.push();
+    
+    // Pulsing glow effect
+    const pulse = 1 + Math.sin(this.pulseTime) * 0.3;
+    const glowSize = this.size * 3 * pulse;
+    
+    // Outer glow
+    p5.noStroke();
+    p5.fill(this.color + '40'); // Semi-transparent
+    p5.circle(this.x, this.y, glowSize);
+    
+    // Middle glow
+    p5.fill(this.color + '80');
+    p5.circle(this.x, this.y, this.size * 2 * pulse);
+    
+    // Core orb
+    p5.fill(this.color);
+    p5.circle(this.x, this.y, this.size * 1.5);
+    
+    // Bright center
+    p5.fill(255, 255, 255, 200);
+    p5.circle(this.x, this.y, this.size * 0.5);
+    
+    p5.pop();
+  }
+}

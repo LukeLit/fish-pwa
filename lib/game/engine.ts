@@ -5,7 +5,7 @@ import p5 from 'p5';
 import Matter from 'matter-js';
 import { PhysicsEngine } from './physics';
 import { Player } from './player';
-import { Entity, Fish, Food } from './entities';
+import { Entity, Fish, Food, EssenceOrb } from './entities';
 import { MutationSystem } from './mutations';
 import { PhaseManager } from './phases';
 import { SeededRNG, generateSeed } from './procgen';
@@ -13,6 +13,7 @@ import { EssenceManager } from '../meta/essence';
 import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
+import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
 
 export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
 
@@ -367,6 +368,12 @@ export class GameEngine {
       const collisionDistance = this.player.stats.size + entity.size;
 
       if (distance < collisionDistance) {
+        // Check if it's an essence orb first
+        if (entity instanceof EssenceOrb) {
+          this.collectEssenceOrb(entity);
+          return;
+        }
+        
         // Check if collision is from the front
         const isPlayerFrontCollision = this.player.isFrontCollision(entity);
         const isEntityFrontCollision = entity.isFrontCollision(this.player);
@@ -394,6 +401,8 @@ export class GameEngine {
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
             this.player.eat(entity);
+            // Spawn essence orbs
+            this.spawnEssenceOrbs(entity.x, entity.y, entity.size);
             entity.destroy(this.physics);
             this.createParticles(entity.x, entity.y, entity.color, 10);
             this.audio.playSound('bite', 0.3);
@@ -401,6 +410,8 @@ export class GameEngine {
         } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
           // Player eats entity (only from front)
           this.player.eat(entity);
+          // Spawn essence orbs
+          this.spawnEssenceOrbs(entity.x, entity.y, entity.size);
           entity.destroy(this.physics);
           this.createParticles(entity.x, entity.y, entity.color, 10);
           this.audio.playSound('bite', 0.3);
@@ -450,6 +461,52 @@ export class GameEngine {
         }
       }
     }
+  }
+
+  /**
+   * Spawn essence orbs when a fish is eaten
+   */
+  private spawnEssenceOrbs(x: number, y: number, fishSize: number): void {
+    if (!this.p5Instance) return;
+    
+    // Determine number of orbs based on fish size
+    const orbCount = Math.max(1, Math.floor(fishSize / 10));
+    
+    // Spawn orbs in a circular pattern
+    for (let i = 0; i < orbCount; i++) {
+      const angle = (Math.PI * 2 * i) / orbCount;
+      const distance = fishSize * 0.5 + Math.random() * fishSize;
+      const orbX = x + Math.cos(angle) * distance;
+      const orbY = y + Math.sin(angle) * distance;
+      
+      // For Level 1-1, primarily spawn shallow essence
+      const essenceType = 'shallow';
+      const essenceAmount = 3; // Base amount per orb
+      
+      const orb = new EssenceOrb(this.physics, orbX, orbY, essenceType, essenceAmount);
+      this.entities.push(orb);
+    }
+  }
+
+  /**
+   * Collect an essence orb
+   */
+  private collectEssenceOrb(orb: EssenceOrb): void {
+    if (!this.player) return;
+    
+    // Add essence to run state
+    let runState = loadRunState();
+    if (runState) {
+      runState = addEssenceToRun(runState, orb.essenceType, orb.essenceAmount);
+      saveRunState(runState);
+    }
+    
+    // Visual feedback
+    this.createParticles(orb.x, orb.y, orb.color, 15);
+    this.audio.playSound('collect', 0.4);
+    
+    // Remove orb
+    orb.destroy(this.physics);
   }
 
   /**
