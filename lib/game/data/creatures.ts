@@ -285,6 +285,65 @@ export function getAllCreatures(): Creature[] {
 }
 
 /**
+ * Get all creatures from blob storage
+ * Fetches creature metadata from the API
+ */
+export async function getAllCreaturesFromBlob(): Promise<Creature[]> {
+  try {
+    const response = await fetch('/api/list-creatures');
+    const result = await response.json();
+    
+    if (result.success && result.creatures) {
+      return result.creatures;
+    }
+    
+    console.warn('[Creatures] Failed to load from blob storage, using static data');
+    return getAllCreatures();
+  } catch (error) {
+    console.error('[Creatures] Error loading from blob storage:', error);
+    return getAllCreatures();
+  }
+}
+
+/**
+ * Get combined creatures (static + blob storage)
+ * Blob storage creatures take precedence over static ones with the same ID
+ */
+export async function getCombinedCreatures(): Promise<Creature[]> {
+  const staticCreatures = getAllCreatures();
+  const blobCreatures = await getAllCreaturesFromBlob();
+  
+  // Create a map with static creatures as base
+  const creatureMap = new Map<string, Creature>();
+  staticCreatures.forEach(creature => creatureMap.set(creature.id, creature));
+  
+  // Override with blob creatures
+  blobCreatures.forEach(creature => creatureMap.set(creature.id, creature));
+  
+  return Array.from(creatureMap.values());
+}
+
+/**
+ * Get creature by ID (checks blob storage first, then static)
+ */
+export async function getCreatureById(id: string): Promise<Creature | undefined> {
+  // Try blob storage first
+  try {
+    const response = await fetch(`/api/get-creature?id=${id}`);
+    const result = await response.json();
+    
+    if (result.success && result.creature) {
+      return result.creature;
+    }
+  } catch (error) {
+    console.warn(`[Creatures] Failed to load ${id} from blob storage, checking static data`);
+  }
+  
+  // Fall back to static data
+  return CREATURES[id];
+}
+
+/**
  * Get creature by ID
  */
 export function getCreature(id: string): Creature | undefined {

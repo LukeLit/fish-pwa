@@ -10,12 +10,14 @@ const ASSETS_PREFIX = 'assets/';
 
 /**
  * Upload game data as JSON to Vercel Blob Storage
+ * Always allows overwrites to support asset management
  */
 export async function uploadGameData(key: string, data: unknown): Promise<string> {
   try {
     const blob = await put(`${GAME_DATA_PREFIX}${key}.json`, JSON.stringify(data), {
       access: 'public',
       addRandomSuffix: false,
+      allowOverwrite: true,
     });
     return blob.url;
   } catch (error) {
@@ -55,6 +57,7 @@ export async function downloadGameData<T>(key: string, defaultValue: T): Promise
 
 /**
  * Upload asset (image, model, etc.) to Vercel Blob Storage
+ * Always allows overwrites for asset management
  */
 export async function uploadAsset(
   filename: string,
@@ -66,6 +69,7 @@ export async function uploadAsset(
       access: 'public',
       contentType,
       addRandomSuffix: false,
+      allowOverwrite: true,
     });
     
     return {

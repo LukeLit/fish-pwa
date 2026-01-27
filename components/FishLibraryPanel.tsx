@@ -8,9 +8,10 @@ import type { FishData } from './FishEditOverlay';
 
 interface FishLibraryPanelProps {
   onSelectFish: (fish: FishData) => void;
+  onAddNew: () => void;
 }
 
-export default function FishLibraryPanel({ onSelectFish }: FishLibraryPanelProps) {
+export default function FishLibraryPanel({ onSelectFish, onAddNew }: FishLibraryPanelProps) {
   const [creatures, setCreatures] = useState<FishData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +73,22 @@ export default function FishLibraryPanel({ onSelectFish }: FishLibraryPanelProps
   return (
     <div className="h-full overflow-y-auto px-4 py-2">
       <div className="space-y-2">
+        {/* Add New Creature Button */}
+        <button
+          onClick={onAddNew}
+          className="w-full bg-blue-600 hover:bg-blue-500 border border-blue-500 rounded-lg p-4 transition-colors text-left flex items-center gap-3"
+        >
+          <div className="w-16 h-16 bg-blue-700 rounded flex items-center justify-center flex-shrink-0">
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-white text-lg">Add Creature</h3>
+            <p className="text-sm text-blue-200">Create new or use existing art</p>
+          </div>
+        </button>
+
         {creatures.map((creature) => (
           <button
             key={creature.id}

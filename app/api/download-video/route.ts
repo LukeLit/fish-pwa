@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { uploadAsset } from '@/lib/storage/blob-storage';
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,6 +65,55 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Failed to download video',
+        message: error.message || 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * POST method to download and save video to blob storage
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const { uri } = await request.json();
+
+    if (!uri) {
+      return NextResponse.json(
+        { error: 'Video URI is required' },
+        { status: 400 }
+      );
+    }
+
+    console.log('[VideoDownload] Downloading video from URI:', uri);
+
+    // Fetch the video from the URI
+    const response = await fetch(uri);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch video: ${response.status} ${response.statusText}`);
+    }
+
+    const videoBuffer = Buffer.from(await response.arrayBuffer());
+    
+    // Upload to blob storage
+    const filename = `backgrounds/video_${Date.now()}.mp4`;
+    const result = await uploadAsset(filename, videoBuffer, 'video/mp4');
+
+    console.log('[VideoDownload] Video saved to blob storage:', result.url);
+
+    return NextResponse.json({
+      success: true,
+      url: result.url,
+      filename,
+    });
+  } catch (error: any) {
+    console.error('[VideoDownload] POST error:', error);
+
+    return NextResponse.json(
+      {
+        error: 'Failed to download and save video',
         message: error.message || 'Unknown error',
       },
       { status: 500 }

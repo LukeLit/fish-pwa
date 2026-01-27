@@ -4,7 +4,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { saveCreatureToLocal } from '@/lib/storage/local-fish-storage';
 
 export interface FishData {
   id: string;
@@ -44,8 +43,10 @@ type FishFieldValue =
   | string 
   | number 
   | boolean 
+  | string[]
   | Array<{ type: string; baseYield: number }> 
-  | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number };
+  | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number }
+  | { biomeUnlocked: string[]; essenceSpent?: Record<string, number> };
 
 interface FishEditOverlayProps {
   fish: FishData | null;
@@ -55,6 +56,7 @@ interface FishEditOverlayProps {
   onNext: () => void;
   hasPrevious: boolean;
   hasNext: boolean;
+  onOpenArtSelector?: (callback: (url: string, filename: string) => void) => void;
 }
 
 export default function FishEditOverlay({
@@ -65,37 +67,51 @@ export default function FishEditOverlay({
   onNext,
   hasPrevious,
   hasNext,
+  onOpenArtSelector,
 }: FishEditOverlayProps) {
   const [editedFish, setEditedFish] = useState<FishData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationPrompt, setGenerationPrompt] = useState('');
+  const [selectedModel, setSelectedModel] = useState<'google/imagen-4.0-fast-generate-001' | 'google/imagen-4.0-generate-001' | 'bfl/flux-2-pro'>('google/imagen-4.0-fast-generate-001');
 
   useEffect(() => {
     if (fish) {
-      // Set default values for new fields if they don't exist
-      setEditedFish({
-        ...fish,
-        rarity: fish.rarity || 'common',
-        playable: fish.playable ?? false,
-        biomeId: fish.biomeId || 'shallow',
-        essenceTypes: fish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
-        spawnRules: fish.spawnRules || {
-          canAppearIn: [fish.biomeId || 'shallow'],
-          spawnWeight: 50,
-        },
-      });
+      // Only initialize editedFish if it's null or if the fish ID changed
+      // This prevents overwriting local edits when parent re-renders
+      if (!editedFish || editedFish.id !== fish.id) {
+        setEditedFish({
+          ...fish,
+          rarity: fish.rarity || 'common',
+          playable: fish.playable ?? false,
+          biomeId: fish.biomeId || 'shallow',
+          essenceTypes: fish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
+          spawnRules: fish.spawnRules || {
+            canAppearIn: [fish.biomeId || 'shallow'],
+            spawnWeight: 50,
+          },
+        });
+      }
     }
   }, [fish]);
 
+  useEffect(() => {
+    // Set default prompt based on fish type
+    if (editedFish) {
+      const typePrompts: Record<string, string> = {
+        prey: `A small, swift fish with greenish scales and streamlined body, isolated on solid bright magenta background (#FF00FF), no other background elements, game sprite, side view right-facing, detailed scales and fins`,
+        predator: `A large, aggressive fish with sharp teeth, reddish tones, and menacing appearance, isolated on solid bright magenta background (#FF00FF), no other background elements, game sprite, side view right-facing, detailed scales and fins`,
+        mutant: `A bizarre mutant fish with twisted fins, glowing eyes, and surreal features, isolated on solid bright magenta background (#FF00FF), no other background elements, game sprite, side view right-facing, detailed scales and fins`,
+      };
+      setGenerationPrompt(typePrompts[editedFish.type] || typePrompts.prey);
+    }
+  }, [editedFish?.type]);
+
   if (!fish || !editedFish) return null;
 
-  const handleSave = () => {
-    onSave(editedFish);
-    setSaveMessage('');
-  };
-
   const handleSaveToGame = async () => {
-    if (!editedFish) return; // Null check
+    if (!editedFish) return;
     
     setIsSaving(true);
     setSaveMessage('');
@@ -103,15 +119,15 @@ export default function FishEditOverlay({
     try {
       // Convert sprite to blob if it's a data URL
       let spriteBlob: Blob | null = null;
-      if (editedFish.sprite.startsWith('data:')) {
+      if (editedFish.sprite && editedFish.sprite.startsWith('data:')) {
         const response = await fetch(editedFish.sprite);
         spriteBlob = await response.blob();
       }
 
-      // Prepare metadata (without sprite data URL)
+      // Prepare metadata (with sprite URL if already uploaded, empty if new)
       const metadata = {
         ...editedFish,
-        sprite: '', // Will be set by the API
+        sprite: editedFish.sprite && !editedFish.sprite.startsWith('data:') ? editedFish.sprite : '',
       };
 
       // Create FormData
@@ -131,55 +147,22 @@ export default function FishEditOverlay({
       const result = await response.json();
 
       if (result.success) {
-        setSaveMessage('✓ Saved to game successfully!');
+        setSaveMessage('✓ Saved successfully!');
         // Update the fish with the new sprite URL if it was uploaded
         if (result.spriteUrl) {
-          setEditedFish(prev => prev ? { ...prev, sprite: result.spriteUrl } : null);
+          updateField('sprite', result.spriteUrl);
         }
-      } else {
-        // If blob storage fails, save to localStorage as fallback
-        if (result.requiresToken) {
-          console.log('[FishEditor] Blob storage not available, using localStorage fallback');
-          const creatureData = {
-            ...editedFish,
-            rarity: editedFish.rarity || 'common',
-            playable: editedFish.playable ?? false,
-            biomeId: editedFish.biomeId || 'shallow',
-            essenceTypes: editedFish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
-            grantedAbilities: [],
-            spawnRules: editedFish.spawnRules || {
-              canAppearIn: [editedFish.biomeId || 'shallow'],
-              spawnWeight: 10,
-            },
-          };
-          saveCreatureToLocal(creatureData);
-          setSaveMessage('✓ Saved to local storage (blob storage not configured). Fish will be available in fish selection.');
-        } else {
-          const errorMsg = result.message || result.error || 'Unknown error';
-          setSaveMessage('✗ Failed to save: ' + errorMsg);
-        }
-      }
-    } catch (error) {
-      console.error('Save error:', error);
-      // On any error, try localStorage fallback
-      try {
-        const creatureData = {
+        // Also call onSave to update parent state
+        onSave({
           ...editedFish,
-          rarity: editedFish.rarity || 'common',
-          playable: editedFish.playable ?? false,
-          biomeId: editedFish.biomeId || 'shallow',
-          essenceTypes: editedFish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
-          grantedAbilities: [],
-          spawnRules: editedFish.spawnRules || {
-            canAppearIn: [editedFish.biomeId || 'shallow'],
-            spawnWeight: 10,
-          },
-        };
-        saveCreatureToLocal(creatureData);
-        setSaveMessage('✓ Saved to local storage. Fish will be available in fish selection.');
-      } catch (localError) {
-        setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+          sprite: result.spriteUrl || editedFish.sprite
+        });
+      } else {
+        setSaveMessage(`❌ Save failed: ${result.error || 'Unknown error'}`);
       }
+    } catch (error: any) {
+      console.error('[FishEditor] Save error:', error);
+      setSaveMessage(`❌ Error: ${error.message || 'Failed to save'}`);
     } finally {
       setIsSaving(false);
     }
@@ -212,6 +195,48 @@ export default function FishEditOverlay({
       setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGenerateFish = async () => {
+    if (!generationPrompt.trim()) {
+      setSaveMessage('❌ Please enter a generation prompt');
+      return;
+    }
+
+    setIsGenerating(true);
+    setSaveMessage('🎨 Generating fish sprite...');
+
+    try {
+      const response = await fetch('/api/generate-fish-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: generationPrompt,
+          model: selectedModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        setSaveMessage(`❌ Generation failed: ${error.message || 'Unknown error'}`);
+        setIsGenerating(false);
+        return;
+      }
+
+      const data = await response.json();
+      if (data.success && data.imageBase64) {
+        const spriteUrl = `data:image/png;base64,${data.imageBase64}`;
+        updateField('sprite', spriteUrl);
+        setSaveMessage(`✅ Fish sprite generated! Click "Save Creature" to persist.`);
+      } else {
+        setSaveMessage('❌ No image data returned from API');
+      }
+    } catch (error: any) {
+      setSaveMessage(`❌ Error: ${error.message || 'Failed to generate'}`);
+      console.error('[FishEditor] Generation error:', error);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -272,6 +297,96 @@ export default function FishEditOverlay({
             rows={4}
             placeholder="Enter fish description"
           />
+        </div>
+
+        {/* Sprite Selection */}
+        <div>
+          <label className="block text-sm font-bold text-white mb-2">Sprite</label>
+          <div className="space-y-3">
+            {/* Current sprite preview */}
+            {editedFish.sprite && (
+              <div className="w-full bg-gray-800 rounded border border-gray-600 p-3 flex items-center justify-center" style={{ minHeight: '100px' }}>
+                <img 
+                  src={editedFish.sprite} 
+                  alt="Current sprite"
+                  className="max-w-full max-h-24 object-contain"
+                />
+              </div>
+            )}
+            
+            {/* Action buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  if (onOpenArtSelector) {
+                    onOpenArtSelector((url, filename) => {
+                      updateField('sprite', url);
+                      setSaveMessage('✓ Art selected. Remember to save changes.');
+                    });
+                  }
+                }}
+                className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                Select Existing
+              </button>
+              <button
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'image/*';
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        updateField('sprite', ev.target?.result as string);
+                        setSaveMessage('✓ Image uploaded. Remember to save changes.');
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  };
+                  input.click();
+                }}
+                className="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                Upload Image
+              </button>
+            </div>
+
+            {/* AI Generation Section */}
+            <div className="border-t border-gray-700 pt-3 mt-2">
+              <p className="text-xs font-bold text-white mb-2">Or Generate with AI</p>
+              
+              {/* Model Selection */}
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value as any)}
+                className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 text-xs mb-2"
+              >
+                <option value="google/imagen-4.0-fast-generate-001">Imagen Fast</option>
+                <option value="google/imagen-4.0-generate-001">Imagen Standard</option>
+                <option value="bfl/flux-2-pro">Flux 2 Pro</option>
+              </select>
+
+              {/* Generation Prompt */}
+              <textarea
+                value={generationPrompt}
+                onChange={(e) => setGenerationPrompt(e.target.value)}
+                className="w-full bg-gray-800 text-white px-2 py-2 rounded border border-gray-600 text-xs font-mono mb-2"
+                rows={3}
+                placeholder="Enter generation prompt..."
+              />
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerateFish}
+                disabled={isGenerating || !generationPrompt.trim()}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {isGenerating ? 'Generating...' : 'Generate Fish Sprite'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Type */}
@@ -384,12 +499,18 @@ export default function FishEditOverlay({
 
         {/* Stats */}
         <div className="border-t border-gray-700 pt-4">
-          <h3 className="text-sm font-bold text-white mb-3">Stats</h3>
+          <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            Starting Stats
+            <span className="text-xs font-normal text-gray-400" title="These are the initial stats. They can scale during gameplay based on upgrades and progression.">
+              ℹ️
+            </span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-3">Base values that may scale with upgrades and progression</p>
           <div className="space-y-3">
             {/* Size */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Size: {editedFish.stats.size}
+                Starting Size: {editedFish.stats.size}
               </label>
               <input
                 type="range"
@@ -404,7 +525,7 @@ export default function FishEditOverlay({
             {/* Speed */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Speed: {editedFish.stats.speed}
+                Starting Speed: {editedFish.stats.speed}
               </label>
               <input
                 type="range"
@@ -419,7 +540,7 @@ export default function FishEditOverlay({
             {/* Health */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Health: {editedFish.stats.health}
+                Starting Health: {editedFish.stats.health}
               </label>
               <input
                 type="range"
@@ -434,7 +555,7 @@ export default function FishEditOverlay({
             {/* Damage */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Damage: {editedFish.stats.damage}
+                Starting Damage: {editedFish.stats.damage}
               </label>
               <input
                 type="range"
@@ -448,21 +569,147 @@ export default function FishEditOverlay({
           </div>
         </div>
 
-        {/* Save Buttons */}
+        {/* Spawn Rules */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-3">Spawn Rules</h3>
+          <div className="space-y-3">
+            {/* Spawn Weight */}
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">
+                Spawn Weight: {editedFish.spawnRules?.spawnWeight || 50}
+                <span className="text-gray-500 ml-1" title="Higher values mean more frequent spawning (1-100)">ℹ️</span>
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="100"
+                value={editedFish.spawnRules?.spawnWeight || 50}
+                onChange={(e) => {
+                  const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                  updateField('spawnRules', { ...current, spawnWeight: parseInt(e.target.value) });
+                }}
+                className="w-full"
+              />
+            </div>
+
+            {/* Min/Max Depth */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Min Depth (m)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  value={editedFish.spawnRules?.minDepth || 0}
+                  onChange={(e) => {
+                    const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                    const value = parseInt(e.target.value) || undefined;
+                    updateField('spawnRules', { ...current, minDepth: value });
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                  placeholder="Optional"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Max Depth (m)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  value={editedFish.spawnRules?.maxDepth || 0}
+                  onChange={(e) => {
+                    const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                    const value = parseInt(e.target.value) || undefined;
+                    updateField('spawnRules', { ...current, maxDepth: value });
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+
+            {/* Can Appear In Biomes */}
+            <div>
+              <label className="block text-xs text-gray-300 mb-2">Can Appear In Biomes</label>
+              <div className="space-y-1">
+                {['shallow', 'medium', 'deep', 'abyssal', 'shallow_tropical', 'deep_polluted'].map((biome) => {
+                  const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                  const isChecked = current.canAppearIn.includes(biome);
+                  
+                  return (
+                    <label key={biome} className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const currentBiomes = current.canAppearIn;
+                          const newBiomes = e.target.checked
+                            ? [...currentBiomes, biome]
+                            : currentBiomes.filter(b => b !== biome);
+                          updateField('spawnRules', { ...current, canAppearIn: newBiomes });
+                        }}
+                        className="w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-gray-300 capitalize">{biome.replace('_', ' ')}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Granted Abilities */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            Granted Abilities
+            <span className="text-xs font-normal text-gray-400" title="Abilities the player gains when consuming this creature">
+              ℹ️
+            </span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-2">Comma-separated ability IDs</p>
+          <input
+            type="text"
+            value={(editedFish.grantedAbilities || []).join(', ')}
+            onChange={(e) => {
+              const abilities = e.target.value.split(',').map(a => a.trim()).filter(a => a);
+              updateField('grantedAbilities', abilities);
+            }}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+            placeholder="e.g., bioluminescence, shield"
+          />
+        </div>
+
+        {/* Unlock Requirements */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            Unlock Requirements
+            <span className="text-xs font-normal text-gray-400" title="What the player needs to unlock this creature">
+              ℹ️
+            </span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-2">Biomes that must be unlocked (comma-separated)</p>
+          <input
+            type="text"
+            value={(editedFish.unlockRequirement?.biomeUnlocked || []).join(', ')}
+            onChange={(e) => {
+              const biomes = e.target.value.split(',').map(b => b.trim()).filter(b => b);
+              const current = editedFish.unlockRequirement || { biomeUnlocked: [] };
+              updateField('unlockRequirement', { ...current, biomeUnlocked: biomes });
+            }}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+            placeholder="e.g., deep, deep_polluted"
+          />
+        </div>
+
+        {/* Save Button */}
         <div className="space-y-2">
-          <button
-            onClick={handleSave}
-            className="w-full bg-green-600 hover:bg-green-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors"
-          >
-            Save Changes (Local)
-          </button>
-          
           <button
             onClick={handleSaveToGame}
             disabled={isSaving}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? 'Saving to Game...' : 'Save to Game (Persistent)'}
+            {isSaving ? 'Saving...' : 'Save Creature'}
           </button>
           
           {editedFish.playable && (
