@@ -503,7 +503,7 @@ export class GameEngine {
     
     // Visual feedback
     this.createParticles(orb.x, orb.y, orb.color, 15);
-    this.audio.playSound('collect', 0.4);
+    this.audio.playSound('bite', 0.2); // Using 'bite' sound for collection
     
     // Remove orb
     orb.destroy(this.physics);

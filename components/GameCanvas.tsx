@@ -114,14 +114,14 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
       loadGameAssets(currentRunState);
     }
     
-    // Poll for game state updates
+    // Poll for game state updates (less frequently to reduce overhead)
     const interval = setInterval(() => {
       const state = loadRunState();
       if (state) {
         setPlayerSize(state.fishState.size);
         setHunger(state.hunger);
       }
-    }, 100);
+    }, 500); // Reduced from 100ms to 500ms
     
     return () => clearInterval(interval);
   }, []);

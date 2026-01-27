@@ -26,14 +26,14 @@ export default function GameHUD({
   const [essence, setEssence] = useState<Record<string, number>>({});
   const [timeRemaining, setTimeRemaining] = useState(levelDuration);
 
-  // Update essence from run state
+  // Update essence from run state (poll less frequently)
   useEffect(() => {
     const interval = setInterval(() => {
       const runState = loadRunState();
       if (runState) {
         setEssence(runState.collectedEssence);
       }
-    }, 100);
+    }, 500); // Reduced from 100ms to 500ms
 
     return () => clearInterval(interval);
   }, []);

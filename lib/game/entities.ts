@@ -400,13 +400,16 @@ export class EssenceOrb extends Entity {
     const pulse = 1 + Math.sin(this.pulseTime) * 0.3;
     const glowSize = this.size * 3 * pulse;
     
-    // Outer glow
+    // Outer glow - use p5.color() for proper alpha handling
     p5.noStroke();
-    p5.fill(this.color + '40'); // Semi-transparent
+    const baseColor = p5.color(this.color);
+    const glowColor1 = p5.color(p5.red(baseColor), p5.green(baseColor), p5.blue(baseColor), 64);
+    p5.fill(glowColor1);
     p5.circle(this.x, this.y, glowSize);
     
     // Middle glow
-    p5.fill(this.color + '80');
+    const glowColor2 = p5.color(p5.red(baseColor), p5.green(baseColor), p5.blue(baseColor), 128);
+    p5.fill(glowColor2);
     p5.circle(this.x, this.y, this.size * 2 * pulse);
     
     // Core orb
