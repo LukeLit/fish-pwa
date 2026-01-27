@@ -14,6 +14,7 @@ import FishEditOverlay, { type FishData } from '@/components/FishEditOverlay';
 import FishLibraryPanel from '@/components/FishLibraryPanel';
 import BackgroundEditor from '@/components/BackgroundEditor';
 import BackgroundLibraryPanel from '@/components/BackgroundLibraryPanel';
+import ArtSelectorPanel from '@/components/ArtSelectorPanel';
 import BottomSheet from '@/components/BottomSheet';
 
 export default function FishEditorPage() {
@@ -29,9 +30,12 @@ export default function FishEditorPage() {
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'controls' | 'library' | 'backgrounds'>('controls');
+  const [activeTab, setActiveTab] = useState<'controls' | 'library' | 'backgrounds'>('library');
   const [editingBackground, setEditingBackground] = useState<boolean>(false);
   const [selectedBackgroundData, setSelectedBackgroundData] = useState<any>(null);
+  const [showArtSelector, setShowArtSelector] = useState(false);
+  const [artSelectorType, setArtSelectorType] = useState<'fish' | 'background'>('fish');
+  const [artSelectorCallback, setArtSelectorCallback] = useState<((url: string, filename: string) => void) | null>(null);
 
   // Load random background, player fish, and spawn default prey on mount
   useEffect(() => {
@@ -304,6 +308,25 @@ export default function FishEditorPage() {
     setSelectedBackgroundData(null);
   };
 
+  const handleOpenArtSelector = (type: 'fish' | 'background', callback: (url: string, filename: string) => void) => {
+    setArtSelectorType(type);
+    setArtSelectorCallback(() => callback);
+    setShowArtSelector(true);
+  };
+
+  const handleArtSelect = (url: string, filename: string) => {
+    if (artSelectorCallback) {
+      artSelectorCallback(url, filename);
+    }
+    setShowArtSelector(false);
+    setArtSelectorCallback(null);
+  };
+
+  const handleArtSelectorCancel = () => {
+    setShowArtSelector(false);
+    setArtSelectorCallback(null);
+  };
+
   const handleSaveFish = (fish: FishData) => {
     setFishData((prev) => {
       const newMap = new Map(prev);
@@ -406,6 +429,7 @@ export default function FishEditorPage() {
           onNext={handleNextFish}
           hasPrevious={hasPrevious}
           hasNext={hasNext}
+          onOpenArtSelector={(callback) => handleOpenArtSelector('fish', callback)}
         />
       )}
 
@@ -496,12 +520,22 @@ export default function FishEditorPage() {
                     onBackgroundChange={(url, type) => {
                       setSelectedBackground(url);
                     }}
+                    onOpenArtSelector={(callback) => handleOpenArtSelector('background', callback)}
                   />
                 </div>
               )}
             </div>
           </div>
         </BottomSheet>
+      )}
+
+      {/* Art Selector Modal - Rendered at page level */}
+      {showArtSelector && (
+        <ArtSelectorPanel
+          type={artSelectorType}
+          onSelect={handleArtSelect}
+          onCancel={handleArtSelectorCancel}
+        />
       )}
     </div>
   );

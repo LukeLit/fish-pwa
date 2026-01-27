@@ -5,7 +5,6 @@
 
 import { useState, useEffect } from 'react';
 import { saveCreatureToLocal } from '@/lib/storage/local-fish-storage';
-import ArtSelectorPanel from './ArtSelectorPanel';
 
 export interface FishData {
   id: string;
@@ -58,6 +57,7 @@ interface FishEditOverlayProps {
   onNext: () => void;
   hasPrevious: boolean;
   hasNext: boolean;
+  onOpenArtSelector?: (callback: (url: string, filename: string) => void) => void;
 }
 
 export default function FishEditOverlay({
@@ -68,11 +68,11 @@ export default function FishEditOverlay({
   onNext,
   hasPrevious,
   hasNext,
+  onOpenArtSelector,
 }: FishEditOverlayProps) {
   const [editedFish, setEditedFish] = useState<FishData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string>('');
-  const [showArtSelector, setShowArtSelector] = useState(false);
 
   useEffect(() => {
     if (fish) {
@@ -296,7 +296,14 @@ export default function FishEditOverlay({
             )}
             <div className="flex-1 flex flex-col gap-2">
               <button
-                onClick={() => setShowArtSelector(true)}
+                onClick={() => {
+                  if (onOpenArtSelector) {
+                    onOpenArtSelector((url, filename) => {
+                      updateField('sprite', url);
+                      setSaveMessage('✓ Art selected. Remember to save changes.');
+                    });
+                  }
+                }}
                 className="w-full bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
               >
                 {editedFish.sprite ? 'Change Art' : 'Select Existing Art'}
@@ -687,19 +694,6 @@ export default function FishEditOverlay({
           Next →
         </button>
       </div>
-
-      {/* Art Selector Modal */}
-      {showArtSelector && (
-        <ArtSelectorPanel
-          type="fish"
-          onSelect={(url, filename) => {
-            updateField('sprite', url);
-            setShowArtSelector(false);
-            setSaveMessage('✓ Art selected. Remember to save changes.');
-          }}
-          onCancel={() => setShowArtSelector(false)}
-        />
-      )}
     </div>
   );
 }
