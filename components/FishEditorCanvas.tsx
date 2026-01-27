@@ -7,6 +7,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
 import { type FishData } from './FishEditOverlay';
 
+// Hunger system constants
+const HUNGER_DRAIN_RATE = 1.5; // % per second
+const HUNGER_RESTORE_MULTIPLIER = 0.3; // 30% of fish size
+const HUNGER_LOW_THRESHOLD = 25; // % for warning effects
+const HUNGER_WARNING_PULSE_FREQUENCY = 0.008;
+const HUNGER_WARNING_PULSE_BASE = 0.5;
+const HUNGER_WARNING_INTENSITY = 0.3;
+
 interface FishEditorCanvasProps {
   background: string | null;
   playerFishSprite: string | null;
@@ -268,7 +276,7 @@ export default function FishEditorCanvas({
     chompPhase: 0, // 0–1, drives bulge + CHOMP
     chompEndTime: 0,
     hunger: 100, // 0-100 hunger meter
-    hungerDrainRate: 1.5, // % per second
+    hungerDrainRate: HUNGER_DRAIN_RATE, // % per second
   });
 
   const chompParticlesRef = useRef<Array<{
@@ -586,7 +594,8 @@ export default function FishEditorCanvas({
 
       // Update hunger in game mode
       if (gameMode && !isPaused) {
-        player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / 60));
+        const FRAME_RATE = 60; // Expected frame rate
+        player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / FRAME_RATE));
         
         // Check starvation death
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
@@ -626,7 +635,7 @@ export default function FishEditorCanvas({
               player.size = Math.min(150, player.size + fish.size * 0.1);
               
               // Restore hunger based on fish size
-              const hungerRestore = Math.min(fish.size * 0.3, 100 - player.hunger);
+              const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, 100 - player.hunger);
               player.hunger = Math.min(100, player.hunger + hungerRestore);
               
               player.chompPhase = 1;
@@ -1040,10 +1049,10 @@ export default function FishEditorCanvas({
       ctx.restore();
       
       // Low hunger visual warning (red tint and vignette)
-      if (gameMode && player.hunger <= 25) {
+      if (gameMode && player.hunger <= HUNGER_LOW_THRESHOLD) {
         ctx.save();
-        const pulse = Math.sin(Date.now() * 0.008) * 0.5 + 0.5;
-        const intensity = (1 - player.hunger / 25) * 0.3 * pulse;
+        const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
+        const intensity = (1 - player.hunger / HUNGER_LOW_THRESHOLD) * HUNGER_WARNING_INTENSITY * pulse;
         
         // Red tint overlay
         ctx.fillStyle = `rgba(255, 0, 0, ${intensity})`;

@@ -14,6 +14,12 @@ import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
 
+// Hunger system constants
+const HUNGER_LOW_THRESHOLD = 25; // % for warning effects
+const HUNGER_WARNING_PULSE_FREQUENCY = 0.008;
+const HUNGER_WARNING_PULSE_BASE = 0.5;
+const HUNGER_WARNING_INTENSITY = 0.3;
+
 export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
 
 export interface GameState {
@@ -653,10 +659,10 @@ export class GameEngine {
     p5.pop();
 
     // Low hunger visual warning (red tint and vignette)
-    if (this.player.stats.hunger <= 25) {
+    if (this.player.stats.hunger <= HUNGER_LOW_THRESHOLD) {
       p5.push();
-      const pulse = Math.sin(Date.now() * 0.008) * 0.5 + 0.5;
-      const intensity = (1 - this.player.stats.hunger / 25) * 0.3 * pulse;
+      const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
+      const intensity = (1 - this.player.stats.hunger / HUNGER_LOW_THRESHOLD) * HUNGER_WARNING_INTENSITY * pulse;
       
       // Red tint overlay
       p5.fill(255, 0, 0, intensity * 255);
@@ -664,6 +670,7 @@ export class GameEngine {
       p5.rect(0, 0, p5.width, p5.height);
       
       // Vignette effect (darker edges)
+      p5.push();
       const ctx = p5.drawingContext as CanvasRenderingContext2D;
       const vignette = ctx.createRadialGradient(
         p5.width / 2, p5.height / 2, 0,
@@ -673,6 +680,7 @@ export class GameEngine {
       vignette.addColorStop(1, `rgba(139, 0, 0, ${intensity * 0.6})`);
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, p5.width, p5.height);
+      p5.pop();
       
       p5.pop();
     }
@@ -742,7 +750,8 @@ export class GameEngine {
     
     // Glow effect for low hunger
     if (hungerPercent <= 0.25) {
-      const pulse = Math.sin(Date.now() * 0.005) * 0.3 + 0.7;
+      p5.push();
+      const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
       p5.drawingContext.shadowColor = `rgb(239, 68, 68)`;
       p5.drawingContext.shadowBlur = 20 * pulse;
       p5.strokeWeight(3);
@@ -750,6 +759,8 @@ export class GameEngine {
       p5.noFill();
       p5.rect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
       p5.drawingContext.shadowBlur = 0;
+      p5.drawingContext.shadowColor = 'transparent';
+      p5.pop();
     }
     
     // Text label

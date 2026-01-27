@@ -8,6 +8,9 @@ import { Entity } from './entities';
 import { FishGenerator, FishShape } from '../assets/fish-generator';
 import { getAssetManager } from '../ai/asset-manager';
 
+// Hunger system constants
+const HUNGER_RESTORE_MULTIPLIER = 0.3; // 30% of fish size
+
 export interface PlayerStats {
   size: number;
   maxSize: number;
@@ -165,7 +168,7 @@ export class Player extends Entity {
     this.grow(growthAmount);
     
     // Restore hunger based on entity size
-    const hungerRestore = Math.min(entity.size * 0.3, 100 - this.stats.hunger);
+    const hungerRestore = Math.min(entity.size * HUNGER_RESTORE_MULTIPLIER, 100 - this.stats.hunger);
     this.stats.hunger = Math.min(100, this.stats.hunger + hungerRestore);
   }
 
