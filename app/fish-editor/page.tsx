@@ -135,6 +135,30 @@ export default function FishEditorPage() {
     };
 
     loadRandomAssets();
+    
+    // Load all creatures from blob storage
+    const loadCreaturesFromBlob = async () => {
+      try {
+        const response = await fetch('/api/list-creatures');
+        const result = await response.json();
+        
+        if (result.success && result.creatures && result.creatures.length > 0) {
+          console.log(`[FishEditor] Loaded ${result.creatures.length} creatures from blob storage`);
+          const newFishData = new Map<string, FishData>(fishData);
+          
+          // Add all creatures to fishData map
+          result.creatures.forEach((creature: FishData) => {
+            newFishData.set(creature.id, creature);
+          });
+          
+          setFishData(newFishData);
+        }
+      } catch (error) {
+        console.error('[FishEditor] Failed to load creatures from blob storage:', error);
+      }
+    };
+    
+    loadCreaturesFromBlob();
   }, []);
 
   const handleSpawnFish = (sprite: string, type: string) => {
