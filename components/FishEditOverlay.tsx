@@ -44,8 +44,10 @@ type FishFieldValue =
   | string 
   | number 
   | boolean 
+  | string[]
   | Array<{ type: string; baseYield: number }> 
-  | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number };
+  | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number }
+  | { biomeUnlocked: string[]; essenceSpent?: Record<string, number> };
 
 interface FishEditOverlayProps {
   fish: FishData | null;
@@ -384,12 +386,18 @@ export default function FishEditOverlay({
 
         {/* Stats */}
         <div className="border-t border-gray-700 pt-4">
-          <h3 className="text-sm font-bold text-white mb-3">Stats</h3>
+          <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            Starting Stats
+            <span className="text-xs font-normal text-gray-400" title="These are the initial stats. They can scale during gameplay based on upgrades and progression.">
+              ℹ️
+            </span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-3">Base values that may scale with upgrades and progression</p>
           <div className="space-y-3">
             {/* Size */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Size: {editedFish.stats.size}
+                Starting Size: {editedFish.stats.size}
               </label>
               <input
                 type="range"
@@ -404,7 +412,7 @@ export default function FishEditOverlay({
             {/* Speed */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Speed: {editedFish.stats.speed}
+                Starting Speed: {editedFish.stats.speed}
               </label>
               <input
                 type="range"
@@ -419,7 +427,7 @@ export default function FishEditOverlay({
             {/* Health */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Health: {editedFish.stats.health}
+                Starting Health: {editedFish.stats.health}
               </label>
               <input
                 type="range"
@@ -434,7 +442,7 @@ export default function FishEditOverlay({
             {/* Damage */}
             <div>
               <label className="block text-xs text-gray-300 mb-1">
-                Damage: {editedFish.stats.damage}
+                Starting Damage: {editedFish.stats.damage}
               </label>
               <input
                 type="range"
@@ -446,6 +454,139 @@ export default function FishEditOverlay({
               />
             </div>
           </div>
+        </div>
+
+        {/* Spawn Rules */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-3">Spawn Rules</h3>
+          <div className="space-y-3">
+            {/* Spawn Weight */}
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">
+                Spawn Weight: {editedFish.spawnRules?.spawnWeight || 50}
+                <span className="text-gray-500 ml-1" title="Higher values mean more frequent spawning (1-100)">ℹ️</span>
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="100"
+                value={editedFish.spawnRules?.spawnWeight || 50}
+                onChange={(e) => {
+                  const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                  updateField('spawnRules', { ...current, spawnWeight: parseInt(e.target.value) });
+                }}
+                className="w-full"
+              />
+            </div>
+
+            {/* Min/Max Depth */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Min Depth (m)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  value={editedFish.spawnRules?.minDepth || 0}
+                  onChange={(e) => {
+                    const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                    const value = parseInt(e.target.value) || undefined;
+                    updateField('spawnRules', { ...current, minDepth: value });
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                  placeholder="Optional"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Max Depth (m)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  value={editedFish.spawnRules?.maxDepth || 0}
+                  onChange={(e) => {
+                    const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                    const value = parseInt(e.target.value) || undefined;
+                    updateField('spawnRules', { ...current, maxDepth: value });
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+
+            {/* Can Appear In Biomes */}
+            <div>
+              <label className="block text-xs text-gray-300 mb-2">Can Appear In Biomes</label>
+              <div className="space-y-1">
+                {['shallow', 'medium', 'deep', 'abyssal', 'shallow_tropical', 'deep_polluted'].map((biome) => {
+                  const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
+                  const isChecked = current.canAppearIn.includes(biome);
+                  
+                  return (
+                    <label key={biome} className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const currentBiomes = current.canAppearIn;
+                          const newBiomes = e.target.checked
+                            ? [...currentBiomes, biome]
+                            : currentBiomes.filter(b => b !== biome);
+                          updateField('spawnRules', { ...current, canAppearIn: newBiomes });
+                        }}
+                        className="w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-gray-300 capitalize">{biome.replace('_', ' ')}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Granted Abilities */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            Granted Abilities
+            <span className="text-xs font-normal text-gray-400" title="Abilities the player gains when consuming this creature">
+              ℹ️
+            </span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-2">Comma-separated ability IDs</p>
+          <input
+            type="text"
+            value={(editedFish.grantedAbilities || []).join(', ')}
+            onChange={(e) => {
+              const abilities = e.target.value.split(',').map(a => a.trim()).filter(a => a);
+              updateField('grantedAbilities', abilities);
+            }}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+            placeholder="e.g., bioluminescence, shield"
+          />
+        </div>
+
+        {/* Unlock Requirements */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            Unlock Requirements
+            <span className="text-xs font-normal text-gray-400" title="What the player needs to unlock this creature">
+              ℹ️
+            </span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-2">Biomes that must be unlocked (comma-separated)</p>
+          <input
+            type="text"
+            value={(editedFish.unlockRequirement?.biomeUnlocked || []).join(', ')}
+            onChange={(e) => {
+              const biomes = e.target.value.split(',').map(b => b.trim()).filter(b => b);
+              const current = editedFish.unlockRequirement || { biomeUnlocked: [] };
+              updateField('unlockRequirement', { ...current, biomeUnlocked: biomes });
+            }}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+            placeholder="e.g., deep, deep_polluted"
+          />
         </div>
 
         {/* Save Buttons */}
