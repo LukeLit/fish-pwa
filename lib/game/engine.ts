@@ -209,6 +209,9 @@ export class GameEngine {
     this.camera = { x: startX, y: startY };
     this.lastSpawnTime = Date.now();
     this.lastEssenceOrbSpawn = Date.now();
+    
+    // Apply initial difficulty scaling for level 1
+    this.applyLevelDifficultyScaling(1);
   }
 
   /**
@@ -735,12 +738,16 @@ export class GameEngine {
 
   /**
    * Start next level after upgrade selection
+   * Implements difficulty scaling per ROGUELITE_DESIGN.md
    */
   async nextLevel(): Promise<void> {
     if (!this.player) return;
 
     // Increment level
     this.state.level += 1;
+    
+    // Apply difficulty scaling based on level
+    this.applyLevelDifficultyScaling(this.state.level);
     
     // Reset level-specific state but keep player progress
     this.entities.forEach(e => e.destroy(this.physics));
@@ -755,9 +762,46 @@ export class GameEngine {
     this.state.currentTime = 0;
     this.lastSpawnTime = Date.now();
     this.lastEssenceOrbSpawn = Date.now();
+  }
 
-    // Make enemies slightly harder each level
-    this.spawnInterval = Math.max(300, this.spawnInterval - 20);
+  /**
+   * Apply difficulty scaling based on level
+   * Following ROGUELITE_DESIGN.md progression table
+   */
+  private applyLevelDifficultyScaling(level: number): void {
+    // Difficulty scaling configuration
+    const difficultyConfig: Record<number, {
+      spawnInterval: number;
+      maxEntities: number;
+      levelDuration: number;
+    }> = {
+      1: { // Level 1-1
+        spawnInterval: 600,
+        maxEntities: 40,
+        levelDuration: 60000, // 60 seconds
+      },
+      2: { // Level 1-2
+        spawnInterval: 500,
+        maxEntities: 50,
+        levelDuration: 75000, // 75 seconds
+      },
+      3: { // Level 1-3
+        spawnInterval: 400,
+        maxEntities: 60,
+        levelDuration: 90000, // 90 seconds
+      },
+      // Future levels can scale further
+    };
+
+    const config = difficultyConfig[level] || {
+      spawnInterval: Math.max(300, 600 - (level * 50)),
+      maxEntities: Math.min(80, 40 + (level * 10)),
+      levelDuration: 60000 + (level * 15000),
+    };
+
+    this.spawnInterval = config.spawnInterval;
+    this.maxEntities = config.maxEntities;
+    this.state.levelDuration = config.levelDuration;
   }
 
   /**
