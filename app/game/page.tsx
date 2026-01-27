@@ -1,15 +1,17 @@
 /**
  * Game page
+ * Integrated with Run State Management System
  */
 'use client';
 
 export const dynamic = 'force-dynamic';
 export const ssr = false;
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import GameCanvas from '@/components/GameCanvas';
 import { EssenceManager } from '@/lib/meta/essence';
+import { clearRunState } from '@/lib/game/run-state';
 
 export default function GamePage() {
   const router = useRouter();
@@ -22,10 +24,18 @@ export default function GamePage() {
     setEndScore(score);
     setEndEssence(essence);
     setShowEndScreen(true);
+    // Run state is already cleared by GameCanvas on game over
   };
 
   const handleContinue = () => {
     router.push('/');
+  };
+
+  const handlePlayAgain = () => {
+    // Clear run state to start fresh
+    clearRunState();
+    setShowEndScreen(false);
+    window.location.reload();
   };
 
   return (
@@ -66,10 +76,7 @@ export default function GamePage() {
                 Continue
               </button>
               <button
-                onClick={() => {
-                  setShowEndScreen(false);
-                  window.location.reload();
-                }}
+                onClick={handlePlayAgain}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-colors"
               >
                 Play Again
