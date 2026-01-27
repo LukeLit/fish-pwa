@@ -462,6 +462,11 @@ export class GameEngine {
     if (this.player.stats.size < 1) {
       this.gameOver();
     }
+    
+    // Die if starving
+    if (this.player.isStarving()) {
+      this.gameOver();
+    }
   }
 
   /**
@@ -647,6 +652,31 @@ export class GameEngine {
 
     p5.pop();
 
+    // Low hunger visual warning (red tint and vignette)
+    if (this.player.stats.hunger <= 25) {
+      p5.push();
+      const pulse = Math.sin(Date.now() * 0.008) * 0.5 + 0.5;
+      const intensity = (1 - this.player.stats.hunger / 25) * 0.3 * pulse;
+      
+      // Red tint overlay
+      p5.fill(255, 0, 0, intensity * 255);
+      p5.noStroke();
+      p5.rect(0, 0, p5.width, p5.height);
+      
+      // Vignette effect (darker edges)
+      const ctx = p5.drawingContext as CanvasRenderingContext2D;
+      const vignette = ctx.createRadialGradient(
+        p5.width / 2, p5.height / 2, 0,
+        p5.width / 2, p5.height / 2, Math.max(p5.width, p5.height) * 0.6
+      );
+      vignette.addColorStop(0, 'rgba(139, 0, 0, 0)');
+      vignette.addColorStop(1, `rgba(139, 0, 0, ${intensity * 0.6})`);
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, p5.width, p5.height);
+      
+      p5.pop();
+    }
+
     // UI overlay
     this.renderUI();
   }
@@ -682,10 +712,61 @@ export class GameEngine {
     p5.fill(staminaPercent > 0.3 ? '#4ade80' : '#ef4444');
     p5.rect(80, 110, 100 * staminaPercent, 15);
 
+    // Hunger Meter - centered at top
+    const hungerBarWidth = 300;
+    const hungerBarHeight = 30;
+    const hungerBarX = (p5.width - hungerBarWidth) / 2;
+    const hungerBarY = 20;
+    const hungerPercent = this.player.stats.hunger / 100;
+    
+    // Background with chunky border (DICE VADERS style)
+    p5.strokeWeight(4);
+    p5.stroke(255, 255, 255, 230);
+    p5.fill(0, 0, 0, 150);
+    p5.rect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
+    
+    // Hunger fill - color-coded
+    let hungerColor;
+    if (hungerPercent > 0.5) {
+      hungerColor = p5.color(74, 222, 128); // Green
+    } else if (hungerPercent > 0.25) {
+      hungerColor = p5.color(251, 191, 36); // Yellow
+    } else {
+      hungerColor = p5.color(239, 68, 68); // Red
+    }
+    
+    p5.noStroke();
+    p5.fill(hungerColor);
+    const fillWidth = (hungerBarWidth - 8) * hungerPercent;
+    p5.rect(hungerBarX + 4, hungerBarY + 4, fillWidth, hungerBarHeight - 8);
+    
+    // Glow effect for low hunger
+    if (hungerPercent <= 0.25) {
+      const pulse = Math.sin(Date.now() * 0.005) * 0.3 + 0.7;
+      p5.drawingContext.shadowColor = `rgb(239, 68, 68)`;
+      p5.drawingContext.shadowBlur = 20 * pulse;
+      p5.strokeWeight(3);
+      p5.stroke(hungerColor);
+      p5.noFill();
+      p5.rect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
+      p5.drawingContext.shadowBlur = 0;
+    }
+    
+    // Text label
+    p5.fill(255, 255, 255, 240);
+    p5.noStroke();
+    p5.textSize(16);
+    p5.textAlign(p5.CENTER, p5.CENTER);
+    p5.textStyle(p5.BOLD);
+    p5.text(`HUNGER: ${Math.ceil(this.player.stats.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
+
     // Mutations
     const activeMutations = this.mutations.getActiveMutations();
     if (activeMutations.length > 0) {
       p5.fill(255);
+      p5.textAlign(p5.LEFT, p5.TOP);
+      p5.textSize(16);
+      p5.textStyle(p5.NORMAL);
       p5.text(`Mutations: ${activeMutations.map(m => m.name).join(', ')}`, 10, 130);
     }
 
