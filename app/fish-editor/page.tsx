@@ -252,6 +252,18 @@ export default function FishEditorPage() {
       return newMap;
     });
     
+    // Spawn the fish to canvas if not already spawned
+    setSpawnedFish((prev) => {
+      const alreadySpawned = prev.some(f => f.id === fish.id);
+      if (alreadySpawned) {
+        // Update existing spawned fish with latest sprite
+        return prev.map(f => f.id === fish.id ? { ...f, sprite: fish.sprite, type: fish.type } : f);
+      } else {
+        // Spawn new fish
+        return [...prev, { id: fish.id, sprite: fish.sprite, type: fish.type }];
+      }
+    });
+    
     // Enter edit mode for this fish
     setSelectedFishId(fish.id);
     setEditMode(true);
@@ -260,6 +272,20 @@ export default function FishEditorPage() {
   const handleAddNewCreature = () => {
     // Create a new empty creature
     const newId = `creature_${Date.now()}`;
+    
+    // Create a simple placeholder sprite
+    const placeholderSprite = (() => {
+      const c = document.createElement('canvas');
+      c.width = 80;
+      c.height = 40;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#808080'; // Gray placeholder
+      ctx.beginPath();
+      ctx.ellipse(35, 20, 25, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return c.toDataURL('image/png');
+    })();
+    
     const newFish: FishData = {
       id: newId,
       name: 'New Creature',
@@ -271,7 +297,7 @@ export default function FishEditorPage() {
         health: 20,
         damage: 5,
       },
-      sprite: '',
+      sprite: placeholderSprite,
       rarity: 'common',
       playable: false,
       biomeId: 'shallow',
@@ -287,6 +313,12 @@ export default function FishEditorPage() {
       newMap.set(newId, newFish);
       return newMap;
     });
+    
+    // Spawn the fish to the canvas so it's visible
+    setSpawnedFish((prev) => [
+      ...prev,
+      { id: newId, sprite: placeholderSprite, type: 'prey' }
+    ]);
     
     setSelectedFishId(newId);
     setEditMode(true);
@@ -332,9 +364,9 @@ export default function FishEditorPage() {
       newMap.set(fish.id, fish);
       return newMap;
     });
-    // Update spawned fish type if changed
+    // Update spawned fish sprite and type if changed
     setSpawnedFish((prev) =>
-      prev.map((f) => (f.id === fish.id ? { ...f, type: fish.type } : f))
+      prev.map((f) => (f.id === fish.id ? { ...f, sprite: fish.sprite, type: fish.type } : f))
     );
   };
 
