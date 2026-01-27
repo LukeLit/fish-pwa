@@ -1,0 +1,15 @@
+<svg width="250" height="125" viewBox="0 0 250 125" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bass body (larger, green) -->
+  <ellipse cx="125" cy="62.5" rx="80" ry="40" fill="#4A7C59" stroke="#2D5F3D" stroke-width="3"/>
+  <!-- Tail -->
+  <path d="M 45 62.5 L 10 40 L 30 62.5 L 10 85 Z" fill="#4A7C59" stroke="#2D5F3D" stroke-width="3"/>
+  <!-- Eye -->
+  <circle cx="180" cy="50" r="10" fill="white" stroke="black" stroke-width="1"/>
+  <circle cx="183" cy="50" r="5" fill="black"/>
+  <!-- Dorsal fin -->
+  <path d="M 125 22.5 L 110 5 L 140 22.5 Z" fill="#4A7C59" stroke="#2D5F3D" stroke-width="3"/>
+  <!-- Belly fin -->
+  <path d="M 125 102.5 L 110 120 L 140 102.5 Z" fill="#4A7C59" stroke="#2D5F3D" stroke-width="3"/>
+  <!-- Mouth -->
+  <path d="M 200 62.5 Q 210 57.5 215 62.5" fill="none" stroke="#2D5F3D" stroke-width="2"/>
+</svg>

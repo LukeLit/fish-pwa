@@ -76,7 +76,7 @@ export default function MetaHub() {
         <div className="flex flex-col gap-4">
           {/* Start Game Button */}
           <Link
-            href="/game"
+            href="/fish-select"
             className="group relative bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-bold py-6 px-8 rounded-lg text-center text-2xl uppercase tracking-wider transition-all transform hover:scale-105 border-4 border-red-400/50 shadow-[0_0_25px_rgba(220,38,38,0.4)] hover:shadow-[0_0_35px_rgba(220,38,38,0.6)]"
           >
             <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Start Game</span>
