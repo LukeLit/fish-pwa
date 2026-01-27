@@ -4,7 +4,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { saveCreatureToLocal } from '@/lib/storage/local-fish-storage';
 
 export interface FishData {
   id: string;
@@ -73,6 +72,9 @@ export default function FishEditOverlay({
   const [editedFish, setEditedFish] = useState<FishData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationPrompt, setGenerationPrompt] = useState('');
+  const [selectedModel, setSelectedModel] = useState<'google/imagen-4.0-fast-generate-001' | 'google/imagen-4.0-generate-001' | 'bfl/flux-2-pro'>('google/imagen-4.0-fast-generate-001');
 
   useEffect(() => {
     if (fish) {
@@ -94,15 +96,22 @@ export default function FishEditOverlay({
     }
   }, [fish]);
 
+  useEffect(() => {
+    // Set default prompt based on fish type
+    if (editedFish) {
+      const typePrompts: Record<string, string> = {
+        prey: `A small, swift fish with greenish scales and streamlined body, isolated on solid bright magenta background (#FF00FF), no other background elements, game sprite, side view right-facing, detailed scales and fins`,
+        predator: `A large, aggressive fish with sharp teeth, reddish tones, and menacing appearance, isolated on solid bright magenta background (#FF00FF), no other background elements, game sprite, side view right-facing, detailed scales and fins`,
+        mutant: `A bizarre mutant fish with twisted fins, glowing eyes, and surreal features, isolated on solid bright magenta background (#FF00FF), no other background elements, game sprite, side view right-facing, detailed scales and fins`,
+      };
+      setGenerationPrompt(typePrompts[editedFish.type] || typePrompts.prey);
+    }
+  }, [editedFish?.type]);
+
   if (!fish || !editedFish) return null;
 
-  const handleSave = () => {
-    onSave(editedFish);
-    setSaveMessage('');
-  };
-
   const handleSaveToGame = async () => {
-    if (!editedFish) return; // Null check
+    if (!editedFish) return;
     
     setIsSaving(true);
     setSaveMessage('');
@@ -284,17 +293,20 @@ export default function FishEditOverlay({
         {/* Sprite Selection */}
         <div>
           <label className="block text-sm font-bold text-white mb-2">Sprite</label>
-          <div className="flex gap-2">
+          <div className="space-y-3">
+            {/* Current sprite preview */}
             {editedFish.sprite && (
-              <div className="w-20 h-20 bg-gray-800 rounded border border-gray-600 flex items-center justify-center overflow-hidden">
+              <div className="w-full bg-gray-800 rounded border border-gray-600 p-3 flex items-center justify-center" style={{ minHeight: '100px' }}>
                 <img 
                   src={editedFish.sprite} 
                   alt="Current sprite"
-                  className="max-w-full max-h-full object-contain"
+                  className="max-w-full max-h-24 object-contain"
                 />
               </div>
             )}
-            <div className="flex-1 flex flex-col gap-2">
+            
+            {/* Action buttons */}
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => {
                   if (onOpenArtSelector) {
@@ -304,13 +316,66 @@ export default function FishEditOverlay({
                     });
                   }
                 }}
-                className="w-full bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
               >
-                {editedFish.sprite ? 'Change Art' : 'Select Existing Art'}
+                Select Existing
               </button>
-              <p className="text-xs text-gray-400">
-                {editedFish.sprite ? 'Art selected' : 'No art selected - choose existing or generate new'}
-              </p>
+              <button
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'image/*';
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        updateField('sprite', ev.target?.result as string);
+                        setSaveMessage('✓ Image uploaded. Remember to save changes.');
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  };
+                  input.click();
+                }}
+                className="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                Upload Image
+              </button>
+            </div>
+
+            {/* AI Generation Section */}
+            <div className="border-t border-gray-700 pt-3 mt-2">
+              <p className="text-xs font-bold text-white mb-2">Or Generate with AI</p>
+              
+              {/* Model Selection */}
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value as any)}
+                className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 text-xs mb-2"
+              >
+                <option value="google/imagen-4.0-fast-generate-001">Imagen Fast</option>
+                <option value="google/imagen-4.0-generate-001">Imagen Standard</option>
+                <option value="bfl/flux-2-pro">Flux 2 Pro</option>
+              </select>
+
+              {/* Generation Prompt */}
+              <textarea
+                value={generationPrompt}
+                onChange={(e) => setGenerationPrompt(e.target.value)}
+                className="w-full bg-gray-800 text-white px-2 py-2 rounded border border-gray-600 text-xs font-mono mb-2"
+                rows={3}
+                placeholder="Enter generation prompt..."
+              />
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerateFish}
+                disabled={isGenerating || !generationPrompt.trim()}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {isGenerating ? 'Generating...' : 'Generate Fish Sprite'}
+              </button>
             </div>
           </div>
         </div>
@@ -628,21 +693,14 @@ export default function FishEditOverlay({
           />
         </div>
 
-        {/* Save Buttons */}
+        {/* Save Button */}
         <div className="space-y-2">
-          <button
-            onClick={handleSave}
-            className="w-full bg-green-600 hover:bg-green-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors"
-          >
-            Save Changes (Local)
-          </button>
-          
           <button
             onClick={handleSaveToGame}
             disabled={isSaving}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? 'Saving to Game...' : 'Save to Game (Persistent)'}
+            {isSaving ? 'Saving...' : 'Save Creature'}
           </button>
           
           {editedFish.playable && (
