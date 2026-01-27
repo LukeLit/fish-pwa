@@ -629,7 +629,7 @@ export class GameEngine {
     if (!this.player) return;
 
     // Get creature data to access essence types
-    const creatureId = (fish as Record<string, unknown>).creatureId as string || 'unknown';
+    const creatureId = (fish as unknown as Record<string, unknown>).creatureId as string || 'unknown';
     const creature = (async () => {
       const { getCreature } = await import('./data/creatures');
       return getCreature(creatureId);

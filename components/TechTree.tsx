@@ -15,7 +15,8 @@ const getUpgradeEffect = (id: string): string => {
   
   const effect = upgrade.effects[0];
   if (effect.type === 'stat') {
-    return `${effect.value > 0 ? '+' : ''}${effect.value}${effect.perLevel ? ' per level' : ''}`;
+    const value = typeof effect.value === 'number' ? effect.value : 0;
+    return `${value > 0 ? '+' : ''}${value}${effect.perLevel ? ' per level' : ''}`;
   }
   return 'Upgrade effect';
 };
