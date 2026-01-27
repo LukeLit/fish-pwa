@@ -24,6 +24,8 @@ import {
 import { getBiome } from './data/biomes';
 import { getCreaturesByBiome } from './data/creatures';
 
+const DEFAULT_ESSENCE_COLOR = '#4ade80'; // Fallback color for essence orbs
+
 export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
 
 export interface GameState {
@@ -353,10 +355,15 @@ export class GameEngine {
       
       for (const creature of availableCreatures) {
         randomWeight -= creature.spawnRules.spawnWeight;
-        if (randomWeight <= 0) {
+        if (randomWeight < 0) {
           selectedCreature = creature;
           break;
         }
+      }
+      
+      // Fallback to last creature if loop didn't select one
+      if (!selectedCreature && availableCreatures.length > 0) {
+        selectedCreature = availableCreatures[availableCreatures.length - 1];
       }
 
       // Spawn away from player but within visible range
@@ -438,7 +445,7 @@ export class GameEngine {
       
       // Pick random essence type from biome's available types
       const essenceType = essenceTypes[Math.floor(Math.random() * essenceTypes.length)];
-      const essenceColor = ESSENCE_TYPES[essenceType]?.color || '#4ade80';
+      const essenceColor = ESSENCE_TYPES[essenceType]?.color || DEFAULT_ESSENCE_COLOR;
       const amount = 1 + Math.floor(Math.random() * 3); // 1-3 essence per orb
       
       const orb = new EssenceOrb(
@@ -613,7 +620,7 @@ export class GameEngine {
         fish.x,
         fish.y,
         `+${essenceYield} Shallow`,
-        ESSENCE_TYPES['shallow']?.color || '#4ade80'
+        ESSENCE_TYPES['shallow']?.color || DEFAULT_ESSENCE_COLOR
       );
     }
   }
