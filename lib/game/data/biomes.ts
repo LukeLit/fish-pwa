@@ -19,18 +19,21 @@ export const BIOME_SHALLOW: Biome = {
   availableEssenceTypes: ['shallow'],
   visualTheme: 'Bright, colorful coral reef with tropical fish and clear waters',
   backgroundAssets: {
-    backgroundImage: '/backgrounds/shallow.png',
-    stageElements: ['/backgrounds/coral.png', '/backgrounds/plants.png'],
+    backgroundImage: '/backgrounds/shallow.svg',
+    stageElements: ['/backgrounds/coral.svg', '/backgrounds/plants.svg'],
     lighting: 'bright',
   },
   unlockCost: {}, // Starting biome, no cost
   essenceOrbSpawnRate: 0.5, // Moderate spawn rate
   creatureSpawnRules: {
-    sharedCreatures: ['goldfish_starter', 'small_prey', 'medium_predator'],
+    sharedCreatures: ['goldfish_starter', 'tiny_fish', 'small_prey', 'medium_fish', 'medium_predator', 'large_predator'],
     spawnWeights: {
       goldfish_starter: 10,
+      tiny_fish: 40,
       small_prey: 30,
+      medium_fish: 20,
       medium_predator: 15,
+      large_predator: 5,
     },
   },
 };

@@ -101,12 +101,108 @@ export const CREATURE_MEDIUM_PREDATOR: Creature = {
 };
 
 /**
+ * Tiny prey fish - Very small and easy to catch
+ */
+export const CREATURE_TINY_FISH: Creature = {
+  id: 'tiny_fish',
+  name: 'Guppy',
+  description: 'The smallest fish in the ocean. Easy prey.',
+  type: 'prey',
+  rarity: 'common',
+  sprite: '/sprites/fish/minnow.svg',
+  biomeId: 'shallow',
+  stats: {
+    size: 5, // Tiny
+    speed: 6,
+    health: 3,
+    damage: 0,
+  },
+  essenceTypes: [
+    {
+      type: 'shallow',
+      baseYield: 1,
+    },
+  ],
+  spawnRules: {
+    canAppearIn: ['shallow'],
+    spawnWeight: 40, // Very common
+    minDepth: 0,
+    maxDepth: 50,
+  },
+};
+
+/**
+ * Medium competition fish - Similar size to starter
+ */
+export const CREATURE_MEDIUM_FISH: Creature = {
+  id: 'medium_fish',
+  name: 'Perch',
+  description: 'A medium-sized fish, neither prey nor predator.',
+  type: 'prey',
+  rarity: 'common',
+  sprite: '/sprites/fish/goldfish.svg',
+  biomeId: 'shallow',
+  stats: {
+    size: 25, // Similar to goldfish
+    speed: 5,
+    health: 20,
+    damage: 5,
+  },
+  essenceTypes: [
+    {
+      type: 'shallow',
+      baseYield: 5,
+    },
+  ],
+  spawnRules: {
+    canAppearIn: ['shallow'],
+    spawnWeight: 20,
+    minDepth: 0,
+    maxDepth: 50,
+  },
+};
+
+/**
+ * Large predator - Dangerous to small fish
+ */
+export const CREATURE_LARGE_PREDATOR: Creature = {
+  id: 'large_predator',
+  name: 'Pike',
+  description: 'A large predator, very dangerous.',
+  type: 'predator',
+  rarity: 'uncommon',
+  sprite: '/sprites/fish/bass.svg',
+  biomeId: 'shallow',
+  stats: {
+    size: 60, // Much larger
+    speed: 3,
+    health: 50,
+    damage: 15,
+  },
+  essenceTypes: [
+    {
+      type: 'shallow',
+      baseYield: 12,
+    },
+  ],
+  spawnRules: {
+    canAppearIn: ['shallow'],
+    spawnWeight: 5, // Less common
+    minDepth: 0,
+    maxDepth: 50,
+  },
+};
+
+/**
  * All creatures available in the game
  */
 export const CREATURES: Record<string, Creature> = {
   goldfish_starter: CREATURE_GOLDFISH,
   small_prey: CREATURE_SMALL_PREY,
   medium_predator: CREATURE_MEDIUM_PREDATOR,
+  tiny_fish: CREATURE_TINY_FISH,
+  medium_fish: CREATURE_MEDIUM_FISH,
+  large_predator: CREATURE_LARGE_PREDATOR,
 };
 
 /**

@@ -1,0 +1,21 @@
+<svg width="200" height="300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Coral branch 1 -->
+  <path d="M 100 280 Q 80 220 70 160 Q 65 120 80 80 Q 85 60 90 40" 
+        fill="none" stroke="#FF6B6B" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="90" cy="40" r="12" fill="#FF8787"/>
+  <circle cx="85" cy="50" r="8" fill="#FF6B6B"/>
+  
+  <!-- Coral branch 2 -->
+  <path d="M 100 280 Q 110 230 120 180 Q 125 140 115 100 Q 112 70 108 45" 
+        fill="none" stroke="#FFA07A" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="108" cy="45" r="10" fill="#FFB89D"/>
+  <circle cx="112" cy="55" r="7" fill="#FFA07A"/>
+  
+  <!-- Coral branch 3 -->
+  <path d="M 100 280 Q 95 240 92 200 Q 90 160 95 120 Q 97 90 100 60" 
+        fill="none" stroke="#FA8072" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="100" cy="60" r="9" fill="#FA9585"/>
+  
+  <!-- Base -->
+  <ellipse cx="100" cy="285" rx="25" ry="15" fill="#8B4513" opacity="0.6"/>
+</svg>

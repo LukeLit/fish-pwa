@@ -1,0 +1,28 @@
+<svg width="150" height="250" xmlns="http://www.w3.org/2000/svg">
+  <!-- Seaweed strand 1 -->
+  <path d="M 50 240 Q 45 200 50 160 Q 55 120 45 80 Q 40 50 45 20" 
+        fill="none" stroke="#2E8B57" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  
+  <!-- Seaweed strand 2 -->
+  <path d="M 75 240 Q 80 195 75 150 Q 70 110 75 70 Q 78 40 75 15" 
+        fill="none" stroke="#3CB371" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+  
+  <!-- Seaweed strand 3 -->
+  <path d="M 100 240 Q 105 200 100 160 Q 95 125 100 85 Q 103 55 100 25" 
+        fill="none" stroke="#20B2AA" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  
+  <!-- Leaves on strand 1 -->
+  <ellipse cx="50" cy="120" rx="8" ry="15" fill="#3CB371" opacity="0.6" transform="rotate(-20 50 120)"/>
+  <ellipse cx="45" cy="80" rx="7" ry="13" fill="#3CB371" opacity="0.6" transform="rotate(15 45 80)"/>
+  
+  <!-- Leaves on strand 2 -->
+  <ellipse cx="75" cy="140" rx="9" ry="16" fill="#48D597" opacity="0.6" transform="rotate(25 75 140)"/>
+  <ellipse cx="75" cy="90" rx="8" ry="14" fill="#48D597" opacity="0.6" transform="rotate(-15 75 90)"/>
+  
+  <!-- Leaves on strand 3 -->
+  <ellipse cx="100" cy="130" rx="7" ry="14" fill="#40E0D0" opacity="0.6" transform="rotate(-18 100 130)"/>
+  <ellipse cx="100" cy="85" rx="8" ry="15" fill="#40E0D0" opacity="0.6" transform="rotate(20 100 85)"/>
+  
+  <!-- Base -->
+  <rect x="40" y="235" width="65" height="15" rx="3" fill="#8B7355" opacity="0.5"/>
+</svg>

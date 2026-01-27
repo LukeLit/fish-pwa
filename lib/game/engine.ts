@@ -5,7 +5,7 @@ import p5 from 'p5';
 import Matter from 'matter-js';
 import { PhysicsEngine } from './physics';
 import { Player } from './player';
-import { Entity, Fish, Food } from './entities';
+import { Entity, Fish, Food, EssenceOrb } from './entities';
 import { MutationSystem } from './mutations';
 import { PhaseManager } from './phases';
 import { SeededRNG, generateSeed } from './procgen';
@@ -13,6 +13,18 @@ import { EssenceManager } from '../meta/essence';
 import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
+import { ESSENCE_TYPES } from './data/essence-types';
+import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
+import {
+  HUNGER_LOW_THRESHOLD,
+  HUNGER_WARNING_PULSE_FREQUENCY,
+  HUNGER_WARNING_PULSE_BASE,
+  HUNGER_WARNING_INTENSITY,
+} from './hunger-constants';
+import { getBiome } from './data/biomes';
+import { getCreaturesByBiome } from './data/creatures';
+
+const DEFAULT_ESSENCE_COLOR = '#4ade80'; // Fallback color for essence orbs
 
 export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
 
@@ -55,10 +67,15 @@ export class GameEngine {
   private spawnInterval: number = 500; // ms - reduced for more frequent spawns
   private maxEntities: number = 50; // Limit total entities to prevent performance issues
   private particles: Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string }> = [];
+  private floatingTexts: Array<{ x: number; y: number; vy: number; text: string; life: number; color: string }> = [];
   private audio = getAudioManager();
   private fxhash = getFxhash();
   private backgroundImage: p5.Image | null = null;
+  private stageElementImages: p5.Image[] = [];
   private isLoadingBackground: boolean = false;
+  private lastEssenceOrbSpawn: number = 0;
+  private essenceOrbSpawnInterval: number = 3000; // Spawn essence orbs every 3 seconds
+  private currentBiomeId: string = 'shallow'; // Default to shallow biome
   
   // World bounds (larger world for better gameplay)
   private worldBounds = {
@@ -91,30 +108,41 @@ export class GameEngine {
   }
 
   /**
-   * Load random background image
+   * Load biome background and stage elements
    */
   private loadBackgroundImage(): void {
     if (this.isLoadingBackground || !this.p5Instance) return;
     this.isLoadingBackground = true;
 
-    fetch('/api/list-assets?type=background')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.assets.length > 0 && this.p5Instance) {
-          const randomBg = data.assets[Math.floor(Math.random() * data.assets.length)];
-          this.p5Instance.loadImage(randomBg.url, (img: p5.Image) => {
-            this.backgroundImage = img;
-          }, () => {
-            // Failed to load background, will use solid color fallback
-          });
-        }
-      })
-      .catch(err => {
-        // Failed to fetch background assets, will use solid color fallback
-      })
-      .finally(() => {
-        this.isLoadingBackground = false;
+    const biome = getBiome(this.currentBiomeId);
+    if (!biome) {
+      console.error(`Biome ${this.currentBiomeId} not found`);
+      this.isLoadingBackground = false;
+      return;
+    }
+
+    // Load background image
+    if (biome.backgroundAssets.backgroundImage) {
+      this.p5Instance.loadImage(biome.backgroundAssets.backgroundImage, (img: p5.Image) => {
+        this.backgroundImage = img;
+      }, () => {
+        console.warn(`Failed to load background: ${biome.backgroundAssets.backgroundImage}`);
       });
+    }
+
+    // Load stage elements
+    if (biome.backgroundAssets.stageElements) {
+      this.stageElementImages = [];
+      biome.backgroundAssets.stageElements.forEach((elementUrl) => {
+        this.p5Instance?.loadImage(elementUrl, (img: p5.Image) => {
+          this.stageElementImages.push(img);
+        }, () => {
+          console.warn(`Failed to load stage element: ${elementUrl}`);
+        });
+      });
+    }
+
+    this.isLoadingBackground = false;
   }
 
   /**
@@ -125,6 +153,7 @@ export class GameEngine {
     this.entities.forEach(e => e.destroy(this.physics));
     this.entities = [];
     this.particles = [];
+    this.floatingTexts = [];
     this.mutations.clear();
     this.phases.reset();
 
@@ -160,6 +189,7 @@ export class GameEngine {
 
     this.camera = { x: startX, y: startY };
     this.lastSpawnTime = Date.now();
+    this.lastEssenceOrbSpawn = Date.now();
   }
 
   /**
@@ -203,6 +233,9 @@ export class GameEngine {
 
     // Spawn entities
     this.spawnEntities();
+    
+    // Spawn essence orbs periodically
+    this.spawnEssenceOrbs();
 
     // Update entities
     this.entities.forEach(entity => {
@@ -234,6 +267,15 @@ export class GameEngine {
         life: p.life - deltaTime,
       }))
       .filter(p => p.life > 0);
+    
+    // Update floating texts
+    this.floatingTexts = this.floatingTexts
+      .map(t => ({
+        ...t,
+        y: t.y + t.vy,
+        life: t.life - deltaTime,
+      }))
+      .filter(t => t.life > 0);
 
     // Check phase transition
     if (this.phases.shouldTransition(this.player.stats.size)) {
@@ -280,7 +322,7 @@ export class GameEngine {
   }
 
   /**
-   * Spawn entities based on phase
+   * Spawn entities based on biome creature rules
    */
   private spawnEntities(): void {
     if (!this.p5Instance || !this.player) return;
@@ -294,19 +336,33 @@ export class GameEngine {
       return;
     }
 
-    const params = this.phases.getSpawnParams();
+    const biome = getBiome(this.currentBiomeId);
+    if (!biome) return;
+
+    // Get creatures available in this biome
+    const availableCreatures = getCreaturesByBiome(this.currentBiomeId);
+    if (availableCreatures.length === 0) return;
+
     // Spawn 1-3 fish per interval, but respect entity limit
     const maxToSpawn = Math.min(3, this.maxEntities - this.entities.length);
     const spawnCount = Math.floor(Math.random() * maxToSpawn) + 1;
     
     for (let i = 0; i < spawnCount; i++) {
-      const phaseConfig = this.phases.getCurrentConfig();
-      const worldWidth = this.worldBounds.maxX - this.worldBounds.minX;
-      const worldHeight = this.worldBounds.maxY - this.worldBounds.minY;
+      // Select creature based on spawn weights
+      const totalWeight = availableCreatures.reduce((sum, c) => sum + c.spawnRules.spawnWeight, 0);
+      let randomWeight = Math.random() * totalWeight;
+      let selectedCreature = availableCreatures[0]; // Default to first creature
+      
+      for (const creature of availableCreatures) {
+        randomWeight -= creature.spawnRules.spawnWeight;
+        if (randomWeight < 0) {
+          selectedCreature = creature;
+          break;
+        }
+      }
 
       // Spawn away from player but within visible range
       const angle = Math.random() * Math.PI * 2;
-      // Spawn at a distance between 200-600 pixels from player (visible on screen)
       const distance = 200 + Math.random() * 400;
       let x = this.player.x + Math.cos(angle) * distance;
       let y = this.player.y + Math.sin(angle) * distance;
@@ -315,41 +371,91 @@ export class GameEngine {
       x = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
       y = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
 
-      const type = this.rng.pick(params.types);
-      
-      // Spawn fish both smaller and larger than player for variety
+      // Calculate size based on creature size and player size for variety
       const playerSize = this.player.stats.size;
-      let size: number;
-      if (Math.random() < 0.4) {
-        // Smaller fish (prey)
-        size = this.rng.randomFloat(playerSize * 0.3, playerSize * 0.8);
-      } else if (Math.random() < 0.7) {
-        // Similar size (competition)
-        size = this.rng.randomFloat(playerSize * 0.8, playerSize * 1.3);
-      } else {
-        // Larger fish (predators)
-        size = this.rng.randomFloat(playerSize * 1.3, playerSize * 2.5);
-      }
+      const creatureBaseSize = selectedCreature.stats.size;
+      let size = creatureBaseSize;
       
-      // Ensure minimum and maximum sizes
-      size = Math.max(params.minSize, Math.min(params.maxSize, size));
-
-      if (type === 'food') {
-        const food = new Food(this.physics, { x, y, size: size * 0.3, type: 'food' });
-        this.entities.push(food);
+      // Add size variance based on player size
+      if (creatureBaseSize < playerSize * 0.8) {
+        // Small prey - keep close to base size
+        size = creatureBaseSize * (0.9 + Math.random() * 0.2); // 90-110% of base
+      } else if (creatureBaseSize > playerSize * 1.2) {
+        // Large predator - keep threatening
+        size = creatureBaseSize * (1.0 + Math.random() * 0.3); // 100-130% of base
       } else {
-        const fish = new Fish(this.physics, {
-          x,
-          y,
-          size,
-          type: type as 'prey' | 'predator',
-          speed: this.rng.randomFloat(1, 3),
-        });
-        this.entities.push(fish);
+        // Similar size - add more variance
+        size = creatureBaseSize * (0.8 + Math.random() * 0.4); // 80-120% of base
       }
+
+      // Create fish entity with creature data
+      const fish = new Fish(this.physics, {
+        x,
+        y,
+        size,
+        type: selectedCreature.type === 'mutant' ? 'predator' : selectedCreature.type,
+        speed: selectedCreature.stats.speed * (0.9 + Math.random() * 0.2), // Add slight speed variance
+      });
+      
+      this.entities.push(fish);
     }
 
     this.lastSpawnTime = now;
+  }
+
+  /**
+   * Spawn essence orbs periodically
+   */
+  private spawnEssenceOrbs(): void {
+    if (!this.p5Instance || !this.player) return;
+
+    const biome = getBiome(this.currentBiomeId);
+    if (!biome) return;
+
+    const now = Date.now();
+    // Adjust spawn interval based on biome spawn rate
+    const adjustedInterval = this.essenceOrbSpawnInterval / Math.max(0.1, biome.essenceOrbSpawnRate);
+    if (now - this.lastEssenceOrbSpawn < adjustedInterval) return;
+
+    // Don't spawn if at entity limit
+    if (this.entities.length >= this.maxEntities) {
+      this.lastEssenceOrbSpawn = now;
+      return;
+    }
+
+    // Spawn essence orbs based on biome's available essence types
+    const essenceTypes = biome.availableEssenceTypes;
+    const orbCount = 2 + Math.floor(Math.random() * 2); // 2-3 orbs
+    
+    for (let i = 0; i < orbCount; i++) {
+      // Spawn near player but not too close
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 100 + Math.random() * 300;
+      const x = this.player.x + Math.cos(angle) * distance;
+      const y = this.player.y + Math.sin(angle) * distance;
+      
+      // Clamp to world bounds
+      const clampedX = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
+      const clampedY = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
+      
+      // Pick random essence type from biome's available types
+      const essenceType = essenceTypes[Math.floor(Math.random() * essenceTypes.length)];
+      const essenceColor = ESSENCE_TYPES[essenceType]?.color || DEFAULT_ESSENCE_COLOR;
+      const amount = 1 + Math.floor(Math.random() * 3); // 1-3 essence per orb
+      
+      const orb = new EssenceOrb(
+        this.physics,
+        clampedX,
+        clampedY,
+        essenceType,
+        amount,
+        essenceColor
+      );
+      
+      this.entities.push(orb);
+    }
+
+    this.lastEssenceOrbSpawn = now;
   }
 
   /**
@@ -367,6 +473,12 @@ export class GameEngine {
       const collisionDistance = this.player.stats.size + entity.size;
 
       if (distance < collisionDistance) {
+        // Check for essence orb collection
+        if (entity instanceof EssenceOrb) {
+          this.collectEssenceOrb(entity);
+          return;
+        }
+        
         // Check if collision is from the front
         const isPlayerFrontCollision = this.player.isFrontCollision(entity);
         const isEntityFrontCollision = entity.isFrontCollision(this.player);
@@ -394,6 +506,7 @@ export class GameEngine {
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
             this.player.eat(entity);
+            this.dropEssenceFromFish(entity as Fish);
             entity.destroy(this.physics);
             this.createParticles(entity.x, entity.y, entity.color, 10);
             this.audio.playSound('bite', 0.3);
@@ -401,6 +514,7 @@ export class GameEngine {
         } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
           // Player eats entity (only from front)
           this.player.eat(entity);
+          this.dropEssenceFromFish(entity as Fish);
           entity.destroy(this.physics);
           this.createParticles(entity.x, entity.y, entity.color, 10);
           this.audio.playSound('bite', 0.3);
@@ -453,6 +567,60 @@ export class GameEngine {
   }
 
   /**
+   * Collect essence orb
+   */
+  private collectEssenceOrb(orb: EssenceOrb): void {
+    if (!this.player) return;
+
+    // Add essence to run state
+    let runState = loadRunState();
+    if (runState) {
+      runState = addEssenceToRun(runState, orb.essenceType, orb.amount);
+      saveRunState(runState);
+    }
+
+    // Create visual effects
+    this.createParticles(orb.x, orb.y, orb.color, 15);
+    this.createFloatingText(
+      orb.x,
+      orb.y,
+      `+${orb.amount} ${ESSENCE_TYPES[orb.essenceType]?.name || orb.essenceType}`,
+      orb.color
+    );
+
+    // Play collection sound
+    this.audio.playSound('mutation', 0.3);
+
+    // Destroy orb
+    orb.destroy(this.physics);
+  }
+
+  /**
+   * Drop essence when fish is eaten
+   */
+  private dropEssenceFromFish(fish: Fish): void {
+    if (!this.player) return;
+
+    // For vertical slice, use simplified formula: yield = size * 0.1
+    const essenceYield = Math.max(1, Math.floor(fish.size * 0.1));
+    
+    // Add essence to run state
+    let runState = loadRunState();
+    if (runState) {
+      runState = addEssenceToRun(runState, 'shallow', essenceYield);
+      saveRunState(runState);
+      
+      // Create visual feedback
+      this.createFloatingText(
+        fish.x,
+        fish.y,
+        `+${essenceYield} Shallow`,
+        ESSENCE_TYPES['shallow']?.color || DEFAULT_ESSENCE_COLOR
+      );
+    }
+  }
+
+  /**
    * Check if player should die
    */
   private checkDeath(): void {
@@ -460,6 +628,11 @@ export class GameEngine {
 
     // Die if too small (edge case)
     if (this.player.stats.size < 1) {
+      this.gameOver();
+    }
+    
+    // Die if starving
+    if (this.player.isStarving()) {
       this.gameOver();
     }
   }
@@ -501,6 +674,7 @@ export class GameEngine {
     this.entities.forEach(e => e.destroy(this.physics));
     this.entities = [];
     this.particles = [];
+    this.floatingTexts = [];
 
     // Reset timer
     this.state.running = true;
@@ -508,6 +682,7 @@ export class GameEngine {
     this.state.startTime = Date.now();
     this.state.currentTime = 0;
     this.lastSpawnTime = Date.now();
+    this.lastEssenceOrbSpawn = Date.now();
 
     // Make enemies slightly harder each level
     this.spawnInterval = Math.max(300, this.spawnInterval - 20);
@@ -571,6 +746,20 @@ export class GameEngine {
   }
 
   /**
+   * Create floating text effect (like +X Essence)
+   */
+  private createFloatingText(x: number, y: number, text: string, color: string): void {
+    this.floatingTexts.push({
+      x,
+      y,
+      vy: -0.5, // Float upward
+      text,
+      life: 2000, // 2 seconds
+      color,
+    });
+  }
+
+  /**
    * Render game
    */
   render(): void {
@@ -611,6 +800,39 @@ export class GameEngine {
       p5.background(phaseConfig.backgroundColor);
     }
 
+    // Draw stage elements with parallax (before camera translation)
+    if (this.stageElementImages.length > 0) {
+      const biome = getBiome(this.currentBiomeId);
+      const parallaxFactor = 0.5; // Stage elements move at 50% of camera speed
+      const stageOffsetX = this.camera.x * parallaxFactor;
+      const stageOffsetY = this.camera.y * parallaxFactor;
+
+      // Position stage elements at bottom of screen
+      this.stageElementImages.forEach((img, index) => {
+        const spacing = p5.width / (this.stageElementImages.length + 1);
+        const x = spacing * (index + 1) - stageOffsetX;
+        const y = p5.height - img.height * 0.3 - stageOffsetY * 0.2; // Bottom aligned
+        const scale = 0.3; // Scale down to fit screen
+        
+        p5.push();
+        p5.imageMode(p5.CENTER);
+        p5.image(img, x, y, img.width * scale, img.height * scale);
+        p5.pop();
+      });
+    }
+
+    // Apply biome lighting tint
+    const biome = getBiome(this.currentBiomeId);
+    if (biome?.backgroundAssets.lighting === 'bright') {
+      // Slight brightness boost for shallow waters
+      p5.push();
+      p5.blendMode(p5.ADD);
+      p5.fill(255, 255, 255, 10);
+      p5.noStroke();
+      p5.rect(0, 0, p5.width, p5.height);
+      p5.pop();
+    }
+
     // Translate to camera
     p5.push();
     p5.translate(p5.width / 2 - this.camera.x, p5.height / 2 - this.camera.y);
@@ -645,7 +867,49 @@ export class GameEngine {
       p5.pop();
     });
 
+    // Render floating texts
+    this.floatingTexts.forEach(floatingText => {
+      p5.push();
+      const alpha = Math.min(255, (floatingText.life / 2000) * 255);
+      p5.fill(p5.red(floatingText.color), p5.green(floatingText.color), p5.blue(floatingText.color), alpha);
+      p5.textSize(18);
+      p5.textAlign(p5.CENTER, p5.CENTER);
+      p5.textStyle(p5.BOLD);
+      // Add black outline for readability
+      p5.strokeWeight(3);
+      p5.stroke(0, 0, 0, alpha);
+      p5.text(floatingText.text, floatingText.x, floatingText.y);
+      p5.pop();
+    });
+
     p5.pop();
+
+    // Low hunger visual warning (red tint and vignette)
+    if (this.player.stats.hunger <= HUNGER_LOW_THRESHOLD) {
+      p5.push();
+      const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
+      const intensity = (1 - this.player.stats.hunger / HUNGER_LOW_THRESHOLD) * HUNGER_WARNING_INTENSITY * pulse;
+      
+      // Red tint overlay
+      p5.fill(255, 0, 0, intensity * 255);
+      p5.noStroke();
+      p5.rect(0, 0, p5.width, p5.height);
+      
+      // Vignette effect (darker edges)
+      p5.push();
+      const ctx = p5.drawingContext as CanvasRenderingContext2D;
+      const vignette = ctx.createRadialGradient(
+        p5.width / 2, p5.height / 2, 0,
+        p5.width / 2, p5.height / 2, Math.max(p5.width, p5.height) * 0.6
+      );
+      vignette.addColorStop(0, 'rgba(139, 0, 0, 0)');
+      vignette.addColorStop(1, `rgba(139, 0, 0, ${intensity * 0.6})`);
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, p5.width, p5.height);
+      p5.pop();
+      
+      p5.pop();
+    }
 
     // UI overlay
     this.renderUI();
@@ -672,7 +936,11 @@ export class GameEngine {
     const seconds = Math.ceil(timeLeft / 1000);
     p5.text(`Time: ${seconds}s`, 10, 70);
     
-    p5.text(`Essence: ${this.state.cachedEssence ?? 0}`, 10, 90);
+    // Show collected essence from run state
+    const runState = loadRunState();
+    const collectedEssence = runState?.collectedEssence || {};
+    const totalCollected = Object.values(collectedEssence).reduce((sum, val) => sum + val, 0);
+    p5.text(`Essence Collected: ${totalCollected}`, 10, 90);
     
     // Stamina bar
     const staminaPercent = this.player.stamina / this.player.maxStamina;
@@ -682,10 +950,64 @@ export class GameEngine {
     p5.fill(staminaPercent > 0.3 ? '#4ade80' : '#ef4444');
     p5.rect(80, 110, 100 * staminaPercent, 15);
 
+    // Hunger Meter - centered at top
+    const hungerBarWidth = 300;
+    const hungerBarHeight = 30;
+    const hungerBarX = (p5.width - hungerBarWidth) / 2;
+    const hungerBarY = 20;
+    const hungerPercent = this.player.stats.hunger / 100;
+    
+    // Background with chunky border (DICE VADERS style)
+    p5.strokeWeight(4);
+    p5.stroke(255, 255, 255, 230);
+    p5.fill(0, 0, 0, 150);
+    p5.rect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
+    
+    // Hunger fill - color-coded
+    let hungerColor;
+    if (hungerPercent > 0.5) {
+      hungerColor = p5.color(74, 222, 128); // Green
+    } else if (hungerPercent > 0.25) {
+      hungerColor = p5.color(251, 191, 36); // Yellow
+    } else {
+      hungerColor = p5.color(239, 68, 68); // Red
+    }
+    
+    p5.noStroke();
+    p5.fill(hungerColor);
+    const fillWidth = (hungerBarWidth - 8) * hungerPercent;
+    p5.rect(hungerBarX + 4, hungerBarY + 4, fillWidth, hungerBarHeight - 8);
+    
+    // Glow effect for low hunger
+    if (hungerPercent <= 0.25) {
+      p5.push();
+      const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
+      p5.drawingContext.shadowColor = `rgb(239, 68, 68)`;
+      p5.drawingContext.shadowBlur = 20 * pulse;
+      p5.strokeWeight(3);
+      p5.stroke(hungerColor);
+      p5.noFill();
+      p5.rect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
+      p5.drawingContext.shadowBlur = 0;
+      p5.drawingContext.shadowColor = 'transparent';
+      p5.pop();
+    }
+    
+    // Text label
+    p5.fill(255, 255, 255, 240);
+    p5.noStroke();
+    p5.textSize(16);
+    p5.textAlign(p5.CENTER, p5.CENTER);
+    p5.textStyle(p5.BOLD);
+    p5.text(`HUNGER: ${Math.ceil(this.player.stats.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
+
     // Mutations
     const activeMutations = this.mutations.getActiveMutations();
     if (activeMutations.length > 0) {
       p5.fill(255);
+      p5.textAlign(p5.LEFT, p5.TOP);
+      p5.textSize(16);
+      p5.textStyle(p5.NORMAL);
       p5.text(`Mutations: ${activeMutations.map(m => m.name).join(', ')}`, 10, 130);
     }
 

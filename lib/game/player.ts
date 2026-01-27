@@ -7,6 +7,7 @@ import { PhysicsEngine } from './physics';
 import { Entity } from './entities';
 import { FishGenerator, FishShape } from '../assets/fish-generator';
 import { getAssetManager } from '../ai/asset-manager';
+import { HUNGER_RESTORE_MULTIPLIER, HUNGER_DRAIN_RATE, HUNGER_MAX } from './hunger-constants';
 
 export interface PlayerStats {
   size: number;
@@ -14,6 +15,8 @@ export interface PlayerStats {
   score: number;
   speed: number;
   growthMultiplier: number;
+  hunger: number;
+  hungerDrainRate: number;
 }
 
 export class Player extends Entity {
@@ -43,6 +46,8 @@ export class Player extends Entity {
       score: 0,
       speed: 3,
       growthMultiplier: 1,
+      hunger: HUNGER_MAX,
+      hungerDrainRate: HUNGER_DRAIN_RATE,
     };
 
     // Initialize fish generator with a seed based on player ID
@@ -95,6 +100,9 @@ export class Player extends Entity {
 
   update(deltaTime: number, physics: PhysicsEngine): void {
     super.update(deltaTime);
+
+    // Update hunger (drain over time)
+    this.stats.hunger = Math.max(0, this.stats.hunger - (this.stats.hungerDrainRate * deltaTime / 1000));
 
     // Handle movement input
     const moveSpeed = this.stats.speed * 0.02;
@@ -156,6 +164,14 @@ export class Player extends Entity {
     // Calculate growth based on entity size
     const growthAmount = entity.size * 0.1;
     this.grow(growthAmount);
+    
+    // Restore hunger based on entity size
+    const hungerRestore = Math.min(entity.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - this.stats.hunger);
+    this.stats.hunger = Math.min(HUNGER_MAX, this.stats.hunger + hungerRestore);
+  }
+
+  isStarving(): boolean {
+    return this.stats.hunger <= 0;
   }
 
   canEat(entity: Entity): boolean {

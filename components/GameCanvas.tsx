@@ -17,9 +17,11 @@ import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
+  onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
+  onLevelComplete?: () => void;
 }
 
-export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
+export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: GameCanvasProps) {
   const [isClient, setIsClient] = useState(false);
   const [runState, setRunState] = useState<RunState | null>(null);
   
@@ -27,6 +29,8 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
   const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
+  const [levelDuration, setLevelDuration] = useState<number>(60000);
+  const [currentLevel, setCurrentLevel] = useState<string>('1-1');
 
   useEffect(() => {
     setIsClient(true);
@@ -52,6 +56,15 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
     // Load assets based on run state
     const loadGameAssets = async (currentRunState: RunState) => {
       try {
+        // Parse level to get difficulty scaling
+        const level = parseLevelString(currentRunState.currentLevel);
+        setCurrentLevel(currentRunState.currentLevel);
+        
+        // Calculate level-based difficulty
+        const duration = 60000 + (level.levelNum - 1) * 15000; // 60s, 75s, 90s
+        const fishCount = 10 + (level.levelNum - 1) * 5; // 10, 15, 20
+        setLevelDuration(duration);
+        
         // Load background
         const bgResponse = await fetch('/api/list-assets?type=background');
         const bgData = await bgResponse.json();
@@ -77,13 +90,13 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         if (fishData.success && fishData.assets.length > 0) {
           const assets = fishData.assets as Array<{ filename: string; url: string }>;
           
-          // Spawn some prey fish
+          // Spawn fish based on level difficulty
           const preyCandidates = assets.filter((a) =>
             a.filename.toLowerCase().includes('prey')
           );
-          const pool = preyCandidates.length >= 6 ? preyCandidates : assets;
+          const pool = preyCandidates.length >= fishCount ? preyCandidates : assets;
           const defaults = [];
-          for (let i = 0; i < 6; i++) {
+          for (let i = 0; i < fishCount; i++) {
             const pick = pool[i % pool.length];
             defaults.push({
               id: `prey_${Date.now()}_${i}`,
@@ -96,6 +109,18 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
       } catch (error) {
         console.error('Failed to load game assets:', error);
       }
+    };
+    
+    // Helper to parse level string (e.g., "1-1" -> {biome: 1, levelNum: 1})
+    const parseLevelString = (levelStr: string): { biome: number; levelNum: number } => {
+      const parts = levelStr.split('-');
+      if (parts.length !== 2) {
+        return { biome: 1, levelNum: 1 };
+      }
+      return {
+        biome: parseInt(parts[0], 10) || 1,
+        levelNum: parseInt(parts[1], 10) || 1,
+      };
     };
 
     const currentRunState = initializeRunState();
@@ -114,6 +139,11 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
 
   return (
     <div className="relative w-full h-full bg-black">
+      {/* Level Display */}
+      <div className="absolute top-4 left-4 z-40 bg-black/70 px-4 py-2 rounded-lg border border-cyan-400">
+        <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
+      </div>
+      
       <FishEditorCanvas
         background={selectedBackground}
         playerFishSprite={playerFishSprite}
@@ -123,12 +153,11 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
         enableWaterDistortion={false}
         deformationIntensity={1}
         gameMode={true}
-        levelDuration={60000}
-        onGameOver={(score) => {
-          // Clear run state on game over
+        levelDuration={levelDuration}
+        onGameOver={(stats) => {
           clearRunState();
-          if (onGameEnd) {
-            onGameEnd(score, 0);
+          if (onGameOver) {
+            onGameOver(stats);
           }
         }}
         onLevelComplete={(score) => {
@@ -136,8 +165,11 @@ export default function GameCanvas({ onGameEnd }: GameCanvasProps) {
           if (runState) {
             saveRunState(runState);
           }
-          if (onGameEnd) {
-            onGameEnd(score, score);
+          // Trigger digestion sequence instead of old flow
+          if (onLevelComplete) {
+            onLevelComplete();
+          } else if (onGameEnd) {
+            onGameEnd(score, 0);
           }
         }}
       />

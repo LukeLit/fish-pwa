@@ -408,3 +408,100 @@ export function progressToNextLevel(runState: RunState): RunState {
     hunger: 100, // Restore hunger for next level
   };
 }
+
+/**
+ * Calculate level-ups from essence amount
+ * 
+ * Calculates how many level-ups can be earned from a given amount of essence.
+ * Default threshold is 30 essence per level-up.
+ * 
+ * @param essence - Total essence amount
+ * @param threshold - Essence required per level-up (default: 30)
+ * @returns Object with levelUps and remaining essence
+ * 
+ * @example
+ * ```typescript
+ * const result = calculateLevelUps(45, 30);
+ * // result = { levelUps: 1, remaining: 15 }
+ * ```
+ */
+export function calculateLevelUps(
+  essence: number,
+  threshold: number = 30
+): { levelUps: number; remaining: number } {
+  const levelUps = Math.floor(essence / threshold);
+  const remaining = essence % threshold;
+  return { levelUps, remaining };
+}
+
+/**
+ * Apply upgrade effects to run state
+ * 
+ * Applies the effects of an upgrade to the run state, updating fish stats
+ * and adding the upgrade to the selected upgrades list.
+ * 
+ * @param runState - Current run state
+ * @param upgradeId - ID of the upgrade to apply
+ * @returns Updated RunState with upgrade effects applied
+ * 
+ * @example
+ * ```typescript
+ * let runState = loadRunState();
+ * runState = applyUpgrade(runState, 'coral_speed');
+ * saveRunState(runState);
+ * ```
+ */
+export function applyUpgrade(runState: RunState, upgradeId: string): RunState {
+  // First, add upgrade to list
+  let updatedState = addUpgradeToRun(runState, upgradeId);
+  
+  // Load upgrade data to apply effects
+  // We'll import getUpgrade dynamically to avoid circular dependencies
+  try {
+    const { getUpgrade } = require('./data/upgrades');
+    const upgrade = getUpgrade(upgradeId);
+    
+    if (!upgrade) {
+      console.warn(`Upgrade ${upgradeId} not found, adding to list only`);
+      return updatedState;
+    }
+
+    // Apply each effect
+    const newFishState = { ...updatedState.fishState };
+    
+    upgrade.effects.forEach((effect: { type: string; target: string; value: number | string; perLevel?: boolean }) => {
+      if (effect.type === 'stat') {
+        const value = typeof effect.value === 'number' ? effect.value : 0;
+        
+        // Map effect targets to fish state properties
+        switch (effect.target) {
+          case 'size':
+            newFishState.size += value;
+            break;
+          case 'speed':
+            newFishState.speed += value;
+            break;
+          case 'health':
+            newFishState.health += value;
+            break;
+          case 'damage':
+            newFishState.damage += value;
+            break;
+          default:
+            // Other stats not directly on fishState (evasion, etc.)
+            // These would be handled by the game engine
+            break;
+        }
+      }
+      // Ability and unlock effects are handled by game engine
+    });
+
+    // Update fish state with new stats
+    updatedState = updateFishState(updatedState, newFishState);
+    
+  } catch (error) {
+    console.error('Error applying upgrade effects:', error);
+  }
+
+  return updatedState;
+}
