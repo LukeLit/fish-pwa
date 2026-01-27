@@ -58,7 +58,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center">
         <div className="bg-gray-900 rounded-lg p-8 max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
           <div className="text-gray-400">Loading {type === 'fish' ? 'fish sprites' : 'backgrounds'}...</div>
         </div>
@@ -68,7 +68,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
 
   if (error) {
     return (
-      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center">
         <div className="bg-gray-900 rounded-lg p-8 max-w-4xl w-full mx-4">
           <div className="text-red-400 mb-4">{error}</div>
           <div className="flex gap-2">
@@ -91,7 +91,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
       <div className="bg-gray-900 rounded-lg max-w-5xl w-full max-h-[85vh] overflow-hidden flex flex-col border border-gray-700">
         {/* Header */}
         <div className="p-4 border-b border-gray-700 flex items-center justify-between">

@@ -76,18 +76,21 @@ export default function FishEditOverlay({
 
   useEffect(() => {
     if (fish) {
-      // Set default values for new fields if they don't exist
-      setEditedFish({
-        ...fish,
-        rarity: fish.rarity || 'common',
-        playable: fish.playable ?? false,
-        biomeId: fish.biomeId || 'shallow',
-        essenceTypes: fish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
-        spawnRules: fish.spawnRules || {
-          canAppearIn: [fish.biomeId || 'shallow'],
-          spawnWeight: 50,
-        },
-      });
+      // Only initialize editedFish if it's null or if the fish ID changed
+      // This prevents overwriting local edits when parent re-renders
+      if (!editedFish || editedFish.id !== fish.id) {
+        setEditedFish({
+          ...fish,
+          rarity: fish.rarity || 'common',
+          playable: fish.playable ?? false,
+          biomeId: fish.biomeId || 'shallow',
+          essenceTypes: fish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
+          spawnRules: fish.spawnRules || {
+            canAppearIn: [fish.biomeId || 'shallow'],
+            spawnWeight: 50,
+          },
+        });
+      }
     }
   }, [fish]);
 
