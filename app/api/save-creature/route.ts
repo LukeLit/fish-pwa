@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       access: 'public',
       addRandomSuffix: false,
       contentType: 'application/json',
+      allowOverwrite: true,
     });
 
     console.log('[SaveCreature] Saved creature:', creatureId);
