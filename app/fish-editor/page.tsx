@@ -13,6 +13,7 @@ import FishEditorControls from '@/components/FishEditorControls';
 import FishEditOverlay, { type FishData } from '@/components/FishEditOverlay';
 import FishLibraryPanel from '@/components/FishLibraryPanel';
 import BackgroundEditor from '@/components/BackgroundEditor';
+import BackgroundLibraryPanel from '@/components/BackgroundLibraryPanel';
 import BottomSheet from '@/components/BottomSheet';
 
 export default function FishEditorPage() {
@@ -29,6 +30,8 @@ export default function FishEditorPage() {
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'controls' | 'library' | 'backgrounds'>('controls');
+  const [editingBackground, setEditingBackground] = useState<boolean>(false);
+  const [selectedBackgroundData, setSelectedBackgroundData] = useState<any>(null);
 
   // Load random background, player fish, and spawn default prey on mount
   useEffect(() => {
@@ -251,6 +254,56 @@ export default function FishEditorPage() {
     setEditMode(true);
   };
 
+  const handleAddNewCreature = () => {
+    // Create a new empty creature
+    const newId = `creature_${Date.now()}`;
+    const newFish: FishData = {
+      id: newId,
+      name: 'New Creature',
+      description: 'A newly created creature',
+      type: 'prey',
+      stats: {
+        size: 60,
+        speed: 5,
+        health: 20,
+        damage: 5,
+      },
+      sprite: '',
+      rarity: 'common',
+      playable: false,
+      biomeId: 'shallow',
+      essenceTypes: [{ type: 'shallow', baseYield: 10 }],
+      spawnRules: {
+        canAppearIn: ['shallow'],
+        spawnWeight: 50,
+      },
+    };
+    
+    setFishData((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(newId, newFish);
+      return newMap;
+    });
+    
+    setSelectedFishId(newId);
+    setEditMode(true);
+  };
+
+  const handleAddNewBackground = () => {
+    setEditingBackground(true);
+    setSelectedBackgroundData(null);
+  };
+
+  const handleSelectBackground = (background: any) => {
+    setSelectedBackgroundData(background);
+    setEditingBackground(true);
+  };
+
+  const handleBackFromBackgroundEdit = () => {
+    setEditingBackground(false);
+    setSelectedBackgroundData(null);
+  };
+
   const handleSaveFish = (fish: FishData) => {
     setFishData((prev) => {
       const newMap = new Map(prev);
@@ -395,7 +448,7 @@ export default function FishEditorPage() {
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto">
               {activeTab === 'controls' && (
                 <div className="px-4 pb-4 pt-2">
                   <FishEditorControls
@@ -417,16 +470,31 @@ export default function FishEditorPage() {
                 </div>
               )}
               {activeTab === 'library' && (
-                <FishLibraryPanel onSelectFish={handleSelectFishFromLibrary} />
+                <FishLibraryPanel 
+                  onSelectFish={handleSelectFishFromLibrary}
+                  onAddNew={handleAddNewCreature}
+                />
               )}
-              {activeTab === 'backgrounds' && (
-                <div className="overflow-y-auto h-full p-4">
+              {activeTab === 'backgrounds' && !editingBackground && (
+                <BackgroundLibraryPanel
+                  onSelectBackground={handleSelectBackground}
+                  onAddNew={handleAddNewBackground}
+                />
+              )}
+              {activeTab === 'backgrounds' && editingBackground && (
+                <div className="h-full overflow-y-auto p-4">
+                  <div className="mb-4">
+                    <button
+                      onClick={handleBackFromBackgroundEdit}
+                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+                    >
+                      ← Back to Library
+                    </button>
+                  </div>
                   <BackgroundEditor
-                    currentBackground={selectedBackground}
+                    currentBackground={selectedBackgroundData?.url || selectedBackground}
                     onBackgroundChange={(url, type) => {
                       setSelectedBackground(url);
-                      // For videos, we might need to handle them differently
-                      // For now, just set the URL
                     }}
                   />
                 </div>
