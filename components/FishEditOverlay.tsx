@@ -205,7 +205,7 @@ export default function FishEditOverlay({
     }
 
     setIsGenerating(true);
-    setSaveMessage('');
+    setSaveMessage('🎨 Generating fish sprite...');
 
     try {
       const response = await fetch('/api/generate-fish-image', {
@@ -220,20 +220,21 @@ export default function FishEditOverlay({
       if (!response.ok) {
         const error = await response.json();
         setSaveMessage(`❌ Generation failed: ${error.message || 'Unknown error'}`);
+        setIsGenerating(false);
         return;
       }
 
       const data = await response.json();
-      if (data.imageBase64) {
+      if (data.success && data.imageBase64) {
         const spriteUrl = `data:image/png;base64,${data.imageBase64}`;
         updateField('sprite', spriteUrl);
-        setSaveMessage(`✅ Fish generated with ${selectedModel}. Remember to save!`);
+        setSaveMessage(`✅ Fish sprite generated! Click "Save Creature" to persist.`);
       } else {
-        setSaveMessage('❌ No image data returned');
+        setSaveMessage('❌ No image data returned from API');
       }
     } catch (error: any) {
       setSaveMessage(`❌ Error: ${error.message || 'Failed to generate'}`);
-      console.error('Fish generation error:', error);
+      console.error('[FishEditor] Generation error:', error);
     } finally {
       setIsGenerating(false);
     }
