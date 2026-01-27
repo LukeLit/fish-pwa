@@ -21,6 +21,7 @@ import {
   HUNGER_WARNING_PULSE_BASE,
   HUNGER_WARNING_INTENSITY,
 } from './hunger-constants';
+import { getBiome } from './data/biomes';
 
 export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
 
@@ -67,9 +68,11 @@ export class GameEngine {
   private audio = getAudioManager();
   private fxhash = getFxhash();
   private backgroundImage: p5.Image | null = null;
+  private stageElementImages: p5.Image[] = [];
   private isLoadingBackground: boolean = false;
   private lastEssenceOrbSpawn: number = 0;
   private essenceOrbSpawnInterval: number = 3000; // Spawn essence orbs every 3 seconds
+  private currentBiomeId: string = 'shallow'; // Default to shallow biome
   
   // World bounds (larger world for better gameplay)
   private worldBounds = {
@@ -102,30 +105,41 @@ export class GameEngine {
   }
 
   /**
-   * Load random background image
+   * Load biome background and stage elements
    */
   private loadBackgroundImage(): void {
     if (this.isLoadingBackground || !this.p5Instance) return;
     this.isLoadingBackground = true;
 
-    fetch('/api/list-assets?type=background')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.assets.length > 0 && this.p5Instance) {
-          const randomBg = data.assets[Math.floor(Math.random() * data.assets.length)];
-          this.p5Instance.loadImage(randomBg.url, (img: p5.Image) => {
-            this.backgroundImage = img;
-          }, () => {
-            // Failed to load background, will use solid color fallback
-          });
-        }
-      })
-      .catch(err => {
-        // Failed to fetch background assets, will use solid color fallback
-      })
-      .finally(() => {
-        this.isLoadingBackground = false;
+    const biome = getBiome(this.currentBiomeId);
+    if (!biome) {
+      console.error(`Biome ${this.currentBiomeId} not found`);
+      this.isLoadingBackground = false;
+      return;
+    }
+
+    // Load background image
+    if (biome.backgroundAssets.backgroundImage) {
+      this.p5Instance.loadImage(biome.backgroundAssets.backgroundImage, (img: p5.Image) => {
+        this.backgroundImage = img;
+      }, () => {
+        console.warn(`Failed to load background: ${biome.backgroundAssets.backgroundImage}`);
       });
+    }
+
+    // Load stage elements
+    if (biome.backgroundAssets.stageElements) {
+      this.stageElementImages = [];
+      biome.backgroundAssets.stageElements.forEach((elementUrl) => {
+        this.p5Instance?.loadImage(elementUrl, (img: p5.Image) => {
+          this.stageElementImages.push(img);
+        }, () => {
+          console.warn(`Failed to load stage element: ${elementUrl}`);
+        });
+      });
+    }
+
+    this.isLoadingBackground = false;
   }
 
   /**
@@ -383,8 +397,13 @@ export class GameEngine {
   private spawnEssenceOrbs(): void {
     if (!this.p5Instance || !this.player) return;
 
+    const biome = getBiome(this.currentBiomeId);
+    if (!biome) return;
+
     const now = Date.now();
-    if (now - this.lastEssenceOrbSpawn < this.essenceOrbSpawnInterval) return;
+    // Adjust spawn interval based on biome spawn rate
+    const adjustedInterval = this.essenceOrbSpawnInterval / Math.max(0.1, biome.essenceOrbSpawnRate);
+    if (now - this.lastEssenceOrbSpawn < adjustedInterval) return;
 
     // Don't spawn if at entity limit
     if (this.entities.length >= this.maxEntities) {
@@ -392,7 +411,8 @@ export class GameEngine {
       return;
     }
 
-    // For vertical slice, spawn 2-3 shallow essence orbs
+    // Spawn essence orbs based on biome's available essence types
+    const essenceTypes = biome.availableEssenceTypes;
     const orbCount = 2 + Math.floor(Math.random() * 2); // 2-3 orbs
     
     for (let i = 0; i < orbCount; i++) {
@@ -406,8 +426,8 @@ export class GameEngine {
       const clampedX = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
       const clampedY = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
       
-      // For vertical slice, use shallow essence (cyan color)
-      const essenceType = 'shallow';
+      // Pick random essence type from biome's available types
+      const essenceType = essenceTypes[Math.floor(Math.random() * essenceTypes.length)];
       const essenceColor = ESSENCE_TYPES[essenceType]?.color || '#4ade80';
       const amount = 1 + Math.floor(Math.random() * 3); // 1-3 essence per orb
       
@@ -766,6 +786,39 @@ export class GameEngine {
     } else {
       // Fallback to solid color
       p5.background(phaseConfig.backgroundColor);
+    }
+
+    // Draw stage elements with parallax (before camera translation)
+    if (this.stageElementImages.length > 0) {
+      const biome = getBiome(this.currentBiomeId);
+      const parallaxFactor = 0.5; // Stage elements move at 50% of camera speed
+      const stageOffsetX = this.camera.x * parallaxFactor;
+      const stageOffsetY = this.camera.y * parallaxFactor;
+
+      // Position stage elements at bottom of screen
+      this.stageElementImages.forEach((img, index) => {
+        const spacing = p5.width / (this.stageElementImages.length + 1);
+        const x = spacing * (index + 1) - stageOffsetX;
+        const y = p5.height - img.height * 0.3 - stageOffsetY * 0.2; // Bottom aligned
+        const scale = 0.3; // Scale down to fit screen
+        
+        p5.push();
+        p5.imageMode(p5.CENTER);
+        p5.image(img, x, y, img.width * scale, img.height * scale);
+        p5.pop();
+      });
+    }
+
+    // Apply biome lighting tint
+    const biome = getBiome(this.currentBiomeId);
+    if (biome?.backgroundAssets.lighting === 'bright') {
+      // Slight brightness boost for shallow waters
+      p5.push();
+      p5.blendMode(p5.ADD);
+      p5.fill(255, 255, 255, 10);
+      p5.noStroke();
+      p5.rect(0, 0, p5.width, p5.height);
+      p5.pop();
     }
 
     // Translate to camera

@@ -19,8 +19,8 @@ export const BIOME_SHALLOW: Biome = {
   availableEssenceTypes: ['shallow'],
   visualTheme: 'Bright, colorful coral reef with tropical fish and clear waters',
   backgroundAssets: {
-    backgroundImage: '/backgrounds/shallow.png',
-    stageElements: ['/backgrounds/coral.png', '/backgrounds/plants.png'],
+    backgroundImage: '/backgrounds/shallow.svg',
+    stageElements: ['/backgrounds/coral.svg', '/backgrounds/plants.svg'],
     lighting: 'bright',
   },
   unlockCost: {}, // Starting biome, no cost
