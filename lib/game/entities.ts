@@ -344,3 +344,62 @@ export class Food extends Entity {
     p5.pop();
   }
 }
+
+export class EssenceOrb extends Entity {
+  public essenceType: string;
+  public amount: number;
+  private glowPhase: number = 0;
+
+  constructor(
+    physics: PhysicsEngine,
+    x: number,
+    y: number,
+    essenceType: string,
+    amount: number,
+    color: string,
+    id?: string
+  ) {
+    super(physics, {
+      x,
+      y,
+      size: 8,
+      type: 'neutral',
+      color,
+    }, id);
+    this.essenceType = essenceType;
+    this.amount = amount;
+    this.glowPhase = Math.random() * Math.PI * 2;
+  }
+
+  update(deltaTime: number, physics?: PhysicsEngine): void {
+    super.update(deltaTime, physics);
+    this.glowPhase += deltaTime * 0.003;
+  }
+
+  render(p5: p5): void {
+    p5.push();
+    
+    // Glowing pulse effect
+    const glowIntensity = Math.sin(this.glowPhase) * 0.3 + 0.7;
+    const glowSize = this.size * (1.5 + Math.sin(this.glowPhase) * 0.3);
+    
+    // Outer glow
+    p5.noStroke();
+    p5.fill(p5.red(this.color), p5.green(this.color), p5.blue(this.color), glowIntensity * 100);
+    p5.circle(this.x, this.y, glowSize * 2.5);
+    
+    // Middle glow
+    p5.fill(p5.red(this.color), p5.green(this.color), p5.blue(this.color), glowIntensity * 150);
+    p5.circle(this.x, this.y, glowSize * 1.8);
+    
+    // Core
+    p5.fill(this.color);
+    p5.circle(this.x, this.y, this.size * 2);
+    
+    // Bright center
+    p5.fill(255, 255, 255, glowIntensity * 200);
+    p5.circle(this.x, this.y, this.size * 1.2);
+    
+    p5.pop();
+  }
+}

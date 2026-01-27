@@ -16,6 +16,7 @@ import {
   HUNGER_WARNING_INTENSITY,
   HUNGER_FRAME_RATE,
 } from '@/lib/game/hunger-constants';
+import { loadRunState } from '@/lib/game/run-state';
 
 interface FishEditorCanvasProps {
   background: string | null;
@@ -528,8 +529,16 @@ export default function FishEditorCanvas({
       if (gameMode && gameStartTimeRef.current === 0) {
         gameStartTimeRef.current = Date.now();
         fishEatenRef.current = 0;
-        essenceCollectedRef.current = 0;
         scoreRef.current = 0;
+        
+        // Load essence collected from run state
+        const runState = loadRunState();
+        if (runState) {
+          const totalEssence = Object.values(runState.collectedEssence).reduce((sum, val) => sum + val, 0);
+          essenceCollectedRef.current = totalEssence;
+        } else {
+          essenceCollectedRef.current = 0;
+        }
       }
       
       // Check game timer in game mode
@@ -541,6 +550,13 @@ export default function FishEditorCanvas({
             onLevelComplete(scoreRef.current);
           }
           return; // Stop game loop
+        }
+        
+        // Sync essence collected from run state (updated by engine)
+        const runState = loadRunState();
+        if (runState) {
+          const totalEssence = Object.values(runState.collectedEssence).reduce((sum, val) => sum + val, 0);
+          essenceCollectedRef.current = totalEssence;
         }
       }
 

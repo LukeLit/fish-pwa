@@ -5,7 +5,7 @@ import p5 from 'p5';
 import Matter from 'matter-js';
 import { PhysicsEngine } from './physics';
 import { Player } from './player';
-import { Entity, Fish, Food } from './entities';
+import { Entity, Fish, Food, EssenceOrb } from './entities';
 import { MutationSystem } from './mutations';
 import { PhaseManager } from './phases';
 import { SeededRNG, generateSeed } from './procgen';
@@ -13,6 +13,8 @@ import { EssenceManager } from '../meta/essence';
 import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
+import { ESSENCE_TYPES } from './data/essence-types';
+import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
 import {
   HUNGER_LOW_THRESHOLD,
   HUNGER_WARNING_PULSE_FREQUENCY,
@@ -61,10 +63,13 @@ export class GameEngine {
   private spawnInterval: number = 500; // ms - reduced for more frequent spawns
   private maxEntities: number = 50; // Limit total entities to prevent performance issues
   private particles: Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string }> = [];
+  private floatingTexts: Array<{ x: number; y: number; vy: number; text: string; life: number; color: string }> = [];
   private audio = getAudioManager();
   private fxhash = getFxhash();
   private backgroundImage: p5.Image | null = null;
   private isLoadingBackground: boolean = false;
+  private lastEssenceOrbSpawn: number = 0;
+  private essenceOrbSpawnInterval: number = 3000; // Spawn essence orbs every 3 seconds
   
   // World bounds (larger world for better gameplay)
   private worldBounds = {
@@ -131,6 +136,7 @@ export class GameEngine {
     this.entities.forEach(e => e.destroy(this.physics));
     this.entities = [];
     this.particles = [];
+    this.floatingTexts = [];
     this.mutations.clear();
     this.phases.reset();
 
@@ -166,6 +172,7 @@ export class GameEngine {
 
     this.camera = { x: startX, y: startY };
     this.lastSpawnTime = Date.now();
+    this.lastEssenceOrbSpawn = Date.now();
   }
 
   /**
@@ -209,6 +216,9 @@ export class GameEngine {
 
     // Spawn entities
     this.spawnEntities();
+    
+    // Spawn essence orbs periodically
+    this.spawnEssenceOrbs();
 
     // Update entities
     this.entities.forEach(entity => {
@@ -240,6 +250,15 @@ export class GameEngine {
         life: p.life - deltaTime,
       }))
       .filter(p => p.life > 0);
+    
+    // Update floating texts
+    this.floatingTexts = this.floatingTexts
+      .map(t => ({
+        ...t,
+        y: t.y + t.vy,
+        life: t.life - deltaTime,
+      }))
+      .filter(t => t.life > 0);
 
     // Check phase transition
     if (this.phases.shouldTransition(this.player.stats.size)) {
@@ -359,6 +378,55 @@ export class GameEngine {
   }
 
   /**
+   * Spawn essence orbs periodically
+   */
+  private spawnEssenceOrbs(): void {
+    if (!this.p5Instance || !this.player) return;
+
+    const now = Date.now();
+    if (now - this.lastEssenceOrbSpawn < this.essenceOrbSpawnInterval) return;
+
+    // Don't spawn if at entity limit
+    if (this.entities.length >= this.maxEntities) {
+      this.lastEssenceOrbSpawn = now;
+      return;
+    }
+
+    // For vertical slice, spawn 2-3 shallow essence orbs
+    const orbCount = 2 + Math.floor(Math.random() * 2); // 2-3 orbs
+    
+    for (let i = 0; i < orbCount; i++) {
+      // Spawn near player but not too close
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 100 + Math.random() * 300;
+      const x = this.player.x + Math.cos(angle) * distance;
+      const y = this.player.y + Math.sin(angle) * distance;
+      
+      // Clamp to world bounds
+      const clampedX = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
+      const clampedY = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
+      
+      // For vertical slice, use shallow essence (cyan color)
+      const essenceType = 'shallow';
+      const essenceColor = ESSENCE_TYPES[essenceType]?.color || '#4ade80';
+      const amount = 1 + Math.floor(Math.random() * 3); // 1-3 essence per orb
+      
+      const orb = new EssenceOrb(
+        this.physics,
+        clampedX,
+        clampedY,
+        essenceType,
+        amount,
+        essenceColor
+      );
+      
+      this.entities.push(orb);
+    }
+
+    this.lastEssenceOrbSpawn = now;
+  }
+
+  /**
    * Check collisions between player and entities
    */
   private checkCollisions(): void {
@@ -373,6 +441,12 @@ export class GameEngine {
       const collisionDistance = this.player.stats.size + entity.size;
 
       if (distance < collisionDistance) {
+        // Check for essence orb collection
+        if (entity instanceof EssenceOrb) {
+          this.collectEssenceOrb(entity);
+          return;
+        }
+        
         // Check if collision is from the front
         const isPlayerFrontCollision = this.player.isFrontCollision(entity);
         const isEntityFrontCollision = entity.isFrontCollision(this.player);
@@ -400,6 +474,7 @@ export class GameEngine {
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
             this.player.eat(entity);
+            this.dropEssenceFromFish(entity as Fish);
             entity.destroy(this.physics);
             this.createParticles(entity.x, entity.y, entity.color, 10);
             this.audio.playSound('bite', 0.3);
@@ -407,6 +482,7 @@ export class GameEngine {
         } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
           // Player eats entity (only from front)
           this.player.eat(entity);
+          this.dropEssenceFromFish(entity as Fish);
           entity.destroy(this.physics);
           this.createParticles(entity.x, entity.y, entity.color, 10);
           this.audio.playSound('bite', 0.3);
@@ -455,6 +531,60 @@ export class GameEngine {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Collect essence orb
+   */
+  private collectEssenceOrb(orb: EssenceOrb): void {
+    if (!this.player) return;
+
+    // Add essence to run state
+    let runState = loadRunState();
+    if (runState) {
+      runState = addEssenceToRun(runState, orb.essenceType, orb.amount);
+      saveRunState(runState);
+    }
+
+    // Create visual effects
+    this.createParticles(orb.x, orb.y, orb.color, 15);
+    this.createFloatingText(
+      orb.x,
+      orb.y,
+      `+${orb.amount} ${ESSENCE_TYPES[orb.essenceType]?.name || orb.essenceType}`,
+      orb.color
+    );
+
+    // Play collection sound
+    this.audio.playSound('mutation', 0.3);
+
+    // Destroy orb
+    orb.destroy(this.physics);
+  }
+
+  /**
+   * Drop essence when fish is eaten
+   */
+  private dropEssenceFromFish(fish: Fish): void {
+    if (!this.player) return;
+
+    // For vertical slice, use simplified formula: yield = size * 0.1
+    const essenceYield = Math.max(1, Math.floor(fish.size * 0.1));
+    
+    // Add essence to run state
+    let runState = loadRunState();
+    if (runState) {
+      runState = addEssenceToRun(runState, 'shallow', essenceYield);
+      saveRunState(runState);
+      
+      // Create visual feedback
+      this.createFloatingText(
+        fish.x,
+        fish.y,
+        `+${essenceYield} Shallow`,
+        ESSENCE_TYPES['shallow']?.color || '#4ade80'
+      );
     }
   }
 
@@ -512,6 +642,7 @@ export class GameEngine {
     this.entities.forEach(e => e.destroy(this.physics));
     this.entities = [];
     this.particles = [];
+    this.floatingTexts = [];
 
     // Reset timer
     this.state.running = true;
@@ -519,6 +650,7 @@ export class GameEngine {
     this.state.startTime = Date.now();
     this.state.currentTime = 0;
     this.lastSpawnTime = Date.now();
+    this.lastEssenceOrbSpawn = Date.now();
 
     // Make enemies slightly harder each level
     this.spawnInterval = Math.max(300, this.spawnInterval - 20);
@@ -579,6 +711,20 @@ export class GameEngine {
         color,
       });
     }
+  }
+
+  /**
+   * Create floating text effect (like +X Essence)
+   */
+  private createFloatingText(x: number, y: number, text: string, color: string): void {
+    this.floatingTexts.push({
+      x,
+      y,
+      vy: -0.5, // Float upward
+      text,
+      life: 2000, // 2 seconds
+      color,
+    });
   }
 
   /**
@@ -656,6 +802,21 @@ export class GameEngine {
       p5.pop();
     });
 
+    // Render floating texts
+    this.floatingTexts.forEach(floatingText => {
+      p5.push();
+      const alpha = Math.min(255, (floatingText.life / 2000) * 255);
+      p5.fill(p5.red(floatingText.color), p5.green(floatingText.color), p5.blue(floatingText.color), alpha);
+      p5.textSize(18);
+      p5.textAlign(p5.CENTER, p5.CENTER);
+      p5.textStyle(p5.BOLD);
+      // Add black outline for readability
+      p5.strokeWeight(3);
+      p5.stroke(0, 0, 0, alpha);
+      p5.text(floatingText.text, floatingText.x, floatingText.y);
+      p5.pop();
+    });
+
     p5.pop();
 
     // Low hunger visual warning (red tint and vignette)
@@ -710,7 +871,11 @@ export class GameEngine {
     const seconds = Math.ceil(timeLeft / 1000);
     p5.text(`Time: ${seconds}s`, 10, 70);
     
-    p5.text(`Essence: ${this.state.cachedEssence ?? 0}`, 10, 90);
+    // Show collected essence from run state
+    const runState = loadRunState();
+    const collectedEssence = runState?.collectedEssence || {};
+    const totalCollected = Object.values(collectedEssence).reduce((sum, val) => sum + val, 0);
+    p5.text(`Essence Collected: ${totalCollected}`, 10, 90);
     
     // Stamina bar
     const staminaPercent = this.player.stamina / this.player.maxStamina;
