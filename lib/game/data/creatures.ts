@@ -194,6 +194,76 @@ export const CREATURE_LARGE_PREDATOR: Creature = {
 };
 
 /**
+ * Rare fish with multiple essence types
+ */
+export const CREATURE_RARE_TROPICAL: Creature = {
+  id: 'rare_tropical',
+  name: 'Rainbow Fish',
+  description: 'A rare, colorful fish found in shallow tropical waters.',
+  type: 'prey',
+  rarity: 'rare',
+  sprite: '/sprites/fish/goldfish.svg',
+  biomeId: 'shallow',
+  stats: {
+    size: 30,
+    speed: 6,
+    health: 25,
+    damage: 5,
+  },
+  essenceTypes: [
+    {
+      type: 'shallow',
+      baseYield: 8,
+    },
+    {
+      type: 'tropical',
+      baseYield: 5,
+    },
+  ],
+  spawnRules: {
+    canAppearIn: ['shallow'],
+    spawnWeight: 5, // Rare spawn
+    minDepth: 0,
+    maxDepth: 50,
+  },
+};
+
+/**
+ * Epic predator with multiple essence types
+ */
+export const CREATURE_EPIC_SHARK: Creature = {
+  id: 'epic_shark',
+  name: 'Great White',
+  description: 'A massive, powerful predator of the deep.',
+  type: 'predator',
+  rarity: 'epic',
+  sprite: '/sprites/fish/bass.svg',
+  biomeId: 'shallow',
+  stats: {
+    size: 100,
+    speed: 4,
+    health: 80,
+    damage: 25,
+  },
+  essenceTypes: [
+    {
+      type: 'shallow',
+      baseYield: 15,
+    },
+    {
+      type: 'deep_sea',
+      baseYield: 10,
+    },
+  ],
+  spawnRules: {
+    canAppearIn: ['shallow'],
+    spawnWeight: 2, // Very rare spawn
+    minDepth: 20,
+    maxDepth: 50,
+  },
+};
+
+/**
  * All creatures available in the game
  */
 export const CREATURES: Record<string, Creature> = {
@@ -203,6 +273,8 @@ export const CREATURES: Record<string, Creature> = {
   tiny_fish: CREATURE_TINY_FISH,
   medium_fish: CREATURE_MEDIUM_FISH,
   large_predator: CREATURE_LARGE_PREDATOR,
+  rare_tropical: CREATURE_RARE_TROPICAL,
+  epic_shark: CREATURE_EPIC_SHARK,
 };
 
 /**
