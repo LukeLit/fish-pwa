@@ -119,15 +119,15 @@ export default function FishEditOverlay({
     try {
       // Convert sprite to blob if it's a data URL
       let spriteBlob: Blob | null = null;
-      if (editedFish.sprite.startsWith('data:')) {
+      if (editedFish.sprite && editedFish.sprite.startsWith('data:')) {
         const response = await fetch(editedFish.sprite);
         spriteBlob = await response.blob();
       }
 
-      // Prepare metadata (without sprite data URL)
+      // Prepare metadata (with sprite URL if already uploaded, empty if new)
       const metadata = {
         ...editedFish,
-        sprite: '', // Will be set by the API
+        sprite: editedFish.sprite && !editedFish.sprite.startsWith('data:') ? editedFish.sprite : '',
       };
 
       // Create FormData
@@ -147,55 +147,22 @@ export default function FishEditOverlay({
       const result = await response.json();
 
       if (result.success) {
-        setSaveMessage('✓ Saved to game successfully!');
+        setSaveMessage('✓ Saved successfully!');
         // Update the fish with the new sprite URL if it was uploaded
         if (result.spriteUrl) {
-          setEditedFish(prev => prev ? { ...prev, sprite: result.spriteUrl } : null);
+          updateField('sprite', result.spriteUrl);
         }
-      } else {
-        // If blob storage fails, save to localStorage as fallback
-        if (result.requiresToken) {
-          console.log('[FishEditor] Blob storage not available, using localStorage fallback');
-          const creatureData = {
-            ...editedFish,
-            rarity: editedFish.rarity || 'common',
-            playable: editedFish.playable ?? false,
-            biomeId: editedFish.biomeId || 'shallow',
-            essenceTypes: editedFish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
-            grantedAbilities: [],
-            spawnRules: editedFish.spawnRules || {
-              canAppearIn: [editedFish.biomeId || 'shallow'],
-              spawnWeight: 10,
-            },
-          };
-          saveCreatureToLocal(creatureData);
-          setSaveMessage('✓ Saved to local storage (blob storage not configured). Fish will be available in fish selection.');
-        } else {
-          const errorMsg = result.message || result.error || 'Unknown error';
-          setSaveMessage('✗ Failed to save: ' + errorMsg);
-        }
-      }
-    } catch (error) {
-      console.error('Save error:', error);
-      // On any error, try localStorage fallback
-      try {
-        const creatureData = {
+        // Also call onSave to update parent state
+        onSave({
           ...editedFish,
-          rarity: editedFish.rarity || 'common',
-          playable: editedFish.playable ?? false,
-          biomeId: editedFish.biomeId || 'shallow',
-          essenceTypes: editedFish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
-          grantedAbilities: [],
-          spawnRules: editedFish.spawnRules || {
-            canAppearIn: [editedFish.biomeId || 'shallow'],
-            spawnWeight: 10,
-          },
-        };
-        saveCreatureToLocal(creatureData);
-        setSaveMessage('✓ Saved to local storage. Fish will be available in fish selection.');
-      } catch (localError) {
-        setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+          sprite: result.spriteUrl || editedFish.sprite
+        });
+      } else {
+        setSaveMessage(`❌ Save failed: ${result.error || 'Unknown error'}`);
       }
+    } catch (error: any) {
+      console.error('[FishEditor] Save error:', error);
+      setSaveMessage(`❌ Error: ${error.message || 'Failed to save'}`);
     } finally {
       setIsSaving(false);
     }
