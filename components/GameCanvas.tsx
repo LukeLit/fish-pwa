@@ -29,6 +29,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
   const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
+  const [levelDuration, setLevelDuration] = useState<number>(60000);
+  const [currentLevel, setCurrentLevel] = useState<string>('1-1');
 
   useEffect(() => {
     setIsClient(true);
@@ -54,6 +56,15 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     // Load assets based on run state
     const loadGameAssets = async (currentRunState: RunState) => {
       try {
+        // Parse level to get difficulty scaling
+        const level = parseLevelString(currentRunState.currentLevel);
+        setCurrentLevel(currentRunState.currentLevel);
+        
+        // Calculate level-based difficulty
+        const duration = 60000 + (level.levelNum - 1) * 15000; // 60s, 75s, 90s
+        const fishCount = 10 + (level.levelNum - 1) * 5; // 10, 15, 20
+        setLevelDuration(duration);
+        
         // Load background
         const bgResponse = await fetch('/api/list-assets?type=background');
         const bgData = await bgResponse.json();
@@ -79,13 +90,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         if (fishData.success && fishData.assets.length > 0) {
           const assets = fishData.assets as Array<{ filename: string; url: string }>;
           
-          // Spawn some prey fish
+          // Spawn fish based on level difficulty
           const preyCandidates = assets.filter((a) =>
             a.filename.toLowerCase().includes('prey')
           );
-          const pool = preyCandidates.length >= 6 ? preyCandidates : assets;
+          const pool = preyCandidates.length >= fishCount ? preyCandidates : assets;
           const defaults = [];
-          for (let i = 0; i < 6; i++) {
+          for (let i = 0; i < fishCount; i++) {
             const pick = pool[i % pool.length];
             defaults.push({
               id: `prey_${Date.now()}_${i}`,
@@ -98,6 +109,18 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       } catch (error) {
         console.error('Failed to load game assets:', error);
       }
+    };
+    
+    // Helper to parse level string (e.g., "1-1" -> {biome: 1, levelNum: 1})
+    const parseLevelString = (levelStr: string): { biome: number; levelNum: number } => {
+      const parts = levelStr.split('-');
+      if (parts.length !== 2) {
+        return { biome: 1, levelNum: 1 };
+      }
+      return {
+        biome: parseInt(parts[0], 10) || 1,
+        levelNum: parseInt(parts[1], 10) || 1,
+      };
     };
 
     const currentRunState = initializeRunState();
@@ -116,6 +139,11 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
   return (
     <div className="relative w-full h-full bg-black">
+      {/* Level Display */}
+      <div className="absolute top-4 left-4 z-40 bg-black/70 px-4 py-2 rounded-lg border border-cyan-400">
+        <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
+      </div>
+      
       <FishEditorCanvas
         background={selectedBackground}
         playerFishSprite={playerFishSprite}
@@ -125,7 +153,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         enableWaterDistortion={false}
         deformationIntensity={1}
         gameMode={true}
-        levelDuration={60000}
+        levelDuration={levelDuration}
         onGameOver={(stats) => {
           clearRunState();
           if (onGameOver) {

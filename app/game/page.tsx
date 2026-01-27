@@ -124,11 +124,14 @@ export default function GamePage() {
     runState = progressToNextLevel(runState);
     saveRunState(runState);
     
-    // Reset screens and reload game
+    // Reset screens and reload game with new level
     setShowDigestionScreen(false);
     setShowUpgradeScreen(false);
     setShowEvolutionScreen(false);
     setPendingLevelUps([]);
+    
+    // Reload page to start next level (GameCanvas will read updated runState)
+    setCurrentRunState(runState);
     window.location.reload();
   };
 

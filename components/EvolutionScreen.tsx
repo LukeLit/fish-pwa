@@ -22,6 +22,17 @@ export default function EvolutionScreen({
 }: EvolutionScreenProps) {
   const [animationPhase, setAnimationPhase] = useState<'transform' | 'complete'>('transform');
 
+  // Calculate next level
+  const getNextLevel = (currentLevel: string): string => {
+    const parts = currentLevel.split('-');
+    if (parts.length !== 2) return '1-2';
+    const biome = parts[0];
+    const levelNum = parseInt(parts[1], 10) || 1;
+    return `${biome}-${levelNum + 1}`;
+  };
+
+  const nextLevel = getNextLevel(runState.currentLevel);
+
   useEffect(() => {
     // Auto-advance to complete phase after transformation animation
     const timer = setTimeout(() => {
@@ -176,12 +187,12 @@ export default function EvolutionScreen({
               : 'none',
           }}
         >
-          <span className="text-2xl tracking-wider">CONTINUE TO NEXT LEVEL</span>
+          <span className="text-2xl tracking-wider">ENTER LEVEL {nextLevel}</span>
         </button>
 
         {/* Level indicator */}
         <div className="text-center mt-4 text-purple-300 text-sm">
-          Current Run: {runState.currentLevel}
+          Completed: Level {runState.currentLevel}
         </div>
       </div>
     </div>
