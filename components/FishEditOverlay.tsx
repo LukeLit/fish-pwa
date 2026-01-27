@@ -198,6 +198,47 @@ export default function FishEditOverlay({
     }
   };
 
+  const handleGenerateFish = async () => {
+    if (!generationPrompt.trim()) {
+      setSaveMessage('❌ Please enter a generation prompt');
+      return;
+    }
+
+    setIsGenerating(true);
+    setSaveMessage('');
+
+    try {
+      const response = await fetch('/api/generate-fish-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: generationPrompt,
+          model: selectedModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        setSaveMessage(`❌ Generation failed: ${error.message || 'Unknown error'}`);
+        return;
+      }
+
+      const data = await response.json();
+      if (data.imageBase64) {
+        const spriteUrl = `data:image/png;base64,${data.imageBase64}`;
+        updateField('sprite', spriteUrl);
+        setSaveMessage(`✅ Fish generated with ${selectedModel}. Remember to save!`);
+      } else {
+        setSaveMessage('❌ No image data returned');
+      }
+    } catch (error: any) {
+      setSaveMessage(`❌ Error: ${error.message || 'Failed to generate'}`);
+      console.error('Fish generation error:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const updateField = (field: string, value: FishFieldValue) => {
     setEditedFish((prev) => {
       if (!prev) return null;
