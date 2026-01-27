@@ -7,6 +7,39 @@ import { uploadAsset, listAssets, assetExists } from '@/lib/storage/blob-storage
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if this is a FormData request (for video files)
+    const contentType = request.headers.get('content-type');
+    
+    if (contentType?.includes('multipart/form-data')) {
+      // Handle video/file upload
+      const formData = await request.formData();
+      const videoFile = formData.get('video') as File | null;
+      const filename = formData.get('filename') as string;
+
+      if (!videoFile || !filename) {
+        return NextResponse.json(
+          { error: 'Video file and filename are required' },
+          { status: 400 }
+        );
+      }
+
+      const buffer = Buffer.from(await videoFile.arrayBuffer());
+      const blobPath = `backgrounds/${filename}`;
+
+      // Upload to Vercel Blob Storage
+      const result = await uploadAsset(blobPath, buffer, videoFile.type);
+
+      console.log('[SaveSprite] Saved video to Vercel Blob:', result.url);
+
+      return NextResponse.json({
+        success: true,
+        localPath: result.url,
+        cached: false,
+        size: buffer.length,
+      });
+    }
+
+    // Handle image upload (existing logic)
     const { imageBase64, imageUrl, filename, type = 'fish' } = await request.json();
 
     if ((!imageBase64 && !imageUrl) || !filename) {

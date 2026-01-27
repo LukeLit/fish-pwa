@@ -12,6 +12,7 @@ import FishEditorCanvas from '@/components/FishEditorCanvas';
 import FishEditorControls from '@/components/FishEditorControls';
 import FishEditOverlay, { type FishData } from '@/components/FishEditOverlay';
 import FishLibraryPanel from '@/components/FishLibraryPanel';
+import BackgroundEditor from '@/components/BackgroundEditor';
 import BottomSheet from '@/components/BottomSheet';
 
 export default function FishEditorPage() {
@@ -27,7 +28,7 @@ export default function FishEditorPage() {
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'controls' | 'library'>('controls');
+  const [activeTab, setActiveTab] = useState<'controls' | 'library' | 'backgrounds'>('controls');
 
   // Load random background, player fish, and spawn default prey on mount
   useEffect(() => {
@@ -381,6 +382,16 @@ export default function FishEditorPage() {
               >
                 Fish Library
               </button>
+              <button
+                onClick={() => setActiveTab('backgrounds')}
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
+                  activeTab === 'backgrounds'
+                    ? 'text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Backgrounds
+              </button>
             </div>
 
             {/* Tab Content */}
@@ -407,6 +418,18 @@ export default function FishEditorPage() {
               )}
               {activeTab === 'library' && (
                 <FishLibraryPanel onSelectFish={handleSelectFishFromLibrary} />
+              )}
+              {activeTab === 'backgrounds' && (
+                <div className="overflow-y-auto h-full p-4">
+                  <BackgroundEditor
+                    currentBackground={selectedBackground}
+                    onBackgroundChange={(url, type) => {
+                      setSelectedBackground(url);
+                      // For videos, we might need to handle them differently
+                      // For now, just set the URL
+                    }}
+                  />
+                </div>
               )}
             </div>
           </div>
