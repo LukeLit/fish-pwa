@@ -9,7 +9,6 @@ export const ssr = false;
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import FishEditorCanvas from '@/components/FishEditorCanvas';
-import FishEditorControls from '@/components/FishEditorControls';
 import FishEditOverlay, { type FishData } from '@/components/FishEditOverlay';
 import FishLibraryPanel from '@/components/FishLibraryPanel';
 import BackgroundEditor from '@/components/BackgroundEditor';
@@ -30,7 +29,7 @@ export default function FishEditorPage() {
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'controls' | 'library' | 'backgrounds'>('library');
+  const [activeTab, setActiveTab] = useState<'scene' | 'library' | 'backgrounds'>('library');
   const [editingBackground, setEditingBackground] = useState<boolean>(false);
   const [selectedBackgroundData, setSelectedBackgroundData] = useState<any>(null);
   const [showArtSelector, setShowArtSelector] = useState(false);
@@ -440,16 +439,6 @@ export default function FishEditorPage() {
             {/* Tabs */}
             <div className="flex border-b border-gray-700 px-4">
               <button
-                onClick={() => setActiveTab('controls')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  activeTab === 'controls'
-                    ? 'text-white border-b-2 border-blue-500'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Controls
-              </button>
-              <button
                 onClick={() => setActiveTab('library')}
                 className={`px-4 py-2 font-medium text-sm transition-colors ${
                   activeTab === 'library'
@@ -457,7 +446,7 @@ export default function FishEditorPage() {
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Fish Library
+                Fish
               </button>
               <button
                 onClick={() => setActiveTab('backgrounds')}
@@ -469,30 +458,20 @@ export default function FishEditorPage() {
               >
                 Backgrounds
               </button>
+              <button
+                onClick={() => setActiveTab('scene')}
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
+                  activeTab === 'scene'
+                    ? 'text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Scene
+              </button>
             </div>
 
             {/* Tab Content */}
             <div className="flex-1 overflow-y-auto">
-              {activeTab === 'controls' && (
-                <div className="px-4 pb-4 pt-2">
-                  <FishEditorControls
-                    onBackToMenu={handleBackToMenu}
-                    onSpawnFish={handleSpawnFish}
-                    onClearFish={handleClearFish}
-                    onSetBackground={setSelectedBackground}
-                    onSetPlayerFish={setPlayerFishSprite}
-                    spawnedFishCount={spawnedFish.length}
-                    chromaTolerance={chromaTolerance}
-                    onChromaToleranceChange={setChromaTolerance}
-                    zoom={zoom}
-                    onZoomChange={setZoom}
-                    enableWaterDistortion={enableWaterDistortion}
-                    onWaterDistortionChange={setEnableWaterDistortion}
-                    deformationIntensity={deformationIntensity}
-                    onDeformationChange={setDeformationIntensity}
-                  />
-                </div>
-              )}
               {activeTab === 'library' && (
                 <FishLibraryPanel 
                   onSelectFish={handleSelectFishFromLibrary}
@@ -522,6 +501,103 @@ export default function FishEditorPage() {
                     }}
                     onOpenArtSelector={(callback) => handleOpenArtSelector('background', callback)}
                   />
+                </div>
+              )}
+              {activeTab === 'scene' && (
+                <div className="px-4 pb-4 pt-2">
+                  <div className="space-y-4">
+                    {/* Scene controls header */}
+                    <div>
+                      <h2 className="text-lg font-bold text-white mb-1">Scene Controls</h2>
+                      <p className="text-xs text-gray-400">Adjust canvas display settings</p>
+                    </div>
+
+                    {/* Zoom */}
+                    <div>
+                      <label className="block text-sm font-bold text-white mb-2">
+                        Zoom: {zoom.toFixed(1)}x
+                      </label>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="3"
+                        step="0.1"
+                        value={zoom}
+                        onChange={(e) => setZoom(parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Chroma Tolerance */}
+                    <div>
+                      <label className="block text-sm font-bold text-white mb-2">
+                        Background Removal: {chromaTolerance}
+                      </label>
+                      <input
+                        type="range"
+                        min="10"
+                        max="150"
+                        value={chromaTolerance}
+                        onChange={(e) => setChromaTolerance(parseInt(e.target.value))}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>Less</span>
+                        <span>More</span>
+                      </div>
+                    </div>
+
+                    {/* Water Distortion */}
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableWaterDistortion}
+                          onChange={(e) => setEnableWaterDistortion(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-bold text-white">Enable Water Distortion</span>
+                      </label>
+                    </div>
+
+                    {/* Deformation Intensity */}
+                    {enableWaterDistortion && (
+                      <div>
+                        <label className="block text-sm font-bold text-white mb-2">
+                          Distortion Intensity: {deformationIntensity.toFixed(1)}
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="5"
+                          step="0.1"
+                          value={deformationIntensity}
+                          onChange={(e) => setDeformationIntensity(parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+
+                    {/* Clear fish */}
+                    <div className="border-t border-gray-700 pt-4">
+                      <button
+                        onClick={handleClearFish}
+                        className="w-full bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                      >
+                        Clear All Fish ({spawnedFish.length})
+                      </button>
+                    </div>
+
+                    {/* Back to menu */}
+                    <div>
+                      <button
+                        onClick={handleBackToMenu}
+                        className="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                      >
+                        ← Back to Menu
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
