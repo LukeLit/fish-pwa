@@ -7,9 +7,7 @@ import { PhysicsEngine } from './physics';
 import { Entity } from './entities';
 import { FishGenerator, FishShape } from '../assets/fish-generator';
 import { getAssetManager } from '../ai/asset-manager';
-
-// Hunger system constants
-const HUNGER_RESTORE_MULTIPLIER = 0.3; // 30% of fish size
+import { HUNGER_RESTORE_MULTIPLIER } from './hunger-constants';
 
 export interface PlayerStats {
   size: number;

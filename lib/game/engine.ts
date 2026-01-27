@@ -13,12 +13,12 @@ import { EssenceManager } from '../meta/essence';
 import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
-
-// Hunger system constants
-const HUNGER_LOW_THRESHOLD = 25; // % for warning effects
-const HUNGER_WARNING_PULSE_FREQUENCY = 0.008;
-const HUNGER_WARNING_PULSE_BASE = 0.5;
-const HUNGER_WARNING_INTENSITY = 0.3;
+import {
+  HUNGER_LOW_THRESHOLD,
+  HUNGER_WARNING_PULSE_FREQUENCY,
+  HUNGER_WARNING_PULSE_BASE,
+  HUNGER_WARNING_INTENSITY,
+} from './hunger-constants';
 
 export type GamePhase = 'playing' | 'levelComplete' | 'gameOver';
 

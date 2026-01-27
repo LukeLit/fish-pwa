@@ -6,14 +6,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
 import { type FishData } from './FishEditOverlay';
-
-// Hunger system constants
-const HUNGER_DRAIN_RATE = 1.5; // % per second
-const HUNGER_RESTORE_MULTIPLIER = 0.3; // 30% of fish size
-const HUNGER_LOW_THRESHOLD = 25; // % for warning effects
-const HUNGER_WARNING_PULSE_FREQUENCY = 0.008;
-const HUNGER_WARNING_PULSE_BASE = 0.5;
-const HUNGER_WARNING_INTENSITY = 0.3;
+import {
+  HUNGER_DRAIN_RATE,
+  HUNGER_RESTORE_MULTIPLIER,
+  HUNGER_LOW_THRESHOLD,
+  HUNGER_WARNING_PULSE_FREQUENCY,
+  HUNGER_WARNING_PULSE_BASE,
+  HUNGER_WARNING_INTENSITY,
+} from '@/lib/game/hunger-constants';
 
 interface FishEditorCanvasProps {
   background: string | null;
@@ -1147,13 +1147,14 @@ export default function FishEditorCanvas({
         
         // Glow effect for low hunger
         if (hungerPercent <= 0.25) {
-          const pulse = Math.sin(Date.now() * 0.005) * 0.3 + 0.7;
+          const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
           ctx.shadowColor = hungerColor;
           ctx.shadowBlur = 20 * pulse;
           ctx.strokeStyle = hungerColor;
           ctx.lineWidth = 3;
           ctx.strokeRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
           ctx.shadowBlur = 0;
+          ctx.shadowColor = 'transparent';
         }
         
         // Text label
