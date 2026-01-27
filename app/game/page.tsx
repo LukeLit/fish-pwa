@@ -1,6 +1,7 @@
 /**
  * Game page
  * Integrated with Run State Management System
+ * Now includes Digestion Sequence and Upgrade Selection screens
  */
 'use client';
 
@@ -11,17 +12,110 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import GameCanvas from '@/components/GameCanvas';
 import DeathScreen, { type DeathStats } from '@/components/DeathScreen';
+import DigestionScreen from '@/components/DigestionScreen';
+import UpgradeSelectionScreen from '@/components/UpgradeSelectionScreen';
 import { EssenceManager } from '@/lib/meta/essence';
-import { clearRunState } from '@/lib/game/run-state';
+import { 
+  clearRunState, 
+  loadRunState, 
+  saveRunState, 
+  useReroll, 
+  applyUpgrade,
+  progressToNextLevel 
+} from '@/lib/game/run-state';
+import type { RunState } from '@/lib/game/types';
 
 export default function GamePage() {
   const router = useRouter();
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [showDeathScreen, setShowDeathScreen] = useState(false);
+  const [showDigestionScreen, setShowDigestionScreen] = useState(false);
+  const [showUpgradeScreen, setShowUpgradeScreen] = useState(false);
   const [deathStats, setDeathStats] = useState<DeathStats | null>(null);
   const [endScore, setEndScore] = useState(0);
   const [endEssence, setEndEssence] = useState(0);
+  const [currentRunState, setCurrentRunState] = useState<RunState | null>(null);
+  const [pendingLevelUps, setPendingLevelUps] = useState<string[]>([]);
+  const [currentUpgradeType, setCurrentUpgradeType] = useState<string>('shallow');
   const essenceManager = new EssenceManager();
+
+  const handleLevelComplete = () => {
+    // Load current run state
+    const runState = loadRunState();
+    if (!runState) return;
+
+    setCurrentRunState(runState);
+    
+    // Show digestion screen with collected essence
+    setShowDigestionScreen(true);
+  };
+
+  const handleLevelUpCollected = (essenceType: string) => {
+    // Add to pending level-ups queue
+    setPendingLevelUps((prev) => [...prev, essenceType]);
+  };
+
+  const handleDigestionComplete = () => {
+    setShowDigestionScreen(false);
+    
+    // If there are pending level-ups, show upgrade selection
+    if (pendingLevelUps.length > 0) {
+      setCurrentUpgradeType(pendingLevelUps[0]);
+      setShowUpgradeScreen(true);
+    } else {
+      // No level-ups, proceed to next level
+      proceedToNextLevel();
+    }
+  };
+
+  const handleUpgradeSelected = (upgradeId: string) => {
+    // Apply upgrade to run state
+    let runState = loadRunState();
+    if (!runState) return;
+
+    runState = applyUpgrade(runState, upgradeId);
+    saveRunState(runState);
+    setCurrentRunState(runState);
+
+    // Remove processed level-up
+    const remainingLevelUps = pendingLevelUps.slice(1);
+    setPendingLevelUps(remainingLevelUps);
+
+    // If more level-ups pending, show next upgrade selection
+    if (remainingLevelUps.length > 0) {
+      setCurrentUpgradeType(remainingLevelUps[0]);
+      // Screen stays open, new upgrades will be generated
+    } else {
+      // All upgrades selected, proceed to next level
+      setShowUpgradeScreen(false);
+      proceedToNextLevel();
+    }
+  };
+
+  const handleReroll = () => {
+    let runState = loadRunState();
+    if (!runState) return;
+
+    const updated = useReroll(runState);
+    if (updated) {
+      saveRunState(updated);
+      setCurrentRunState(updated);
+    }
+  };
+
+  const proceedToNextLevel = () => {
+    let runState = loadRunState();
+    if (!runState) return;
+
+    runState = progressToNextLevel(runState);
+    saveRunState(runState);
+    
+    // Reset screens and reload game
+    setShowDigestionScreen(false);
+    setShowUpgradeScreen(false);
+    setPendingLevelUps([]);
+    window.location.reload();
+  };
 
   const handleGameEnd = (score: number, essence: number) => {
     setEndScore(score);
@@ -57,10 +151,11 @@ export default function GamePage() {
           setShowDeathScreen(true);
           clearRunState();
         }}
+        onLevelComplete={handleLevelComplete}
       />
       
       {/* Fish Editor Menu Button (top right) */}
-      {!showDeathScreen && !showEndScreen && (
+      {!showDeathScreen && !showEndScreen && !showDigestionScreen && !showUpgradeScreen && (
         <button
           onClick={() => router.push('/fish-editor')}
           className="fixed top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-40 border border-gray-600"
@@ -72,6 +167,25 @@ export default function GamePage() {
       {/* Death Screen */}
       {showDeathScreen && deathStats && (
         <DeathScreen stats={deathStats} onReturnToMenu={handleReturnToMenu} />
+      )}
+
+      {/* Digestion Screen */}
+      {showDigestionScreen && currentRunState && (
+        <DigestionScreen
+          collectedEssence={currentRunState.collectedEssence}
+          onLevelUpCollected={handleLevelUpCollected}
+          onComplete={handleDigestionComplete}
+        />
+      )}
+
+      {/* Upgrade Selection Screen */}
+      {showUpgradeScreen && currentRunState && (
+        <UpgradeSelectionScreen
+          essenceType={currentUpgradeType}
+          rerollsRemaining={currentRunState.rerollsRemaining}
+          onUpgradeSelected={handleUpgradeSelected}
+          onReroll={handleReroll}
+        />
       )}
       
       {/* Level Complete Screen */}

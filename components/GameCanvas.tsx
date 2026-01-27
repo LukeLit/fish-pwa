@@ -18,9 +18,10 @@ import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
   onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
+  onLevelComplete?: () => void;
 }
 
-export default function GameCanvas({ onGameEnd, onGameOver }: GameCanvasProps) {
+export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: GameCanvasProps) {
   const [isClient, setIsClient] = useState(false);
   const [runState, setRunState] = useState<RunState | null>(null);
   
@@ -136,7 +137,10 @@ export default function GameCanvas({ onGameEnd, onGameOver }: GameCanvasProps) {
           if (runState) {
             saveRunState(runState);
           }
-          if (onGameEnd) {
+          // Trigger digestion sequence instead of old flow
+          if (onLevelComplete) {
+            onLevelComplete();
+          } else if (onGameEnd) {
             onGameEnd(score, 0);
           }
         }}
