@@ -113,6 +113,8 @@ export default function FishEditOverlay({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState<'google/imagen-4.0-fast-generate-001' | 'google/imagen-4.0-generate-001' | 'bfl/flux-2-pro'>('google/imagen-4.0-fast-generate-001');
+  const [showFusionSection, setShowFusionSection] = useState(false);
+  const [showMutationSection, setShowMutationSection] = useState(false);
 
   useEffect(() => {
     if (fish) {
@@ -298,6 +300,94 @@ export default function FishEditOverlay({
     });
   };
 
+  // Helper to update description chunks
+  const updateDescriptionChunk = (index: number, value: string) => {
+    const chunks = editedFish?.descriptionChunks || [];
+    const newChunks = [...chunks];
+    newChunks[index] = value;
+    updateField('descriptionChunks', newChunks);
+  };
+
+  const addDescriptionChunk = () => {
+    const chunks = editedFish?.descriptionChunks || [];
+    updateField('descriptionChunks', [...chunks, '']);
+  };
+
+  const removeDescriptionChunk = (index: number) => {
+    const chunks = editedFish?.descriptionChunks || [];
+    updateField('descriptionChunks', chunks.filter((_, i) => i !== index));
+  };
+
+  const moveDescriptionChunk = (index: number, direction: 'up' | 'down') => {
+    const chunks = editedFish?.descriptionChunks || [];
+    if (direction === 'up' && index > 0) {
+      const newChunks = [...chunks];
+      [newChunks[index - 1], newChunks[index]] = [newChunks[index], newChunks[index - 1]];
+      updateField('descriptionChunks', newChunks);
+    } else if (direction === 'down' && index < chunks.length - 1) {
+      const newChunks = [...chunks];
+      [newChunks[index], newChunks[index + 1]] = [newChunks[index + 1], newChunks[index]];
+      updateField('descriptionChunks', newChunks);
+    }
+  };
+
+  // Helper to update essence visual chunks
+  const updateEssenceVisualChunk = (isPrimary: boolean, secondaryIndex: number | null, chunkIndex: number, value: string) => {
+    const essence = editedFish?.essence || { primary: { type: 'shallow', baseYield: 10 } };
+    if (isPrimary) {
+      const visualChunks = essence.primary.visualChunks || [];
+      const newChunks = [...visualChunks];
+      newChunks[chunkIndex] = value;
+      updateField('essence', {
+        ...essence,
+        primary: { ...essence.primary, visualChunks: newChunks }
+      });
+    } else if (secondaryIndex !== null) {
+      const secondary = essence.secondary || [];
+      const visualChunks = secondary[secondaryIndex]?.visualChunks || [];
+      const newChunks = [...visualChunks];
+      newChunks[chunkIndex] = value;
+      const newSecondary = [...secondary];
+      newSecondary[secondaryIndex] = { ...newSecondary[secondaryIndex], visualChunks: newChunks };
+      updateField('essence', { ...essence, secondary: newSecondary });
+    }
+  };
+
+  // Compose preview prompt
+  const composePreviewPrompt = (): string => {
+    if (!editedFish) return '';
+    const chunks: string[] = [];
+    
+    // Base description chunks
+    if (editedFish.descriptionChunks?.length) {
+      chunks.push(...editedFish.descriptionChunks);
+    }
+    
+    // Visual motif
+    if (editedFish.visualMotif) {
+      chunks.push(editedFish.visualMotif);
+    }
+    
+    // Primary essence visual chunks
+    if (editedFish.essence?.primary?.visualChunks?.length) {
+      chunks.push(...editedFish.essence.primary.visualChunks);
+    }
+    
+    // Secondary essence visual chunks
+    if (editedFish.essence?.secondary) {
+      editedFish.essence.secondary.forEach(sec => {
+        if (sec.visualChunks?.length) {
+          chunks.push(...sec.visualChunks);
+        }
+      });
+    }
+    
+    // Add art style suffix
+    chunks.push('isolated on transparent background', 'PNG cutout style', 'game sprite', 'side view right-facing');
+    
+    return chunks.filter(c => c.trim()).join(', ');
+  };
+
   return (
     <div className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md z-50 flex flex-col border-t border-gray-700" style={{ height: '50%', maxHeight: '600px' }}>
       {/* Header */}
@@ -327,7 +417,7 @@ export default function FishEditOverlay({
 
         {/* Description */}
         <div>
-          <label className="block text-sm font-bold text-white mb-2">Description</label>
+          <label className="block text-sm font-bold text-white mb-2">Description (Legacy)</label>
           <textarea
             value={editedFish.description}
             onChange={(e) => updateField('description', e.target.value)}
@@ -335,6 +425,81 @@ export default function FishEditOverlay({
             rows={4}
             placeholder="Enter fish description"
           />
+          <p className="text-xs text-gray-400 mt-1">Legacy field - use Description Chunks below for modular prompts</p>
+        </div>
+
+        {/* Description Chunks Editor */}
+        <div className="border-t border-gray-700 pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-bold text-white">
+              Description Chunks ({editedFish.descriptionChunks?.length || 0})
+            </label>
+            <button
+              onClick={addDescriptionChunk}
+              className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+            >
+              + Add Chunk
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mb-2">Modular prompt segments that compose the creature's visual description</p>
+          <div className="space-y-2 bg-gray-900/50 p-3 rounded border border-gray-700 max-h-64 overflow-y-auto">
+            {editedFish.descriptionChunks && editedFish.descriptionChunks.length > 0 ? (
+              editedFish.descriptionChunks.map((chunk, index) => (
+                <div key={index} className="flex items-center gap-2 bg-gray-800 p-2 rounded">
+                  <span className="text-xs text-gray-500 w-6">{index + 1}.</span>
+                  <input
+                    type="text"
+                    value={chunk}
+                    onChange={(e) => updateDescriptionChunk(index, e.target.value)}
+                    className="flex-1 bg-gray-700 text-white px-2 py-1 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+                    placeholder="e.g., sleek silver scales"
+                  />
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => moveDescriptionChunk(index, 'up')}
+                      disabled={index === 0}
+                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed text-white px-2 py-1 rounded text-xs"
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveDescriptionChunk(index, 'down')}
+                      disabled={index === editedFish.descriptionChunks!.length - 1}
+                      className="bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed text-white px-2 py-1 rounded text-xs"
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      onClick={() => removeDescriptionChunk(index)}
+                      className="bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-gray-500 text-center py-2">No chunks yet. Click "Add Chunk" to get started.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Visual Motif */}
+        <div>
+          <label className="block text-sm font-bold text-white mb-2">Visual Motif</label>
+          <input
+            type="text"
+            value={editedFish.visualMotif || ''}
+            onChange={(e) => updateField('visualMotif', e.target.value)}
+            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+            placeholder="e.g., bioluminescent deep-sea hunter"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            High-level visual theme • {editedFish.visualMotif?.length || 0} characters
+          </p>
         </div>
 
         {/* Sprite Selection */}
@@ -486,53 +651,442 @@ export default function FishEditOverlay({
           </select>
         </div>
 
-        {/* Essence Types */}
-        <div>
-          <label className="block text-sm font-bold text-white mb-2">Essence Types</label>
-          <div className="space-y-2 bg-gray-900/50 p-3 rounded border border-gray-700">
-            {['shallow', 'deep_sea', 'tropical', 'polluted', 'cosmic', 'demonic', 'robotic'].map((essenceType) => {
-              const currentEssence = editedFish.essenceTypes?.find(e => e.type === essenceType);
-              const currentValue = currentEssence?.baseYield || 0;
-              
-              return (
-                <div key={essenceType} className="flex items-center gap-2">
-                  <label className="text-xs text-gray-300 w-24 capitalize">
-                    {essenceType.replace('_', ' ')}:
-                  </label>
+        {/* Enhanced Essence System */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-3">Essence System</h3>
+          
+          {/* Primary Essence */}
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-gray-300 mb-2">Primary Essence</label>
+            <div className="bg-gray-900/50 p-3 rounded border border-gray-700 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Type</label>
+                  <select
+                    value={editedFish.essence?.primary?.type || 'shallow'}
+                    onChange={(e) => {
+                      const essence = editedFish.essence || { primary: { type: 'shallow', baseYield: 10 } };
+                      updateField('essence', {
+                        ...essence,
+                        primary: { ...essence.primary, type: e.target.value }
+                      });
+                    }}
+                    className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-xs"
+                  >
+                    <option value="shallow">Shallow</option>
+                    <option value="deep_sea">Deep Sea</option>
+                    <option value="tropical">Tropical</option>
+                    <option value="polluted">Polluted</option>
+                    <option value="cosmic">Cosmic</option>
+                    <option value="demonic">Demonic</option>
+                    <option value="robotic">Robotic</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Base Yield</label>
                   <input
                     type="number"
                     min="0"
                     max="999"
-                    value={currentValue}
+                    value={editedFish.essence?.primary?.baseYield || 10}
                     onChange={(e) => {
-                      const newValue = parseInt(e.target.value) || 0;
-                      const currentTypes = editedFish.essenceTypes || [];
-                      
-                      if (newValue === 0) {
-                        // Remove this essence type
-                        const filtered = currentTypes.filter(et => et.type !== essenceType);
-                        updateField('essenceTypes', filtered);
-                      } else {
-                        // Update or add this essence type
-                        const existing = currentTypes.find(et => et.type === essenceType);
-                        if (existing) {
-                          const updated = currentTypes.map(et =>
-                            et.type === essenceType ? { ...et, baseYield: newValue } : et
-                          );
-                          updateField('essenceTypes', updated);
-                        } else {
-                          updateField('essenceTypes', [...currentTypes, { type: essenceType, baseYield: newValue }]);
-                        }
-                      }
+                      const essence = editedFish.essence || { primary: { type: 'shallow', baseYield: 10 } };
+                      updateField('essence', {
+                        ...essence,
+                        primary: { ...essence.primary, baseYield: parseInt(e.target.value) || 0 }
+                      });
                     }}
-                    className="flex-1 bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
-                    placeholder="0"
+                    className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-xs"
                   />
                 </div>
-              );
-            })}
+              </div>
+              
+              {/* Primary Visual Chunks */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-400">Visual Chunks</label>
+                  <button
+                    onClick={() => {
+                      const essence = editedFish.essence || { primary: { type: 'shallow', baseYield: 10 } };
+                      const chunks = essence.primary.visualChunks || [];
+                      updateField('essence', {
+                        ...essence,
+                        primary: { ...essence.primary, visualChunks: [...chunks, ''] }
+                      });
+                    }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded text-xs"
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {editedFish.essence?.primary?.visualChunks?.map((chunk, index) => (
+                    <div key={index} className="flex gap-1">
+                      <input
+                        type="text"
+                        value={chunk}
+                        onChange={(e) => updateEssenceVisualChunk(true, null, index, e.target.value)}
+                        className="flex-1 bg-gray-700 text-white px-2 py-1 rounded border border-gray-600 text-xs"
+                        placeholder="e.g., deep blue coloration"
+                      />
+                      <button
+                        onClick={() => {
+                          const essence = editedFish.essence!;
+                          const chunks = essence.primary.visualChunks || [];
+                          updateField('essence', {
+                            ...essence,
+                            primary: { ...essence.primary, visualChunks: chunks.filter((_, i) => i !== index) }
+                          });
+                        }}
+                        className="bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-          <p className="text-xs text-gray-400 mt-1">Set to 0 to remove an essence type</p>
+
+          {/* Secondary Essences */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-bold text-gray-300">Secondary Essences</label>
+              <button
+                onClick={() => {
+                  const essence = editedFish.essence || { primary: { type: 'shallow', baseYield: 10 } };
+                  const secondary = essence.secondary || [];
+                  updateField('essence', {
+                    ...essence,
+                    secondary: [...secondary, { type: 'shallow', baseYield: 5, visualChunks: [] }]
+                  });
+                }}
+                className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-medium"
+              >
+                + Add Secondary
+              </button>
+            </div>
+            <div className="space-y-2">
+              {editedFish.essence?.secondary?.map((sec, secIndex) => (
+                <div key={secIndex} className="bg-gray-900/50 p-3 rounded border border-gray-700 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Type</label>
+                      <select
+                        value={sec.type}
+                        onChange={(e) => {
+                          const essence = editedFish.essence!;
+                          const secondary = essence.secondary || [];
+                          const newSecondary = [...secondary];
+                          newSecondary[secIndex] = { ...newSecondary[secIndex], type: e.target.value };
+                          updateField('essence', { ...essence, secondary: newSecondary });
+                        }}
+                        className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-xs"
+                      >
+                        <option value="shallow">Shallow</option>
+                        <option value="deep_sea">Deep Sea</option>
+                        <option value="tropical">Tropical</option>
+                        <option value="polluted">Polluted</option>
+                        <option value="cosmic">Cosmic</option>
+                        <option value="demonic">Demonic</option>
+                        <option value="robotic">Robotic</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Base Yield</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="999"
+                        value={sec.baseYield}
+                        onChange={(e) => {
+                          const essence = editedFish.essence!;
+                          const secondary = essence.secondary || [];
+                          const newSecondary = [...secondary];
+                          newSecondary[secIndex] = { ...newSecondary[secIndex], baseYield: parseInt(e.target.value) || 0 };
+                          updateField('essence', { ...essence, secondary: newSecondary });
+                        }}
+                        className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-xs"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Secondary Visual Chunks */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-gray-400">Visual Chunks</label>
+                      <button
+                        onClick={() => {
+                          const essence = editedFish.essence!;
+                          const secondary = essence.secondary || [];
+                          const chunks = secondary[secIndex].visualChunks || [];
+                          const newSecondary = [...secondary];
+                          newSecondary[secIndex] = { ...newSecondary[secIndex], visualChunks: [...chunks, ''] };
+                          updateField('essence', { ...essence, secondary: newSecondary });
+                        }}
+                        className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded text-xs"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {sec.visualChunks?.map((chunk, chunkIndex) => (
+                        <div key={chunkIndex} className="flex gap-1">
+                          <input
+                            type="text"
+                            value={chunk}
+                            onChange={(e) => updateEssenceVisualChunk(false, secIndex, chunkIndex, e.target.value)}
+                            className="flex-1 bg-gray-700 text-white px-2 py-1 rounded border border-gray-600 text-xs"
+                            placeholder="e.g., toxic green highlights"
+                          />
+                          <button
+                            onClick={() => {
+                              const essence = editedFish.essence!;
+                              const secondary = essence.secondary || [];
+                              const chunks = secondary[secIndex].visualChunks || [];
+                              const newSecondary = [...secondary];
+                              newSecondary[secIndex] = { 
+                                ...newSecondary[secIndex], 
+                                visualChunks: chunks.filter((_, i) => i !== chunkIndex) 
+                              };
+                              updateField('essence', { ...essence, secondary: newSecondary });
+                            }}
+                            className="bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Remove Secondary */}
+                  <button
+                    onClick={() => {
+                      const essence = editedFish.essence!;
+                      const secondary = essence.secondary || [];
+                      updateField('essence', { 
+                        ...essence, 
+                        secondary: secondary.filter((_, i) => i !== secIndex) 
+                      });
+                    }}
+                    className="w-full bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs"
+                  >
+                    Remove Secondary Essence
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Legacy Essence Types (Backward Compatibility) */}
+          <div className="mt-3 p-2 bg-gray-800/50 rounded border border-gray-600">
+            <p className="text-xs text-gray-400 mb-1">
+              <strong>Legacy Compatibility:</strong> essenceTypes field is auto-synced with essence object
+            </p>
+            <button
+              onClick={() => {
+                // Sync essence object to essenceTypes array
+                if (editedFish.essence) {
+                  const types = [
+                    { type: editedFish.essence.primary.type, baseYield: editedFish.essence.primary.baseYield },
+                    ...(editedFish.essence.secondary || []).map(s => ({ type: s.type, baseYield: s.baseYield }))
+                  ];
+                  updateField('essenceTypes', types);
+                  setSaveMessage('✓ Synced to legacy essenceTypes field');
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs"
+            >
+              Sync to Legacy Field
+            </button>
+          </div>
+        </div>
+
+        {/* Fusion Metadata Section */}
+        <div className="border-t border-gray-700 pt-4">
+          <button
+            onClick={() => setShowFusionSection(!showFusionSection)}
+            className="w-full flex items-center justify-between bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded border border-gray-600 transition-colors"
+          >
+            <span className="text-sm font-bold text-white">
+              Fusion Metadata {editedFish.fusionParentIds ? '✓' : ''}
+            </span>
+            <span className="text-white">{showFusionSection ? '▼' : '▶'}</span>
+          </button>
+          
+          {showFusionSection && (
+            <div className="mt-2 bg-gray-900/50 p-3 rounded border border-gray-700 space-y-3">
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Parent IDs (comma-separated)</label>
+                <input
+                  type="text"
+                  value={(editedFish.fusionParentIds || []).join(', ')}
+                  onChange={(e) => {
+                    const ids = e.target.value.split(',').map(id => id.trim()).filter(id => id);
+                    updateField('fusionParentIds', ids.length > 0 ? ids : undefined);
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
+                  placeholder="e.g., anglerfish, jellyfish"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Fusion Type</label>
+                <select
+                  value={editedFish.fusionType || 'balanced'}
+                  onChange={(e) => updateField('fusionType', e.target.value)}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
+                >
+                  <option value="balanced">Balanced</option>
+                  <option value="dominant_first">Dominant First Parent</option>
+                  <option value="dominant_second">Dominant Second Parent</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Fusion Generation</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={editedFish.fusionGeneration || 1}
+                  onChange={(e) => updateField('fusionGeneration', parseInt(e.target.value) || 1)}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">How many fusion generations deep (1 = direct fusion)</p>
+              </div>
+              
+              <button
+                onClick={() => {
+                  updateField('fusionParentIds', undefined);
+                  updateField('fusionType', undefined);
+                  updateField('fusionGeneration', undefined);
+                  setShowFusionSection(false);
+                }}
+                className="w-full bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs"
+              >
+                Clear Fusion Metadata
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Mutation Metadata Section */}
+        <div className="border-t border-gray-700 pt-4">
+          <button
+            onClick={() => setShowMutationSection(!showMutationSection)}
+            className="w-full flex items-center justify-between bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded border border-gray-600 transition-colors"
+          >
+            <span className="text-sm font-bold text-white">
+              Mutation Metadata {editedFish.mutationSource ? '✓' : ''}
+            </span>
+            <span className="text-white">{showMutationSection ? '▼' : '▶'}</span>
+          </button>
+          
+          {showMutationSection && (
+            <div className="mt-2 bg-gray-900/50 p-3 rounded border border-gray-700 space-y-3">
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Source Creature ID</label>
+                <input
+                  type="text"
+                  value={editedFish.mutationSource?.sourceCreatureId || ''}
+                  onChange={(e) => {
+                    const current = editedFish.mutationSource || { 
+                      sourceCreatureId: '', 
+                      mutationType: 'polluted', 
+                      mutationLevel: 1 
+                    };
+                    updateField('mutationSource', { ...current, sourceCreatureId: e.target.value });
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
+                  placeholder="e.g., goldfish"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Mutation Type</label>
+                <input
+                  type="text"
+                  value={editedFish.mutationSource?.mutationType || ''}
+                  onChange={(e) => {
+                    const current = editedFish.mutationSource || { 
+                      sourceCreatureId: '', 
+                      mutationType: '', 
+                      mutationLevel: 1 
+                    };
+                    updateField('mutationSource', { ...current, mutationType: e.target.value });
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
+                  placeholder="e.g., polluted, cosmic, radioactive"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">
+                  Mutation Level: {editedFish.mutationSource?.mutationLevel || 1}
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={editedFish.mutationSource?.mutationLevel || 1}
+                  onChange={(e) => {
+                    const current = editedFish.mutationSource || { 
+                      sourceCreatureId: '', 
+                      mutationType: 'polluted', 
+                      mutationLevel: 1 
+                    };
+                    updateField('mutationSource', { ...current, mutationLevel: parseInt(e.target.value) });
+                  }}
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-400 mt-1">1 = Minor, 5 = Extreme</p>
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Mutation Trigger (Optional)</label>
+                <input
+                  type="text"
+                  value={editedFish.mutationSource?.mutationTrigger || ''}
+                  onChange={(e) => {
+                    const current = editedFish.mutationSource || { 
+                      sourceCreatureId: '', 
+                      mutationType: 'polluted', 
+                      mutationLevel: 1 
+                    };
+                    updateField('mutationSource', { ...current, mutationTrigger: e.target.value || undefined });
+                  }}
+                  className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
+                  placeholder="e.g., radiation exposure, cosmic event"
+                />
+              </div>
+              
+              <button
+                onClick={() => {
+                  updateField('mutationSource', undefined);
+                  setShowMutationSection(false);
+                }}
+                className="w-full bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs"
+              >
+                Clear Mutation Metadata
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Prompt Preview Section */}
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="text-sm font-bold text-white mb-2">Composed Prompt Preview</h3>
+          <div className="bg-gray-900/70 p-3 rounded border border-gray-600">
+            <p className="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap break-words">
+              {composePreviewPrompt() || 'No prompt components defined yet...'}
+            </p>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            This is how the final AI prompt would look when composed from all chunks
+          </p>
         </div>
 
         {/* Stats */}
