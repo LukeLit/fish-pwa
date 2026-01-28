@@ -23,6 +23,7 @@ import {
 } from './hunger-constants';
 import { getBiome } from './data/biomes';
 import { getCreaturesByBiome } from './data/creatures';
+import { spawnAIFish } from './spawn-fish';
 
 const DEFAULT_ESSENCE_COLOR = '#4ade80'; // Fallback color for essence orbs
 
@@ -388,37 +389,13 @@ export class GameEngine {
       x = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
       y = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
 
-      // Calculate size based on creature size and player size for variety
-      const playerSize = this.player.stats.size;
-      const creatureBaseSize = selectedCreature.stats.size;
-      let size = creatureBaseSize;
-      
-      // Add size variance based on player size
-      if (creatureBaseSize < playerSize * 0.8) {
-        // Small prey - keep close to base size
-        size = creatureBaseSize * (0.9 + Math.random() * 0.2); // 90-110% of base
-      } else if (creatureBaseSize > playerSize * 1.2) {
-        // Large predator - keep threatening
-        size = creatureBaseSize * (1.0 + Math.random() * 0.3); // 100-130% of base
-      } else {
-        // Similar size - add more variance
-        size = creatureBaseSize * (0.8 + Math.random() * 0.4); // 80-120% of base
-      }
-
-      // Create fish entity with creature data
-      const fish = new Fish(this.physics, {
-        x,
-        y,
-        size,
-        type: selectedCreature.type === 'mutant' ? 'predator' : selectedCreature.type,
-        speed: selectedCreature.stats.speed * (0.9 + Math.random() * 0.2), // Add slight speed variance
-      });
-      
-      // Store creature ID for essence drops and other references
-      Object.assign(fish, {
-        creatureId: selectedCreature.id,
-        rarity: selectedCreature.rarity,
-      });
+      // Use centralized spawn utility with player size for variance calculation
+      const fish = spawnAIFish(
+        selectedCreature,
+        this.physics,
+        { x, y },
+        this.player.stats.size
+      );
       
       this.entities.push(fish);
     }

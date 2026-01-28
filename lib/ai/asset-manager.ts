@@ -1,10 +1,9 @@
 /**
  * Asset Manager
- * Manages AI-generated and procedural assets with fallback handling
+ * Manages AI-generated assets
  */
 
 import { getFishSpriteService, FishSpriteService } from './fish-sprite-service';
-import { FishGenerator, FishShape } from '../assets/fish-generator';
 
 export interface AssetCache {
   fishSprites: Map<string, HTMLImageElement | string>;
@@ -19,17 +18,15 @@ export interface CachedModel {
 }
 
 /**
- * Asset Manager - handles both AI and procedural asset generation
+ * Asset Manager - handles AI asset generation
  */
 export class AssetManager {
   private fishSpriteService: FishSpriteService;
-  private fishGenerator: FishGenerator;
   private cache: AssetCache;
   private useAI: boolean = false;
 
   constructor() {
     this.fishSpriteService = getFishSpriteService();
-    this.fishGenerator = new FishGenerator();
     this.cache = {
       fishSprites: new Map(),
       fish3D: new Map(),
@@ -124,7 +121,6 @@ export class AssetManager {
   }): Promise<{
     sprite?: HTMLImageElement | string;
     modelUrl?: string;
-    shape?: FishShape;
     useAI: boolean;
   }> {
     const cacheKey = `${params.type}_${params.size}_${params.seed || 'default'}`;
@@ -182,12 +178,10 @@ export class AssetManager {
       }
     }
 
-    // Fallback to procedural generation
-    const generatorType = params.type === 'mutant' ? 'neutral' : params.type;
-    const shape = this.fishGenerator.generate(params.size, generatorType);
-
+    // No sprite available - return empty object
+    // Sprites should be loaded from creature definitions in the game
+    console.warn('[AssetManager] No AI sprite available, use creature sprite from data');
     return {
-      shape,
       useAI: false,
     };
   }
