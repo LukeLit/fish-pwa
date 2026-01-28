@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import FishEditorCanvas from './FishEditorCanvas';
-import type { RunState } from '@/lib/game/types';
+import type { RunState, Creature } from '@/lib/game/types';
 import { 
   loadRunState, 
   saveRunState, 
@@ -14,6 +14,7 @@ import {
   clearRunState 
 } from '@/lib/game/run-state';
 import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
+import { getCreaturesByBiome } from '@/lib/game/data/creatures';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -28,7 +29,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   // Game state - using simplified state for now
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
-  const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
+  const [spawnedFish, setSpawnedFish] = useState<Creature[]>([]);
   const [levelDuration, setLevelDuration] = useState<number>(60000);
   const [currentLevel, setCurrentLevel] = useState<string>('1-1');
 
@@ -84,27 +85,22 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           setPlayerFishSprite(currentRunState.fishState.sprite);
         }
 
-        // Spawn prey fish based on current level
-        const fishResponse = await fetch('/api/list-assets?type=fish');
-        const fishData = await fishResponse.json();
-        if (fishData.success && fishData.assets.length > 0) {
-          const assets = fishData.assets as Array<{ filename: string; url: string }>;
+        // Spawn prey fish based on current level using creature definitions
+        // TODO: Dynamically determine biome based on current level/run state
+        // For now, using 'shallow' as the default starter biome
+        const biomeCreatures = getCreaturesByBiome('shallow');
+        if (biomeCreatures.length > 0) {
+          // Filter for prey creatures
+          const preyCreatures = biomeCreatures.filter(c => c.type === 'prey');
+          const pool = preyCreatures.length > 0 ? preyCreatures : biomeCreatures;
           
-          // Spawn fish based on level difficulty
-          const preyCandidates = assets.filter((a) =>
-            a.filename.toLowerCase().includes('prey')
-          );
-          const pool = preyCandidates.length >= fishCount ? preyCandidates : assets;
-          const defaults = [];
+          // Spawn fish based on level difficulty, using creature definitions
+          const spawned: Creature[] = [];
           for (let i = 0; i < fishCount; i++) {
-            const pick = pool[i % pool.length];
-            defaults.push({
-              id: `prey_${Date.now()}_${i}`,
-              sprite: pick.url,
-              type: 'prey' as const,
-            });
+            const creature = pool[i % pool.length];
+            spawned.push(creature);
           }
-          setSpawnedFish(defaults);
+          setSpawnedFish(spawned);
         }
       } catch (error) {
         console.error('Failed to load game assets:', error);

@@ -5,7 +5,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
+import type { Creature } from '@/lib/game/types';
 import { type FishData } from './FishEditOverlay';
+import { spawnFishFromData } from '@/lib/game/spawn-fish';
 import {
   HUNGER_MAX,
   HUNGER_DRAIN_RATE,
@@ -21,7 +23,7 @@ import { loadRunState } from '@/lib/game/run-state';
 interface FishEditorCanvasProps {
   background: string | null;
   playerFishSprite: string | null;
-  spawnedFish: Array<{ id: string; sprite: string; type: string }>;
+  spawnedFish: Creature[] | Array<{ id: string; sprite: string; type: string }>;
   chromaTolerance?: number;
   zoom?: number;
   enableWaterDistortion?: boolean;
@@ -43,6 +45,19 @@ interface FishEditorCanvasProps {
 
 // Chroma key color - bright magenta for easy removal
 const CHROMA_KEY = { r: 255, g: 0, b: 255 }; // #FF00FF
+
+/**
+ * Type guard to check if a fish item is a full Creature object
+ * Checks for required Creature fields that distinguish it from legacy format
+ */
+function isCreature(fish: Creature | { id: string; sprite: string; type: string }): fish is Creature {
+  return (
+    'stats' in fish && 
+    'essenceTypes' in fish &&
+    'rarity' in fish &&
+    'spawnRules' in fish
+  );
+}
 
 interface DrawFishOpts {
   /** Speed 0–1+; boosts tail motion when moving */
@@ -183,7 +198,6 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
   return canvas;
 }
 
-export default function FishEditorCanvas({
   background,
   playerFishSprite,
   spawnedFish,
@@ -216,38 +230,47 @@ export default function FishEditorCanvas({
   const pausedRef = useRef<boolean>(paused);
   const showEditButtonsRef = useRef<boolean>(showEditButtons);
 
+
   // Update refs when props change
-  useEffect(() => {
-    chromaToleranceRef.current = chromaTolerance;
-  }, [chromaTolerance]);
+  useEffect(() => { chromaToleranceRef.current = chromaTolerance }, [chromaTolerance])
+  useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => { deformationRef.current = deformationIntensity }, [deformationIntensity])
+  useEffect(() => { editModeRef.current = editMode }, [editMode])
+  useEffect(() => { selectedFishIdRef.current = selectedFishId }, [selectedFishId])
+  useEffect(() => { fishDataRef.current = fishData }, [fishData])
+  useEffect(() => { pausedRef.current = paused }, [paused])
+  useEffect(() => { showEditButtonsRef.current = showEditButtons }, [showEditButtons])
 
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
+  // Shared spawn logic for player and AI
+  const spawnPlayerFish = (fish: FishData) => {
+    // Despawn current player
+    playerRef.current = spawnFishFromData(fish, { isPlayer: true })
+    // Optionally reset other player state here
+  }
 
-  useEffect(() => {
-    deformationRef.current = deformationIntensity;
-  }, [deformationIntensity]);
+  const spawnAIFish = (fish: FishData) => {
+    // Add to fishListRef as AI
+    const canvas = canvasRef.current
+    const pos = canvas ? { x: Math.random() * canvas.width, y: Math.random() * canvas.height } : { x: 400, y: 300 }
+    const aiFish = spawnFishFromData(fish, { isPlayer: false, position: pos })
+    fishListRef.current.push(aiFish)
+  }
 
+  // Listen for global events from overlay
   useEffect(() => {
-    editModeRef.current = editMode;
-  }, [editMode]);
-
-  useEffect(() => {
-    selectedFishIdRef.current = selectedFishId;
-  }, [selectedFishId]);
-
-  useEffect(() => {
-    fishDataRef.current = fishData;
-  }, [fishData]);
-
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-
-  useEffect(() => {
-    showEditButtonsRef.current = showEditButtons;
-  }, [showEditButtons]);
+    const handleSetPlayer = (e: any) => {
+      if (e.detail?.fish) spawnPlayerFish(e.detail.fish)
+    }
+    const handleSpawnAI = (e: any) => {
+      if (e.detail?.fish) spawnAIFish(e.detail.fish)
+    }
+    window.addEventListener('setPlayerFish', handleSetPlayer)
+    window.addEventListener('spawnAIFish', handleSpawnAI)
+    return () => {
+      window.removeEventListener('setPlayerFish', handleSetPlayer)
+      window.removeEventListener('spawnAIFish', handleSpawnAI)
+    }
+  }, [])
 
   const eatenIdsRef = useRef<Set<string>>(new Set());
 
@@ -317,6 +340,7 @@ export default function FishEditorCanvas({
     facingRight: boolean;
     verticalTilt: number;
     animTime: number;
+    creatureData?: Creature;
   }>>([]);
 
   const keyKeysRef = useRef<Set<string>>(new Set());
@@ -434,45 +458,66 @@ export default function FishEditorCanvas({
     });
   }, [fishData]);
 
-  // Spawn new fish
+  // Spawn new fish using full Creature data when available, or legacy format
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    spawnedFish.forEach((spawnedFishItem) => {
-      if (eatenIdsRef.current.has(spawnedFishItem.id)) return;
-      if (!fishListRef.current.find((f) => f.id === spawnedFishItem.id)) {
+    spawnedFish.forEach((fishItem) => {
+      if (eatenIdsRef.current.has(fishItem.id)) return;
+      if (!fishListRef.current.find((f) => f.id === fishItem.id)) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           const processedSprite = removeBackground(img, chromaToleranceRef.current);
-          const vx = (Math.random() - 0.5) * 0.5; // Even slower - reduced from 1 to 0.5
-          const vy = (Math.random() - 0.5) * 0.5;
           
-          // Get size from fishData if available, otherwise use default
-          const fishInfo = fishDataRef.current.get(spawnedFishItem.id);
-          const defaultSize = spawnedFishItem.type === 'prey' ? 60 : spawnedFishItem.type === 'predator' ? 120 : 90;
-          const fishSize = fishInfo?.stats.size || defaultSize;
+          // Check if this is a full Creature object or legacy format
+          let fishSize: number;
+          let baseSpeed: number;
+          let fishType: string;
+          let creatureData: Creature | undefined;
+          
+          if (isCreature(fishItem)) {
+            // Use full creature metadata
+            fishSize = fishItem.stats.size;
+            baseSpeed = fishItem.stats.speed ?? 2;
+            fishType = fishItem.type;
+            creatureData = fishItem;
+          } else {
+            // Legacy format - use defaults or fishData
+            const fishInfo = fishDataRef.current.get(fishItem.id);
+            const defaultSize = fishItem.type === 'prey' ? 60 : fishItem.type === 'predator' ? 120 : 90;
+            fishSize = fishInfo?.stats.size ?? defaultSize;
+            baseSpeed = fishInfo?.stats.speed ?? 2;
+            fishType = fishItem.type;
+          }
+          
+          // Calculate velocity based on speed
+          const speedScale = 0.1; // Scale down for canvas movement
+          const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
+          const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
           
           const newFish = {
-            id: spawnedFishItem.id,
+            id: fishItem.id,
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height,
             vx,
             vy,
             size: fishSize,
             sprite: processedSprite,
-            type: spawnedFishItem.type,
+            type: fishType,
             facingRight: vx >= 0,
             verticalTilt: 0,
             animTime: Math.random() * Math.PI * 2,
+            // Store creature metadata if available
+            creatureData,
           };
           fishListRef.current.push(newFish);
         };
         img.onerror = () => {
-          console.error('Failed to load fish sprite:', spawnedFishItem.id);
+          console.error('Failed to load fish sprite:', fishItem.id);
         };
-        img.src = spawnedFishItem.sprite;
+        img.src = fishItem.sprite;
       }
     });
 

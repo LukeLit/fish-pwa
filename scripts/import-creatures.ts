@@ -240,10 +240,10 @@ async function importCreatures(directory: string) {
   const files = await readdir(directory);
   const jsonFiles = files.filter(f => extname(f) === '.json');
   const imageFiles = new Set(files.filter(f => ['.png', '.jpg', '.jpeg', '.webp'].includes(extname(f))));
-  
+
   console.log(`Found ${jsonFiles.length} creature definitions`);
   console.log(`Found ${imageFiles.size} sprite images`);
-  
+
   let successCount = 0;
   let failCount = 0;
   let migratedCount = 0;
@@ -251,7 +251,7 @@ async function importCreatures(directory: string) {
   for (const jsonFile of jsonFiles) {
     const creatureId = basename(jsonFile, '.json');
     console.log(`\n📝 Processing: ${creatureId}`);
-    
+
     try {
       // Read creature data
       const jsonPath = join(directory, jsonFile);
@@ -284,7 +284,7 @@ async function importCreatures(directory: string) {
           console.log(`  🎨 Uploading sprite: ${spriteFile}`);
           const spritePath = join(directory, spriteFile);
           const spriteBuffer = await readFile(spritePath);
-          
+
           // Upload sprite to blob storage
           const spriteBlob = await put(
             `assets/creatures/${creatureId}.png`,
@@ -300,16 +300,16 @@ async function importCreatures(directory: string) {
           break;
         }
       }
-      
+
       if (!spriteUrl) {
         console.log(`  ⚠️  No sprite found for ${creatureId}`);
       }
-      
+
       // Update sprite URL in creature data
       if (spriteUrl) {
         creatureData.sprite = spriteUrl;
       }
-      
+
       // Upload creature metadata
       console.log(`  📤 Uploading metadata...`);
       const metadataBlob = await put(
@@ -322,17 +322,17 @@ async function importCreatures(directory: string) {
           contentType: 'application/json',
         }
       );
-      
+
       console.log(`  ✅ Metadata uploaded: ${metadataBlob.url}`);
       console.log(`  ✨ ${creatureId} imported successfully!`);
       successCount++;
-      
+
     } catch (error) {
       console.error(`  ❌ Failed to import ${creatureId}:`, error);
       failCount++;
     }
   }
-  
+
   console.log(`\n${'='.repeat(50)}`);
   console.log(`✅ Success: ${successCount}`);
   console.log(`❌ Failed: ${failCount}`);

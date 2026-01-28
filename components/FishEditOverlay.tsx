@@ -75,10 +75,10 @@ export interface FishData {
 }
 
 // Type alias for updateField values to improve readability
-type FishFieldValue = 
-  | string 
-  | number 
-  | boolean 
+type FishFieldValue =
+  | string
+  | number
+  | boolean
   | string[]
   | Array<{ type: string; baseYield: number }> 
   | EssenceData
@@ -152,10 +152,10 @@ export default function FishEditOverlay({
 
   const handleSaveToGame = async () => {
     if (!editedFish) return;
-    
+
     setIsSaving(true);
     setSaveMessage('');
-    
+
     try {
       // Convert sprite to blob if it's a data URL
       let spriteBlob: Blob | null = null;
@@ -210,10 +210,10 @@ export default function FishEditOverlay({
 
   const handleUnlockForPlayer = async () => {
     if (!editedFish) return; // Null check
-    
+
     setIsSaving(true);
     setSaveMessage('');
-    
+
     try {
       const response = await fetch('/api/player/unlock-fish', {
         method: 'POST',
@@ -392,7 +392,66 @@ export default function FishEditOverlay({
     <div className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md z-50 flex flex-col border-t border-gray-700" style={{ height: '50%', maxHeight: '600px' }}>
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-gray-800/90 border-b border-gray-700">
-        <h2 className="text-lg font-bold text-white">Edit Fish</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-bold text-white">Edit Fish</h2>
+          {/* Delete Button */}
+          <button
+            title="Delete Creature"
+            onClick={async () => {
+              if (!editedFish) return;
+              if (!window.confirm(`Delete ${editedFish.name}? This cannot be undone.`)) return;
+              try {
+                const res = await fetch(`/api/delete-creature?id=${encodeURIComponent(editedFish.id)}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                  setSaveMessage('✓ Creature deleted.');
+                  onBack();
+                } else {
+                  setSaveMessage('❌ Delete failed: ' + (data.error || 'Unknown error'));
+                }
+              } catch (err) {
+                setSaveMessage('❌ Delete failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+              }
+            }}
+            className="bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+            type="button"
+          >
+            Delete
+          </button>
+          {/* Set Player and Spawn Buttons */}
+          <div className="flex gap-2">
+            <button
+              title="Set as Player Fish"
+              onClick={() => {
+                if (editedFish && editedFish.sprite) {
+                  // Dispatch full fish data for player
+                  const event = new CustomEvent('setPlayerFish', { detail: { fish: editedFish } });
+                  window.dispatchEvent(event);
+                  setSaveMessage('✓ Set as player fish for testing.');
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+              type="button"
+            >
+              Set Player
+            </button>
+            <button
+              title="Spawn as AI"
+              onClick={() => {
+                if (editedFish && editedFish.sprite) {
+                  // Dispatch full fish data for AI spawn
+                  const event = new CustomEvent('spawnAIFish', { detail: { fish: editedFish } });
+                  window.dispatchEvent(event);
+                  setSaveMessage('✓ Spawned as AI for testing.');
+                }
+              }}
+              className="bg-blue-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+              type="button"
+            >
+              Spawn
+            </button>
+          </div>
+        </div>
         <button
           onClick={onBack}
           className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
@@ -506,17 +565,66 @@ export default function FishEditOverlay({
         <div>
           <label className="block text-sm font-bold text-white mb-2">Sprite</label>
           <div className="space-y-3">
-            {/* Current sprite preview */}
+            {/* Current sprite preview and Flip button */}
             {editedFish.sprite && (
-              <div className="w-full bg-gray-800 rounded border border-gray-600 p-3 flex items-center justify-center" style={{ minHeight: '100px' }}>
-                <img 
-                  src={editedFish.sprite} 
+              <div className="w-full bg-gray-800 rounded border border-gray-600 p-3 flex flex-col items-center justify-center gap-2" style={{ minHeight: '100px' }}>
+                <img
+                  src={editedFish.sprite}
                   alt="Current sprite"
                   className="max-w-full max-h-24 object-contain"
                 />
+                <button
+                  onClick={async () => {
+                    if (!editedFish.sprite) return;
+                    // Flip the image horizontally using a canvas, with CORS handling
+                    const flipImage = async (imageSrc: string): Promise<string> => {
+                      return new Promise((resolve, reject) => {
+                        const img = new window.Image();
+                        // Set crossOrigin only for remote images
+                        if (!imageSrc.startsWith('data:')) {
+                          img.crossOrigin = 'anonymous';
+                        }
+                        img.onload = () => {
+                          try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            if (!ctx) return reject(new Error('No canvas context'));
+                            ctx.translate(img.width, 0);
+                            ctx.scale(-1, 1);
+                            ctx.drawImage(img, 0, 0);
+                            try {
+                              const dataUrl = canvas.toDataURL('image/png');
+                              resolve(dataUrl);
+                            } catch (e) {
+                              reject(new Error('Failed to export flipped image. This may be due to CORS restrictions on the image source. Try uploading or generating the image locally.'));
+                            }
+                          } catch (e) {
+                            reject(e);
+                          }
+                        };
+                        img.onerror = (err) => reject(err);
+                        img.src = imageSrc;
+                      });
+                    };
+                    setSaveMessage('Flipping sprite...');
+                    try {
+                      const flipped = await flipImage(editedFish.sprite);
+                      updateField('sprite', flipped);
+                      setSaveMessage('✓ Sprite flipped horizontally. Remember to save changes.');
+                    } catch (err: any) {
+                      setSaveMessage('❌ Error flipping sprite: ' + (err?.message || 'Unknown error') + '\nIf this is a remote image, CORS may prevent flipping. Try uploading or generating the image locally.');
+                    }
+                  }}
+                  className="bg-yellow-600 hover:bg-yellow-500 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                  type="button"
+                >
+                  Flip ↔
+                </button>
               </div>
             )}
-            
+
             {/* Action buttons */}
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -559,7 +667,7 @@ export default function FishEditOverlay({
             {/* AI Generation Section */}
             <div className="border-t border-gray-700 pt-3 mt-2">
               <p className="text-xs font-bold text-white mb-2">Or Generate with AI</p>
-              
+
               {/* Model Selection */}
               <select
                 value={selectedModel}
@@ -1233,7 +1341,7 @@ export default function FishEditOverlay({
                 {['shallow', 'medium', 'deep', 'abyssal', 'shallow_tropical', 'deep_polluted'].map((biome) => {
                   const current = editedFish.spawnRules || { canAppearIn: [editedFish.biomeId || 'shallow'], spawnWeight: 50 };
                   const isChecked = current.canAppearIn.includes(biome);
-                  
+
                   return (
                     <label key={biome} className="flex items-center space-x-2 cursor-pointer">
                       <input
@@ -1309,7 +1417,7 @@ export default function FishEditOverlay({
           >
             {isSaving ? 'Saving...' : 'Save Creature'}
           </button>
-          
+
           {editedFish.playable && (
             <button
               onClick={handleUnlockForPlayer}
@@ -1319,13 +1427,12 @@ export default function FishEditOverlay({
               {isSaving ? 'Unlocking...' : 'Unlock for Player'}
             </button>
           )}
-          
+
           {saveMessage && (
-            <div className={`text-sm text-center p-2 rounded ${
-              saveMessage.startsWith('✓') 
-                ? 'bg-green-600/20 text-green-400' 
+            <div className={`text-sm text-center p-2 rounded ${saveMessage.startsWith('✓')
+                ? 'bg-green-600/20 text-green-400'
                 : 'bg-red-600/20 text-red-400'
-            }`}>
+              }`}>
               {saveMessage}
             </div>
           )}
@@ -1337,11 +1444,10 @@ export default function FishEditOverlay({
         <button
           onClick={onPrevious}
           disabled={!hasPrevious}
-          className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${
-            hasPrevious
+          className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${hasPrevious
               ? 'bg-blue-600 hover:bg-blue-500'
               : 'bg-gray-700 opacity-50 cursor-not-allowed'
-          }`}
+            }`}
         >
           ← Previous
         </button>
@@ -1350,11 +1456,10 @@ export default function FishEditOverlay({
         <button
           onClick={onNext}
           disabled={!hasNext}
-          className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${
-            hasNext
+          className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${hasNext
               ? 'bg-blue-600 hover:bg-blue-500'
               : 'bg-gray-700 opacity-50 cursor-not-allowed'
-          }`}
+            }`}
         >
           Next →
         </button>
