@@ -1073,3 +1073,149 @@ A migration script could:
 7. **Implement ability system** in game
 
 See implementation files in `lib/game/` and `app/api/` for code.
+
+---
+
+## Fish Spawning System
+
+### Overview
+
+The fish spawning system provides a centralized utility for creating fish entities in both the game and editor environments. This ensures consistency, reduces code duplication, and makes future enhancements easier.
+
+### Spawning Utility Location
+
+`lib/game/spawn-fish.ts`
+
+### Core Functions
+
+#### `spawnFish(options: SpawnFishOptions): Fish`
+
+Main spawning function that accepts a full `Creature` object and configuration options.
+
+**Options**:
+```typescript
+interface SpawnFishOptions {
+  creature: Creature;              // Creature definition
+  physics: PhysicsEngine;          // Physics engine instance
+  position: { x: number; y: number }; // Spawn position
+  isPlayer?: boolean;              // Player vs AI fish
+  size?: number;                   // Override size
+  speed?: number;                  // Override speed
+  sizeVariance?: { min: number; max: number }; // Size variance range
+  speedVariance?: { min: number; max: number }; // Speed variance range
+  relativeToSize?: number;         // Reference size for variance
+  id?: string;                     // Custom entity ID
+}
+```
+
+**Features**:
+- Initializes physics body with correct size/speed
+- Applies variance for AI fish (player fish use exact stats)
+- Stores creature metadata on fish entity for game systems
+- Supports size-relative variance (prey vs predator scaling)
+
+**Metadata Stored on Fish**:
+```typescript
+{
+  creatureId: string;              // Creature ID for lookups
+  creatureName: string;            // Display name
+  rarity: string;                  // Rarity tier
+  biomeId: string;                 // Native biome
+  essenceTypes: Array<{type, baseYield}>; // Essence drops
+  grantedAbilities: string[];      // Abilities granted when eaten
+  sprite: string;                  // Sprite URL
+}
+```
+
+#### `spawnPlayerFish(creature, physics, position, id?): Fish`
+
+Convenience wrapper for spawning player-controlled fish. Uses exact stats without variance.
+
+#### `spawnAIFish(creature, physics, position, playerSize?, id?): Fish`
+
+Convenience wrapper for spawning AI-controlled fish. Applies size and speed variance based on creature type and player size.
+
+**Size Variance Logic**:
+- **Small prey** (< 80% of player size): 90-110% of base size
+- **Large predator** (> 120% of player size): 100-130% of base size  
+- **Similar size** (80-120% of player size): 80-120% of base size
+
+**Speed Variance**: 90-110% of base speed for all AI fish
+
+### Usage Examples
+
+#### Game Engine Spawning
+
+```typescript
+import { spawnAIFish } from './spawn-fish';
+import { getCreaturesByBiome } from './data/creatures';
+
+// Get available creatures for current biome
+const creatures = getCreaturesByBiome('shallow');
+
+// Select creature based on spawn weights
+const selectedCreature = selectCreatureByWeight(creatures);
+
+// Spawn fish using centralized utility
+const fish = spawnAIFish(
+  selectedCreature,
+  this.physics,
+  { x: spawnX, y: spawnY },
+  this.player.stats.size // For size-relative variance
+);
+
+this.entities.push(fish);
+```
+
+#### Editor/Testing Spawning
+
+```typescript
+import { spawnFish } from '@/lib/game/spawn-fish';
+
+// Spawn with custom settings for testing
+const testFish = spawnFish({
+  creature: myCreature,
+  physics: physicsEngine,
+  position: { x: 400, y: 300 },
+  isPlayer: false,
+  size: 50, // Override for testing
+  speed: 3  // Override for testing
+});
+```
+
+### Integration Points
+
+**Game Engine** (`lib/game/engine.ts`):
+- Uses `spawnAIFish()` in `spawnEntities()` method
+- Replaces inline fish creation logic
+- Preserves spawn weight selection and biome filtering
+
+**Editor Canvas** (`components/FishEditorCanvas.tsx`):
+- Accepts both `Creature[]` and legacy format for backward compatibility
+- Uses creature metadata when available
+- Falls back to `fishData` map for legacy fish
+
+**Game Canvas** (`components/GameCanvas.tsx`):
+- Loads creatures using `getCreaturesByBiome()`
+- Passes full `Creature` objects to editor
+- Ensures game and editor use same creature definitions
+
+### Benefits
+
+1. **Consistency**: All fish spawning uses same logic and metadata
+2. **Type Safety**: Full TypeScript support with Creature interface
+3. **Maintainability**: Single source of truth for spawning logic
+4. **Extensibility**: Easy to add new features (buffs, mutations, abilities)
+5. **Testing**: Editor and game use same spawning system
+6. **Data Integrity**: All creature fields are properly initialized
+
+### Future Enhancements
+
+Possible extensions to the spawning system:
+
+- **Mutation System**: Apply mutations during spawn
+- **Buff System**: Apply temporary buffs/debuffs
+- **Ability Initialization**: Activate passive abilities on spawn
+- **Evolution**: Spawn evolved variants of creatures
+- **Rarity Modifiers**: Scale stats based on rarity tier
+- **Biome Effects**: Apply biome-specific modifiers on spawn
