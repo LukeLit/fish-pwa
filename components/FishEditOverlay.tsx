@@ -38,7 +38,7 @@ export interface FishData {
   };
   sprite: string;
   // Extended fields for Creature compatibility
-  rarity?: 'common' | 'rare' | 'epic' | 'legendary' | 'uncommon';
+  rarity?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
   playable?: boolean;
   biomeId?: string;
   
@@ -385,7 +385,7 @@ export default function FishEditOverlay({
     // Add art style suffix
     chunks.push('isolated on transparent background', 'PNG cutout style', 'game sprite', 'side view right-facing');
     
-    return chunks.filter(c => c.trim()).join(', ');
+    return chunks.filter(c => c.trim().length > 0).join(', ');
   };
 
   return (
@@ -465,7 +465,7 @@ export default function FishEditOverlay({
                     </button>
                     <button
                       onClick={() => moveDescriptionChunk(index, 'down')}
-                      disabled={index === editedFish.descriptionChunks!.length - 1}
+                      disabled={index === (editedFish.descriptionChunks?.length ?? 0) - 1}
                       className="bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed text-white px-2 py-1 rounded text-xs"
                       title="Move down"
                     >
@@ -731,7 +731,7 @@ export default function FishEditOverlay({
                       />
                       <button
                         onClick={() => {
-                          const essence = editedFish.essence!;
+                          const essence = editedFish.essence ?? { primary: { type: 'shallow', baseYield: 10 } };
                           const chunks = essence.primary.visualChunks || [];
                           updateField('essence', {
                             ...essence,
@@ -776,7 +776,7 @@ export default function FishEditOverlay({
                       <select
                         value={sec.type}
                         onChange={(e) => {
-                          const essence = editedFish.essence!;
+                          const essence = editedFish.essence ?? { primary: { type: 'shallow', baseYield: 10 } };
                           const secondary = essence.secondary || [];
                           const newSecondary = [...secondary];
                           newSecondary[secIndex] = { ...newSecondary[secIndex], type: e.target.value };
@@ -801,7 +801,7 @@ export default function FishEditOverlay({
                         max="999"
                         value={sec.baseYield}
                         onChange={(e) => {
-                          const essence = editedFish.essence!;
+                          const essence = editedFish.essence ?? { primary: { type: 'shallow', baseYield: 10 } };
                           const secondary = essence.secondary || [];
                           const newSecondary = [...secondary];
                           newSecondary[secIndex] = { ...newSecondary[secIndex], baseYield: parseInt(e.target.value) || 0 };
@@ -818,7 +818,7 @@ export default function FishEditOverlay({
                       <label className="text-xs text-gray-400">Visual Chunks</label>
                       <button
                         onClick={() => {
-                          const essence = editedFish.essence!;
+                          const essence = editedFish.essence ?? { primary: { type: 'shallow', baseYield: 10 } };
                           const secondary = essence.secondary || [];
                           const chunks = secondary[secIndex].visualChunks || [];
                           const newSecondary = [...secondary];
@@ -842,7 +842,7 @@ export default function FishEditOverlay({
                           />
                           <button
                             onClick={() => {
-                              const essence = editedFish.essence!;
+                              const essence = editedFish.essence ?? { primary: { type: 'shallow', baseYield: 10 } };
                               const secondary = essence.secondary || [];
                               const chunks = secondary[secIndex].visualChunks || [];
                               const newSecondary = [...secondary];
@@ -864,7 +864,7 @@ export default function FishEditOverlay({
                   {/* Remove Secondary */}
                   <button
                     onClick={() => {
-                      const essence = editedFish.essence!;
+                      const essence = editedFish.essence ?? { primary: { type: 'shallow', baseYield: 10 } };
                       const secondary = essence.secondary || [];
                       updateField('essence', { 
                         ...essence, 
@@ -993,12 +993,18 @@ export default function FishEditOverlay({
                   type="text"
                   value={editedFish.mutationSource?.sourceCreatureId || ''}
                   onChange={(e) => {
-                    const current = editedFish.mutationSource || { 
-                      sourceCreatureId: '', 
-                      mutationType: 'polluted', 
-                      mutationLevel: 1 
-                    };
-                    updateField('mutationSource', { ...current, sourceCreatureId: e.target.value });
+                    const value = e.target.value.trim();
+                    if (!value) {
+                      // Remove mutation source if empty
+                      updateField('mutationSource', undefined);
+                    } else {
+                      const current = editedFish.mutationSource || { 
+                        sourceCreatureId: '', 
+                        mutationType: 'polluted', 
+                        mutationLevel: 1 
+                      };
+                      updateField('mutationSource', { ...current, sourceCreatureId: value });
+                    }
                   }}
                   className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
                   placeholder="e.g., goldfish"

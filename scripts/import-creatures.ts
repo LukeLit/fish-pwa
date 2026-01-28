@@ -130,11 +130,11 @@ function migrateDescriptionToChunks(description?: string): string[] | undefined 
     return undefined;
   }
   
-  // Split on periods, commas, and semicolons
+  // Split on periods, commas, and semicolons, then clean up
   const chunks = description
     .split(/[.,;]\s+/)
     .map(s => s.trim())
-    .filter(s => s.length > 0);
+    .filter(s => s.length > 0); // Remove empty strings after split
   
   return chunks.length > 0 ? chunks : undefined;
 }
@@ -216,6 +216,7 @@ function validateCreature(creature: CreatureData): { valid: boolean; errors: str
   }
   
   // Essence validation - must have either essence or essenceTypes
+  // Note: baseYield of 0 is allowed for essence types that provide no yield but are part of the creature's identity
   if (!creature.essence && !creature.essenceTypes) {
     errors.push('Missing both essence and essenceTypes (at least one required)');
   }
