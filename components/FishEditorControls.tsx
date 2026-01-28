@@ -26,12 +26,14 @@ const BG_PROMPTS = {
     'Illustrative tropical reef, zoomed-out panoramic view, vibrant but soft colors, stylized background art for games, not photorealistic, clear water, distant coral',
 };
 
+import { type FishData } from './FishEditOverlay';
+
 interface FishEditorControlsProps {
   onBackToMenu: () => void;
-  onSpawnFish: (sprite: string, type: string) => void;
+  onSpawnFish: (fish: FishData) => void;
   onClearFish: () => void;
   onSetBackground: (bg: string | null) => void;
-  onSetPlayerFish: (sprite: string | null) => void;
+  onSetPlayerFish: (fish: FishData | null) => void;
   spawnedFishCount: number;
   chromaTolerance: number;
   onChromaToleranceChange: (tolerance: number) => void;
@@ -589,13 +591,35 @@ export default function FishEditorControls({
             </div>
             <div className="grid grid-cols-3 gap-2 mb-2">
               <button
-                onClick={() => onSpawnFish(generatedFish, selectedFishType)}
+                onClick={() => {
+                  if (!generatedFish) return;
+                  const fish: FishData = {
+                    id: `editor-ai-${Date.now()}`,
+                    name: 'Generated Fish',
+                    description: '',
+                    type: selectedFishType,
+                    stats: { size: 80, speed: 1, health: 1, damage: 1 },
+                    sprite: generatedFish,
+                  };
+                  onSpawnFish(fish);
+                }}
                 className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
               >
                 Spawn
               </button>
               <button
-                onClick={() => onSetPlayerFish(generatedFish)}
+                onClick={() => {
+                  if (!generatedFish) return;
+                  const fish: FishData = {
+                    id: `editor-player-${Date.now()}`,
+                    name: 'Player Fish',
+                    description: '',
+                    type: selectedFishType,
+                    stats: { size: 80, speed: 1, health: 1, damage: 1 },
+                    sprite: generatedFish,
+                  };
+                  onSetPlayerFish(fish);
+                }}
                 className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
               >
                 Set Player

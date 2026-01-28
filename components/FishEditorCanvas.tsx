@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnalogJoystick, { type AnalogJoystickOutput } from './AnalogJoystick';
 import { type FishData } from './FishEditOverlay';
+import { spawnFishFromData } from '@/lib/game/spawn-fish';
 import {
   HUNGER_MAX,
   HUNGER_DRAIN_RATE,
@@ -183,7 +184,6 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
   return canvas;
 }
 
-export default function FishEditorCanvas({
   background,
   playerFishSprite,
   spawnedFish,
@@ -216,38 +216,47 @@ export default function FishEditorCanvas({
   const pausedRef = useRef<boolean>(paused);
   const showEditButtonsRef = useRef<boolean>(showEditButtons);
 
+
   // Update refs when props change
-  useEffect(() => {
-    chromaToleranceRef.current = chromaTolerance;
-  }, [chromaTolerance]);
+  useEffect(() => { chromaToleranceRef.current = chromaTolerance }, [chromaTolerance])
+  useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => { deformationRef.current = deformationIntensity }, [deformationIntensity])
+  useEffect(() => { editModeRef.current = editMode }, [editMode])
+  useEffect(() => { selectedFishIdRef.current = selectedFishId }, [selectedFishId])
+  useEffect(() => { fishDataRef.current = fishData }, [fishData])
+  useEffect(() => { pausedRef.current = paused }, [paused])
+  useEffect(() => { showEditButtonsRef.current = showEditButtons }, [showEditButtons])
 
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
+  // Shared spawn logic for player and AI
+  const spawnPlayerFish = (fish: FishData) => {
+    // Despawn current player
+    playerRef.current = spawnFishFromData(fish, { isPlayer: true })
+    // Optionally reset other player state here
+  }
 
-  useEffect(() => {
-    deformationRef.current = deformationIntensity;
-  }, [deformationIntensity]);
+  const spawnAIFish = (fish: FishData) => {
+    // Add to fishListRef as AI
+    const canvas = canvasRef.current
+    const pos = canvas ? { x: Math.random() * canvas.width, y: Math.random() * canvas.height } : { x: 400, y: 300 }
+    const aiFish = spawnFishFromData(fish, { isPlayer: false, position: pos })
+    fishListRef.current.push(aiFish)
+  }
 
+  // Listen for global events from overlay
   useEffect(() => {
-    editModeRef.current = editMode;
-  }, [editMode]);
-
-  useEffect(() => {
-    selectedFishIdRef.current = selectedFishId;
-  }, [selectedFishId]);
-
-  useEffect(() => {
-    fishDataRef.current = fishData;
-  }, [fishData]);
-
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-
-  useEffect(() => {
-    showEditButtonsRef.current = showEditButtons;
-  }, [showEditButtons]);
+    const handleSetPlayer = (e: any) => {
+      if (e.detail?.fish) spawnPlayerFish(e.detail.fish)
+    }
+    const handleSpawnAI = (e: any) => {
+      if (e.detail?.fish) spawnAIFish(e.detail.fish)
+    }
+    window.addEventListener('setPlayerFish', handleSetPlayer)
+    window.addEventListener('spawnAIFish', handleSpawnAI)
+    return () => {
+      window.removeEventListener('setPlayerFish', handleSetPlayer)
+      window.removeEventListener('spawnAIFish', handleSpawnAI)
+    }
+  }, [])
 
   const eatenIdsRef = useRef<Set<string>>(new Set());
 

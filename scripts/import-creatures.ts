@@ -24,9 +24,9 @@ import { put } from '@vercel/blob';
 interface CreatureData {
   id: string;
   name: string;
-  description: string;
-  type: 'prey' | 'predator' | 'mutant';
-  stats: {
+  description?: string;
+  type?: 'prey' | 'predator' | 'mutant' | string;
+  stats?: {
     size: number;
     speed: number;
     health: number;
@@ -36,7 +36,27 @@ interface CreatureData {
   rarity?: string;
   playable?: boolean;
   biomeId?: string;
+  // Old format (legacy support)
   essenceTypes?: Array<{ type: string; baseYield: number }>;
+  // New format: all essence types as object
+  essence?: {
+    shallow?: number;
+    deep_sea?: number;
+    tropical?: number;
+    polluted?: number;
+    cosmic?: number;
+    demonic?: number;
+    robotic?: number;
+  };
+  // Modular prompt system
+  descriptionChunks?: string[];
+  visualMotif?: string | string[];
+  fusionParentIds?: string[];
+  mutationSource?: string | null;
+  // For future: ability/essence/biome prompt chunks
+  abilityPromptChunks?: string[];
+  essencePromptChunks?: string[];
+  biomePromptChunks?: string[];
   spawnRules?: {
     canAppearIn?: string[];
     spawnWeight?: number;
@@ -58,30 +78,30 @@ async function importCreatures(directory: string) {
   }
 
   console.log(`📁 Reading creatures from: ${directory}`);
-  
+
   const files = await readdir(directory);
   const jsonFiles = files.filter(f => extname(f) === '.json');
   const imageFiles = new Set(files.filter(f => ['.png', '.jpg', '.jpeg', '.webp'].includes(extname(f))));
-  
+
   console.log(`Found ${jsonFiles.length} creature definitions`);
   console.log(`Found ${imageFiles.size} sprite images`);
-  
+
   let successCount = 0;
   let failCount = 0;
-  
+
   for (const jsonFile of jsonFiles) {
     const creatureId = basename(jsonFile, '.json');
     console.log(`\n📝 Processing: ${creatureId}`);
-    
+
     try {
       // Read creature data
       const jsonPath = join(directory, jsonFile);
       const jsonContent = await readFile(jsonPath, 'utf-8');
       const creatureData: CreatureData = JSON.parse(jsonContent);
-      
+
       // Ensure ID matches filename
       creatureData.id = creatureId;
-      
+
       // Find sprite file
       let spriteUrl: string | undefined;
       const possibleExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
@@ -91,7 +111,7 @@ async function importCreatures(directory: string) {
           console.log(`  🎨 Uploading sprite: ${spriteFile}`);
           const spritePath = join(directory, spriteFile);
           const spriteBuffer = await readFile(spritePath);
-          
+
           // Upload sprite to blob storage
           const spriteBlob = await put(
             `assets/creatures/${creatureId}.png`,
@@ -107,16 +127,16 @@ async function importCreatures(directory: string) {
           break;
         }
       }
-      
+
       if (!spriteUrl) {
         console.log(`  ⚠️  No sprite found for ${creatureId}`);
       }
-      
+
       // Update sprite URL in creature data
       if (spriteUrl) {
         creatureData.sprite = spriteUrl;
       }
-      
+
       // Upload creature metadata
       console.log(`  📤 Uploading metadata...`);
       const metadataBlob = await put(
@@ -129,17 +149,17 @@ async function importCreatures(directory: string) {
           contentType: 'application/json',
         }
       );
-      
+
       console.log(`  ✅ Metadata uploaded: ${metadataBlob.url}`);
       console.log(`  ✨ ${creatureId} imported successfully!`);
       successCount++;
-      
+
     } catch (error) {
       console.error(`  ❌ Failed to import ${creatureId}:`, error);
       failCount++;
     }
   }
-  
+
   console.log(`\n${'='.repeat(50)}`);
   console.log(`✅ Success: ${successCount}`);
   console.log(`❌ Failed: ${failCount}`);

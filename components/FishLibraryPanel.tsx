@@ -9,6 +9,8 @@ import type { FishData } from './FishEditOverlay';
 interface FishLibraryPanelProps {
   onSelectFish: (fish: FishData) => void;
   onAddNew: () => void;
+  onSetPlayer?: (fish: FishData) => void;
+  onSpawnFish?: (sprite: string, type: string) => void;
 }
 
 export default function FishLibraryPanel({ onSelectFish, onAddNew }: FishLibraryPanelProps) {
@@ -26,7 +28,7 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew }: FishLibrary
       setError(null);
       const response = await fetch('/api/list-creatures');
       const result = await response.json();
-      
+
       if (result.success) {
         setCreatures(result.creatures || []);
       } else {
@@ -90,76 +92,114 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew }: FishLibrary
         </button>
 
         {creatures.map((creature) => (
-          <button
-            key={creature.id}
-            onClick={() => onSelectFish(creature)}
-            className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg p-3 transition-colors text-left"
-          >
-            <div className="flex gap-3">
-              {/* Thumbnail */}
-              <div className="w-16 h-16 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
-                {creature.sprite && (
-                  <img
-                    src={creature.sprite}
-                    alt={creature.name}
-                    className="w-full h-full object-contain"
-                  />
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                {/* Name and Type */}
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-bold text-white truncate">{creature.name}</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded ${
-                    creature.type === 'prey' ? 'bg-green-600/20 text-green-400' :
-                    creature.type === 'predator' ? 'bg-red-600/20 text-red-400' :
-                    'bg-purple-600/20 text-purple-400'
-                  }`}>
-                    {creature.type}
-                  </span>
-                  {creature.playable && (
-                    <span className="text-xs px-2 py-0.5 rounded bg-blue-600/20 text-blue-400">
-                      Playable
-                    </span>
+          <div key={creature.id} className="relative group">
+            <button
+              onClick={() => onSelectFish(creature)}
+              className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg p-3 transition-colors text-left"
+            >
+              <div className="flex gap-3">
+                {/* Thumbnail */}
+                <div className="w-16 h-16 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
+                  {creature.sprite && (
+                    <img
+                      src={creature.sprite}
+                      alt={creature.name}
+                      className="w-full h-full object-contain"
+                    />
                   )}
                 </div>
 
-                {/* Tags */}
-                <div className="flex flex-wrap gap-1">
-                  {/* Rarity */}
-                  {creature.rarity && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      creature.rarity === 'legendary' ? 'bg-yellow-600/20 text-yellow-400' :
-                      creature.rarity === 'epic' ? 'bg-purple-600/20 text-purple-400' :
-                      creature.rarity === 'rare' ? 'bg-blue-600/20 text-blue-400' :
-                      'bg-gray-600/20 text-gray-400'
-                    }`}>
-                      {creature.rarity}
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  {/* Name and Type */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-bold text-white truncate">{creature.name}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded ${creature.type === 'prey' ? 'bg-green-600/20 text-green-400' :
+                        creature.type === 'predator' ? 'bg-red-600/20 text-red-400' :
+                          'bg-purple-600/20 text-purple-400'
+                      }`}>
+                      {creature.type}
                     </span>
-                  )}
+                    {creature.playable && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-600/20 text-blue-400">
+                        Playable
+                      </span>
+                    )}
+                    {/* Set Player Button */}
+                    {creature.sprite && (
+                      <button
+                        title="Set as Player Fish"
+                        onClick={e => {
+                          e.stopPropagation();
+                          onSetPlayer && onSetPlayer(creature);
+                        }}
+                        className="ml-2 bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded text-xs font-medium transition-colors"
+                        type="button"
+                      >
+                        Set Player
+                      </button>
+                    )}
+                  </div>
 
-                  {/* Biome */}
-                  {creature.biomeId && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-teal-600/20 text-teal-400">
-                      {creature.biomeId}
-                    </span>
-                  )}
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1">
+                    {/* Rarity */}
+                    {creature.rarity && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${creature.rarity === 'legendary' ? 'bg-yellow-600/20 text-yellow-400' :
+                          creature.rarity === 'epic' ? 'bg-purple-600/20 text-purple-400' :
+                            creature.rarity === 'rare' ? 'bg-blue-600/20 text-blue-400' :
+                              'bg-gray-600/20 text-gray-400'
+                        }`}>
+                        {creature.rarity}
+                      </span>
+                    )}
 
-                  {/* Essences */}
-                  {creature.essenceTypes?.map((essence, idx) => (
-                    <span
-                      key={idx}
-                      className="text-xs px-1.5 py-0.5 rounded bg-indigo-600/20 text-indigo-400"
-                    >
-                      {essence.type}:{essence.baseYield}
-                    </span>
-                  ))}
+                    {/* Biome */}
+                    {creature.biomeId && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-teal-600/20 text-teal-400">
+                        {creature.biomeId}
+                      </span>
+                    )}
+
+                    {/* Essences */}
+                    {creature.essenceTypes?.map((essence, idx) => (
+                      <span
+                        key={idx}
+                        className="text-xs px-1.5 py-0.5 rounded bg-indigo-600/20 text-indigo-400"
+                      >
+                        {essence.type}:{essence.baseYield}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            {/* Delete button, top right, visible on hover */}
+            <button
+              title="Delete Creature"
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (!window.confirm(`Delete ${creature.name}? This cannot be undone.`)) return;
+                try {
+                  const res = await fetch(`/api/delete-creature?id=${encodeURIComponent(creature.id)}`, { method: 'DELETE' });
+                  const data = await res.json();
+                  if (data.success) {
+                    setCreatures((prev) => prev.filter((f) => f.id !== creature.id));
+                  } else {
+                    alert('Delete failed: ' + (data.error || 'Unknown error'));
+                  }
+                } catch (err) {
+                  alert('Delete failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                }
+              }}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-red-600 hover:bg-red-500 text-white rounded-full p-1 transition-opacity z-10"
+              style={{ pointerEvents: 'auto' }}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         ))}
       </div>
     </div>
