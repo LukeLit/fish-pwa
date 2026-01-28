@@ -86,7 +86,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         }
 
         // Spawn prey fish based on current level using creature definitions
-        const biomeCreatures = getCreaturesByBiome('shallow'); // Use shallow biome for now
+        // TODO: Dynamically determine biome based on current level/run state
+        // For now, using 'shallow' as the default starter biome
+        const biomeCreatures = getCreaturesByBiome('shallow');
         if (biomeCreatures.length > 0) {
           // Filter for prey creatures
           const preyCreatures = biomeCreatures.filter(c => c.type === 'prey');

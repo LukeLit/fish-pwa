@@ -1140,7 +1140,7 @@ Convenience wrapper for spawning AI-controlled fish. Applies size and speed vari
 - **Large predator** (> 120% of player size): 100-130% of base size  
 - **Similar size** (80-120% of player size): 80-120% of base size
 
-**Speed Variance**: 90-110% of base speed for all AI fish
+**Speed Variance**: 90-110% of base speed for all AI fish (default, can be overridden via `speedVariance` option)
 
 ### Usage Examples
 

@@ -122,7 +122,7 @@ export function spawnFish(options: SpawnFishOptions): Fish {
     rarity: creature.rarity,
     biomeId: creature.biomeId,
     essenceTypes: creature.essenceTypes,
-    grantedAbilities: creature.grantedAbilities || [],
+    grantedAbilities: creature.grantedAbilities ?? [],
     sprite: creature.sprite,
   });
 
@@ -141,8 +141,8 @@ function getDefaultSizeVariance(
   creature: Creature,
   relativeToSize?: number
 ): { min: number; max: number } {
-  if (!relativeToSize) {
-    // No reference size - use moderate variance
+  if (!relativeToSize || relativeToSize <= 0) {
+    // No reference size or invalid size - use moderate variance
     return { min: 0.9, max: 1.1 };
   }
 

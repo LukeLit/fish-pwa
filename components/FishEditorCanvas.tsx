@@ -47,9 +47,15 @@ const CHROMA_KEY = { r: 255, g: 0, b: 255 }; // #FF00FF
 
 /**
  * Type guard to check if a fish item is a full Creature object
+ * Checks for required Creature fields that distinguish it from legacy format
  */
 function isCreature(fish: Creature | { id: string; sprite: string; type: string }): fish is Creature {
-  return 'stats' in fish && 'essenceTypes' in fish;
+  return (
+    'stats' in fish && 
+    'essenceTypes' in fish &&
+    'rarity' in fish &&
+    'spawnRules' in fish
+  );
 }
 
 interface DrawFishOpts {
@@ -464,15 +470,15 @@ export default function FishEditorCanvas({
           if (isCreature(fishItem)) {
             // Use full creature metadata
             fishSize = fishItem.stats.size;
-            baseSpeed = fishItem.stats.speed || 2;
+            baseSpeed = fishItem.stats.speed ?? 2;
             fishType = fishItem.type;
             creatureData = fishItem;
           } else {
             // Legacy format - use defaults or fishData
             const fishInfo = fishDataRef.current.get(fishItem.id);
             const defaultSize = fishItem.type === 'prey' ? 60 : fishItem.type === 'predator' ? 120 : 90;
-            fishSize = fishInfo?.stats.size || defaultSize;
-            baseSpeed = fishInfo?.stats.speed || 2;
+            fishSize = fishInfo?.stats.size ?? defaultSize;
+            baseSpeed = fishInfo?.stats.speed ?? 2;
             fishType = fishItem.type;
           }
           
