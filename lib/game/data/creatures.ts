@@ -3,6 +3,7 @@
  * Based on DATA_STRUCTURE.md and VERTICAL_SLICE.md specifications
  */
 import type { Creature } from '../types';
+import { loadCreatureFromLocal, listCreaturesFromLocal } from '../../storage/local-fish-storage';
 
 /**
  * Starter fish - Goldfish
@@ -281,7 +282,26 @@ export const CREATURES: Record<string, Creature> = {
  * Get all creatures as an array
  */
 export function getAllCreatures(): Creature[] {
-  return Object.values(CREATURES);
+  const creatures = Object.values(CREATURES);
+  
+  // Add localStorage creatures if available
+  if (typeof window !== 'undefined') {
+    try {
+      const localCreatures = listCreaturesFromLocal();
+      
+      // Merge local creatures, avoiding duplicates
+      const creatureMap = new Map<string, Creature>();
+      creatures.forEach((c: Creature) => creatureMap.set(c.id, c));
+      localCreatures.forEach((c: Creature) => creatureMap.set(c.id, c));
+      
+      return Array.from(creatureMap.values());
+    } catch (error) {
+      // If localStorage module fails, just return static creatures
+      console.warn('[getAllCreatures] localStorage not available:', error);
+    }
+  }
+  
+  return creatures;
 }
 
 /**
@@ -347,7 +367,26 @@ export async function getCreatureById(id: string): Promise<Creature | undefined>
  * Get creature by ID
  */
 export function getCreature(id: string): Creature | undefined {
-  return CREATURES[id];
+  // First check hardcoded creatures
+  const hardcodedCreature = CREATURES[id];
+  if (hardcodedCreature) {
+    return hardcodedCreature;
+  }
+  
+  // Check localStorage for custom created fish
+  if (typeof window !== 'undefined') {
+    try {
+      const localCreature = loadCreatureFromLocal(id);
+      if (localCreature) {
+        console.log('[getCreature] Found creature in localStorage:', id);
+        return localCreature;
+      }
+    } catch (error) {
+      console.warn('[getCreature] localStorage not available:', error);
+    }
+  }
+  
+  return undefined;
 }
 
 /**
