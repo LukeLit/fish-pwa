@@ -5,8 +5,6 @@ import Matter from 'matter-js';
 import type p5 from 'p5';
 import { PhysicsEngine } from './physics';
 import { Entity } from './entities';
-import { FishGenerator, FishShape } from '../assets/fish-generator';
-import { getAssetManager } from '../ai/asset-manager';
 import { HUNGER_RESTORE_MULTIPLIER, HUNGER_DRAIN_RATE, HUNGER_MAX } from './hunger-constants';
 
 export interface PlayerStats {
@@ -24,11 +22,8 @@ export class Player extends Entity {
   public keys: { [key: string]: boolean } = {};
   public growthTarget: number = 10;
   public mutations: string[] = [];
-  private fishGenerator: FishGenerator;
-  private fishShape: FishShape | null = null;
   private sprite: p5.Image | null = null;
   private useSprite: boolean = false;
-  private assetManager = getAssetManager();
 
   constructor(physics: PhysicsEngine, x: number, y: number, initialSize: number = 10) {
     super(physics, {
@@ -50,44 +45,8 @@ export class Player extends Entity {
       hungerDrainRate: HUNGER_DRAIN_RATE,
     };
 
-    // Initialize fish generator with a seed based on player ID
-    this.fishGenerator = new FishGenerator(`player_${Date.now()}`);
-    this.fishShape = this.fishGenerator.generate(initialSize, 'neutral');
-
     // Make player body larger
     Matter.Body.scale(this.body, initialSize / 10, initialSize / 10);
-
-    // Try to load AI-generated sprite in background
-    this.loadAISprite();
-  }
-
-  /**
-   * Load AI-generated sprite if available
-   */
-  private async loadAISprite(): Promise<void> {
-    try {
-      const asset = await this.assetManager.getFishAsset({
-        type: this.mutations.length > 0 ? 'mutant' : 'prey',
-        size: this.stats.size,
-        mutations: this.mutations,
-        seed: `player_${this.id}`,
-      });
-
-      if (asset.modelUrl && asset.useAI) {
-        // For now, AI assets return URLs to 3D models
-        // We'll use procedural shapes until we implement 3D rendering
-        console.log('AI model available:', asset.modelUrl);
-      }
-
-      if (asset.shape) {
-        // Use procedural shape
-        this.fishShape = asset.shape;
-        this.useSprite = false;
-      }
-    } catch (error) {
-      console.warn('Failed to load AI sprite, using procedural:', error);
-      // Keep using procedural shape
-    }
   }
 
   handleKeyDown(key: string): void {
@@ -143,13 +102,9 @@ export class Player extends Entity {
       Matter.Body.scale(this.body, scale, scale);
       this.size = this.stats.size;
       
-      // Regenerate fish shape for new size
-      this.fishShape = this.fishGenerator.generate(this.stats.size, 'neutral');
-      
-      // Try to reload AI sprite for new size
-      if (this.mutations.length > 0 || this.stats.size > 20) {
-        this.loadAISprite();
-      }
+      // Update physics body size
+      Matter.Body.scale(this.body, this.stats.size / this.size, this.stats.size / this.size);
+      this.size = this.stats.size;
     }
   }
 
@@ -187,8 +142,6 @@ export class Player extends Entity {
   addMutation(mutationId: string): void {
     if (!this.mutations.includes(mutationId)) {
       this.mutations.push(mutationId);
-      // Reload sprite with mutations
-      this.loadAISprite();
     }
   }
 
@@ -199,7 +152,7 @@ export class Player extends Entity {
     const angle = Math.atan2(this.body.velocity.y, this.body.velocity.x);
     p5.rotate(angle);
 
-    // Use AI sprite if available
+    // Use sprite if available
     if (this.useSprite && this.sprite) {
       p5.imageMode(p5.CENTER);
       const spriteSize = this.size * 2.5;
@@ -214,30 +167,8 @@ export class Player extends Entity {
         p5.circle(0, 0, spriteSize * 1.1);
         p5.pop();
       }
-    } else if (this.fishShape) {
-      // Use procedural fish shape (much better than basic ellipse)
-      this.fishGenerator.render(p5, this.fishShape, 0, 0, 0);
-      
-      // Add eye detail
-      p5.fill(255);
-      p5.noStroke();
-      const eyeX = this.size * 0.6;
-      const eyeY = -this.size * 0.3;
-      p5.circle(eyeX, eyeY, this.size * 0.4);
-      p5.fill(0);
-      p5.circle(eyeX + this.size * 0.1, eyeY, this.size * 0.2);
-      
-      // Add mutation glow
-      if (this.mutations.length > 0) {
-        p5.push();
-        p5.noFill();
-        p5.stroke(255, 200, 0, 150);
-        p5.strokeWeight(2);
-        p5.circle(0, 0, this.size * 2.5);
-        p5.pop();
-      }
     } else {
-      // Fallback: improved basic fish (better than before)
+      // Fallback: basic fish shape for debugging
       p5.push();
       
       // Body with gradient-like effect
