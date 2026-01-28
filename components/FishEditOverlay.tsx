@@ -5,6 +5,26 @@
 
 import { useState, useEffect } from 'react';
 
+export interface EssenceData {
+  primary: {
+    type: string;
+    baseYield: number;
+    visualChunks?: string[];
+  };
+  secondary?: Array<{
+    type: string;
+    baseYield: number;
+    visualChunks?: string[];
+  }>;
+}
+
+export interface MutationMetadata {
+  sourceCreatureId: string;
+  mutationType: string;
+  mutationLevel: number;
+  mutationTrigger?: string;
+}
+
 export interface FishData {
   id: string;
   name: string;
@@ -18,13 +38,29 @@ export interface FishData {
   };
   sprite: string;
   // Extended fields for Creature compatibility
-  rarity?: 'common' | 'rare' | 'epic' | 'legendary';
+  rarity?: 'common' | 'rare' | 'epic' | 'legendary' | 'uncommon';
   playable?: boolean;
   biomeId?: string;
+  
+  // NEW: Modular Prompt System
+  descriptionChunks?: string[];
+  visualMotif?: string;
+  
+  // NEW: Enhanced Essence System
+  essence?: EssenceData;
+  
+  // Legacy essence (maintained for backward compatibility)
   essenceTypes?: Array<{
     type: string;
     baseYield: number;
   }>;
+  
+  // NEW: Fusion/Mutation Metadata
+  fusionParentIds?: string[];
+  fusionType?: 'balanced' | 'dominant_first' | 'dominant_second';
+  fusionGeneration?: number;
+  mutationSource?: MutationMetadata;
+  
   spawnRules?: {
     canAppearIn: string[];
     spawnWeight: number;
@@ -45,6 +81,8 @@ type FishFieldValue =
   | boolean 
   | string[]
   | Array<{ type: string; baseYield: number }> 
+  | EssenceData
+  | MutationMetadata
   | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number }
   | { biomeUnlocked: string[]; essenceSpent?: Record<string, number> };
 

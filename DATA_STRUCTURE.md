@@ -221,16 +221,43 @@ interface Ability {
 
 ### Creature (Enhanced FishData)
 
-The complete creature data structure that extends the base FishData.
+The complete creature data structure that extends the base FishData. **Updated with modular prompt system support**.
 
 ```typescript
+/**
+ * Essence Data Structure - New modular essence system
+ */
+interface EssenceData {
+  primary: {
+    type: string; // EssenceType ID
+    baseYield: number; // Base essence amount
+    visualChunks?: string[]; // Visual cues for this essence type
+  };
+  secondary?: Array<{
+    type: string; // EssenceType ID
+    baseYield: number;
+    visualChunks?: string[]; // Optional visual cues
+  }>;
+}
+
+/**
+ * Mutation Metadata - For mutated creatures
+ */
+interface MutationMetadata {
+  sourceCreatureId: string; // ID of the original creature
+  mutationType: string; // Type of mutation (polluted, abyssal, cosmic, etc.)
+  mutationLevel: number; // Intensity of mutation (1-5)
+  mutationTrigger?: string; // What caused it (upgrade ID, biome ID, etc.)
+}
+
 interface Creature extends BaseFishData {
   // Identity
   id: string;
   name: string;
-  description: string;
+  description: string; // Legacy field, maintained for compatibility
   type: 'prey' | 'predator' | 'mutant';
-  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+  playable?: boolean; // If true, can be selected as player fish
   
   // Visual
   sprite: string; // URL to sprite image (blob storage path)
@@ -244,11 +271,24 @@ interface Creature extends BaseFishData {
     damage: number; // 1-50
   };
   
-  // Essence system
+  // NEW: Modular Prompt System
+  descriptionChunks?: string[]; // Modular prompt segments describing the creature
+  visualMotif?: string; // High-level visual theme/aesthetic
+  
+  // NEW: Enhanced Essence System
+  essence?: EssenceData; // New modular essence structure with visual chunks
+  
+  // Legacy: Essence system (maintained for backward compatibility)
   essenceTypes: Array<{
     type: string; // EssenceType ID
     baseYield: number; // Base essence amount (before multipliers)
   }>; // All essence types are always granted (no chance-based drops)
+  
+  // NEW: Fusion/Mutation Metadata
+  fusionParentIds?: string[]; // Parent creature IDs if this is a fusion
+  fusionType?: 'balanced' | 'dominant_first' | 'dominant_second';
+  fusionGeneration?: number; // How many fusions deep (1 = first-gen)
+  mutationSource?: MutationMetadata; // Mutation data if this is a mutant
   
   // Progression
   unlockRequirement?: {
@@ -269,12 +309,12 @@ interface Creature extends BaseFishData {
 }
 ```
 
-**Example**:
+**Example (Updated with Modular Prompt System)**:
 ```typescript
 {
   id: "anglerfish",
   name: "Anglerfish",
-  description: "A deep-sea predator with a bioluminescent lure.",
+  description: "A deep-sea predator with a bioluminescent lure.", // Legacy field
   type: "predator",
   rarity: "rare",
   sprite: "creatures/anglerfish.png",
@@ -285,10 +325,43 @@ interface Creature extends BaseFishData {
     health: 40,
     damage: 15
   },
+  
+  // NEW: Modular prompt chunks
+  descriptionChunks: [
+    "grotesque deep-sea predator",
+    "massive gaping mouth with needle-sharp teeth",
+    "bioluminescent lure extending from head",
+    "dark blue-black scaled body",
+    "bulbous compressed body shape"
+  ],
+  visualMotif: "terrifying abyssal ambush hunter with glowing lure",
+  
+  // NEW: Enhanced essence with visual chunks
+  essence: {
+    primary: {
+      type: "deep_sea",
+      baseYield: 30,
+      visualChunks: [
+        "adapted to crushing abyssal depths",
+        "bioluminescent hunting adaptations",
+        "mysterious deep-sea features"
+      ]
+    },
+    secondary: [
+      {
+        type: "shallow",
+        baseYield: 6,
+        visualChunks: []
+      }
+    ]
+  },
+  
+  // Legacy essence types (maintained for backward compatibility)
   essenceTypes: [
     { type: "deep_sea", baseYield: 30 },
     { type: "shallow", baseYield: 6 }
   ],
+  
   grantedAbilities: ["bioluminescence"],
   spawnRules: {
     canAppearIn: ["deep", "deep_polluted"],
@@ -298,6 +371,143 @@ interface Creature extends BaseFishData {
   }
 }
 ```
+
+**Example (Fusion Creature)**:
+```typescript
+{
+  id: "jellyangler",
+  name: "Jellyangler",
+  description: "An impossible fusion of anglerfish and jellyfish.",
+  type: "mutant",
+  rarity: "epic",
+  sprite: "creatures/jellyangler.png",
+  biomeId: "deep",
+  stats: {
+    size: 55,
+    speed: 4,
+    health: 35,
+    damage: 12
+  },
+  
+  descriptionChunks: [
+    "translucent bioluminescent body",
+    "anglerfish lure with jellyfish tentacles",
+    "flowing ethereal fins",
+    "ghostly deep-sea appearance",
+    "pulsating light organs"
+  ],
+  visualMotif: "ethereal abyssal hybrid with flowing bioluminescent features",
+  
+  fusionParentIds: ["anglerfish", "moon_jellyfish"],
+  fusionType: "balanced",
+  fusionGeneration: 1,
+  
+  essence: {
+    primary: {
+      type: "deep_sea",
+      baseYield: 25,
+      visualChunks: ["deep-sea bioluminescence", "abyssal pressure adaptations"]
+    },
+    secondary: [
+      {
+        type: "cosmic",
+        baseYield: 10,
+        visualChunks: ["otherworldly translucent form"]
+      }
+    ]
+  },
+  
+  essenceTypes: [
+    { type: "deep_sea", baseYield: 25 },
+    { type: "cosmic", baseYield: 10 }
+  ],
+  
+  grantedAbilities: ["bioluminescence", "jellyfish_sting", "hybrid_vigor"],
+  spawnRules: {
+    canAppearIn: ["deep"],
+    spawnWeight: 5,
+    minDepth: 500,
+    maxDepth: 2000
+  }
+}
+```
+
+**Example (Mutated Creature)**:
+```typescript
+{
+  id: "toxic_goldfish",
+  name: "Toxic Goldfish",
+  description: "A goldfish heavily mutated by polluted waters.",
+  type: "mutant",
+  rarity: "uncommon",
+  sprite: "creatures/toxic_goldfish.png",
+  biomeId: "medium_polluted",
+  stats: {
+    size: 25,
+    speed: 6,
+    health: 20,
+    damage: 8
+  },
+  
+  descriptionChunks: [
+    "sickly green-gold discolored scales",
+    "asymmetric mutated fins",
+    "visible toxic growths and lesions",
+    "glazed contaminated eyes",
+    "twisted deformed body"
+  ],
+  visualMotif: "heavily polluted mutant with toxic deformities",
+  
+  mutationSource: {
+    sourceCreatureId: "goldfish_starter",
+    mutationType: "polluted",
+    mutationLevel: 3,
+    mutationTrigger: "polluted_biome_exposure"
+  },
+  
+  essence: {
+    primary: {
+      type: "polluted",
+      baseYield: 15,
+      visualChunks: [
+        "toxic waste mutations visible",
+        "contaminated appearance",
+        "pollution-induced asymmetry"
+      ]
+    },
+    secondary: [
+      {
+        type: "shallow",
+        baseYield: 3,
+        visualChunks: []
+      }
+    ]
+  },
+  
+  essenceTypes: [
+    { type: "polluted", baseYield: 15 },
+    { type: "shallow", baseYield: 3 }
+  ],
+  
+  grantedAbilities: ["toxic_resistance", "poison_touch"],
+  spawnRules: {
+    canAppearIn: ["medium_polluted"],
+    spawnWeight: 25,
+    minDepth: 50,
+    maxDepth: 200
+  }
+}
+```
+
+### Related Documentation
+
+For complete information on the modular prompt system:
+- [MODULAR_PROMPT_SYSTEM.md](./MODULAR_PROMPT_SYSTEM.md) - Core system architecture
+- [ART_STYLE_PROMPT_CHUNKS.md](./ART_STYLE_PROMPT_CHUNKS.md) - Art style chunks
+- [VISUAL_MOTIFS.md](./VISUAL_MOTIFS.md) - Visual motif library
+- [FUSION_MUTATION_METADATA.md](./FUSION_MUTATION_METADATA.md) - Fusion/mutation system
+- [UPGRADE_PROMPT_CHUNKS.md](./UPGRADE_PROMPT_CHUNKS.md) - Upgrade visual effects
+- [FISH_DATA_STRUCTURE_BATCH.md](./FISH_DATA_STRUCTURE_BATCH.md) - Batch data examples
 
 ### Run State
 
