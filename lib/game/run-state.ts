@@ -12,6 +12,7 @@
  */
 import type { RunState } from './types';
 import { getCreature } from './data';
+import { computeEncounterSize } from './spawn-fish';
 
 /**
  * Create a new run state with default values
@@ -44,7 +45,7 @@ export function createNewRunState(fishId: string): RunState | null {
     currentLevel: '1-1',
     selectedFishId: fishId,
     fishState: {
-      size: creature.stats.size,
+      size: computeEncounterSize({ creature, biomeId: creature.biomeId, levelNumber: 1 }),
       speed: creature.stats.speed,
       health: creature.stats.health,
       damage: creature.stats.damage,
@@ -58,7 +59,7 @@ export function createNewRunState(fishId: string): RunState | null {
     stats: {
       fishEaten: 0,
       timeSurvived: 0,
-      maxSize: creature.stats.size,
+      maxSize: computeEncounterSize({ creature, biomeId: creature.biomeId, levelNumber: 1 }),
     },
   };
 }
@@ -387,10 +388,10 @@ export function progressToNextLevel(runState: RunState): RunState {
       hunger: 100,
     };
   }
-  
+
   const [biome, levelNum] = parts;
   const nextLevel = parseInt(levelNum, 10) + 1;
-  
+
   if (isNaN(nextLevel)) {
     console.warn(`Invalid level number in: ${runState.currentLevel}`);
     return {
@@ -400,7 +401,7 @@ export function progressToNextLevel(runState: RunState): RunState {
       hunger: 100,
     };
   }
-  
+
   return {
     ...runState,
     currentLevel: `${biome}-${nextLevel}`,
@@ -454,13 +455,13 @@ export function calculateLevelUps(
 export function applyUpgrade(runState: RunState, upgradeId: string): RunState {
   // First, add upgrade to list
   let updatedState = addUpgradeToRun(runState, upgradeId);
-  
+
   // Load upgrade data to apply effects
   // We'll import getUpgrade dynamically to avoid circular dependencies
   try {
     const { getUpgrade } = require('./data/upgrades');
     const upgrade = getUpgrade(upgradeId);
-    
+
     if (!upgrade) {
       console.warn(`Upgrade ${upgradeId} not found, adding to list only`);
       return updatedState;
@@ -468,11 +469,11 @@ export function applyUpgrade(runState: RunState, upgradeId: string): RunState {
 
     // Apply each effect
     const newFishState = { ...updatedState.fishState };
-    
+
     upgrade.effects.forEach((effect: { type: string; target: string; value: number | string; perLevel?: boolean }) => {
       if (effect.type === 'stat') {
         const value = typeof effect.value === 'number' ? effect.value : 0;
-        
+
         // Map effect targets to fish state properties
         switch (effect.target) {
           case 'size':
@@ -498,7 +499,7 @@ export function applyUpgrade(runState: RunState, upgradeId: string): RunState {
 
     // Update fish state with new stats
     updatedState = updateFishState(updatedState, newFishState);
-    
+
   } catch (error) {
     console.error('Error applying upgrade effects:', error);
   }

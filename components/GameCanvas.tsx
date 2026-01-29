@@ -15,6 +15,7 @@ import {
 } from '@/lib/game/run-state';
 import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { getCreaturesByBiome, getBlobCreaturesByBiome, getCreatureById } from '@/lib/game/data/creatures';
+import { computeEncounterSize } from '@/lib/game/spawn-fish';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -134,11 +135,24 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           const preyCreatures = biomeCreatures.filter(c => c.type === 'prey');
           const pool = preyCreatures.length > 0 ? preyCreatures : biomeCreatures;
 
-          // Spawn fish based on level difficulty, using creature definitions
+          // Spawn fish based on level difficulty, using creature definitions.
+          // Use computeEncounterSize so sizes are biome/level aware instead of raw stats.
           const spawned: Creature[] = [];
           for (let i = 0; i < fishCount; i++) {
             const creature = pool[i % pool.length];
-            spawned.push(creature);
+            const encounterSize = computeEncounterSize({
+              creature,
+              biomeId: creature.biomeId,
+              levelNumber: level.levelNum,
+              playerSize: playerSprite ? currentRunState.fishState.size : undefined,
+            });
+            spawned.push({
+              ...creature,
+              stats: {
+                ...creature.stats,
+                size: encounterSize,
+              },
+            });
           }
           setSpawnedFish(spawned);
         }

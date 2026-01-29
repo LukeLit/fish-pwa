@@ -344,6 +344,12 @@ export async function getCombinedCreatures(): Promise<Creature[]> {
 }
 
 /**
+ * Size tier used for biome-based scaling.
+ * For now we reuse the common tiers from markdown: prey, mid, predator, boss.
+ */
+export type SizeTier = 'prey' | 'mid' | 'predator' | 'boss' | string;
+
+/**
  * Get blob creatures filtered by biome.
  * If none exist for that biome, falls back to blob creatures from any biome,
  * and only if there are no blob creatures at all do we fall back to static data.

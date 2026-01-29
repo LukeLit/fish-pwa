@@ -98,6 +98,7 @@ export function convertParsedFishToCreature(fish: ParsedFish): Creature {
     rarity: rarityFromString(fish.rarity),
     playable: false,
     biomeId: fish.biome,
+    sizeTier: fish.sizeTier,
     descriptionChunks: fish.descriptionChunks,
     visualMotif: fish.visualMotif,
     essence,

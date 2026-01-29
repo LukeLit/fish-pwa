@@ -157,38 +157,41 @@ export interface Creature extends BaseFishData {
   // Identity (inherited from BaseFishData)
   rarity: 'common' | 'rare' | 'epic' | 'legendary' | 'uncommon';
   playable?: boolean; // If true, can be selected as player fish in fish selection
-  
+
   // Visual
   biomeId: string; // Native biome ID
-  
+
+  // Optional size tier used by biome ecosystems and runtime scaling
+  sizeTier?: 'prey' | 'mid' | 'predator' | 'boss' | string;
+
   // NEW: Modular Prompt System
   descriptionChunks?: string[]; // Modular prompt segments describing the creature
   visualMotif?: string; // High-level visual theme/aesthetic
-  
+
   // NEW: Enhanced Essence System
   essence?: EssenceData; // New modular essence structure
-  
+
   // Legacy: Essence system (maintained for backward compatibility)
   essenceTypes: Array<{
     type: string; // EssenceType ID
     baseYield: number; // Base essence amount (before multipliers)
   }>; // All essence types are always granted (no chance-based drops)
-  
+
   // NEW: Fusion/Mutation Metadata
   fusionParentIds?: string[]; // Parent creature IDs if this is a fusion
   fusionType?: 'balanced' | 'dominant_first' | 'dominant_second';
   fusionGeneration?: number;
   mutationSource?: MutationMetadata; // Mutation data if this is a mutant
-  
+
   // Progression
   unlockRequirement?: {
     biomeUnlocked: string[]; // Array of biome IDs that must be unlocked
     essenceSpent?: Record<string, number>; // Essence types and amounts spent
   };
-  
+
   // Abilities this creature can grant when consumed
   grantedAbilities?: string[]; // Array of Ability IDs
-  
+
   // Spawn rules
   spawnRules: {
     canAppearIn: string[]; // Array of biome IDs where this creature can spawn
