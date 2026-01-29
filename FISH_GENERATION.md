@@ -20,11 +20,25 @@ The game uses **Vercel AI Gateway** with multiple model options:
 
 ## How It Works
 
+### Modular Prompt System
+- Prompts are built from reusable chunks defined in:
+  - `docs/MODULAR_PROMPT_SYSTEM.md`
+  - `docs/ART_STYLE_PROMPT_CHUNKS.md`
+  - `docs/VISUAL_MOTIFS.md`
+- Core implementation lives in:
+  - `lib/ai/prompt-chunks.ts` – shared style/format/biome/essence/ability chunks
+  - `lib/ai/prompt-builder.ts` – `composeFishPrompt()` to turn fish data into a final string
+  - `lib/ai/fish-sprite-service.ts` – uses modular prompts when `fishData` is provided
+- Each fish contributes:
+  - `descriptionChunks`: modular descriptive phrases
+  - `visualMotif`: high-level visual theme
+  - `essence` + `EssenceData.visualChunks`: visual flavor tied to currencies
+
 ### AI Asset Generation
 - Supports multiple models through Vercel AI Gateway
 - Generates both fish sprites and underwater backgrounds
 - Returns base64 encoded images directly
-- Caches sprites in localStorage (never regenerate the same fish!)
+- Uses a cache key derived from the composed prompt to avoid regenerating identical fish
 - Falls back to procedural generation if API fails
 
 ### Dev Tools Features
@@ -41,9 +55,59 @@ The game uses **Vercel AI Gateway** with multiple model options:
 
 ## Fish Types
 
-1. **Prey Fish** - Small, swift, greenish
-2. **Predator Fish** - Large, aggressive, sharp teeth
-3. **Mutant Fish** - Bizarre features, glowing eyes
+1. **Prey Fish** - Small, swift, usually below the player's current size  
+2. **Predator Fish** - Larger threats that can eat the player  
+3. **Mutant Fish** - Bizarre features, glowing eyes, often higher tiers
+
+## Biome Ecosystems & Size Tiers
+
+To support an endlessly scaling, incremental loop, we treat **size as a runtime property**, derived from a small set of tiers plus biome config, rather than hard‑coding absolute pixel sizes per fish.
+
+### Global Size Tiers
+
+Each creature is assigned a `sizeTier` (conceptual, even if not yet a concrete field):
+
+- **Tier 0 – Tiny prey**: snacks, much smaller than the player  
+- **Tier 1 – Small prey / rivals**: slightly below or near player size  
+- **Tier 2 – Medium threats**: same tier or somewhat bigger than player  
+- **Tier 3 – Large predators**: clearly larger, serious threats  
+- **Tier 4 – Apex / boss**: rare, 2×+ player size
+
+Runtime size is computed with a function along these lines:
+
+```ts
+encounterSize = BASE_SIZE_BY_TIER[sizeTier]
+  * levelScale(levelNum)
+  * varianceFor(biomeId, sizeTier)
+  * maybeRelativeTo(playerSize);
+```
+
+Where:
+
+- `BASE_SIZE_BY_TIER` is a small lookup (e.g. `[0.5, 0.8, 1.0, 1.4, 2.0]`)  
+- `levelScale` grows difficulty as you progress  
+- `varianceFor` adds per‑biome randomness so ecosystems feel alive  
+- `maybeRelativeTo(playerSize)` lets prey/predators stay below/above the player even as they grow.
+
+### Biome Ecosystem Config
+
+Each biome (shallow, deep_sea, polluted, abyssal, etc.) defines its own **ecosystem**:
+
+- **Tier mix** – how often each tier appears, e.g. shallow:
+  - T0: 40%, T1: 35%, T2: 20%, T3: 5%, T4: ~0%  
+- **Variance bands per tier** – how spiky sizes feel in that biome  
+- **Role hints** – which tiers are usually `prey` vs `predator`/`mutant`
+
+Creatures from the biome docs only need:
+
+- A `sizeTier` assignment  
+- Normal metadata (type, biomeId, rarity, essence, etc.)  
+
+The **engine decides actual size at spawn time**, so:
+
+- You can safely add hundreds of fish without re‑tuning pixels  
+- The player reliably starts smaller than most fish in the biome  
+- The same fish naturally transitions from “threat” to “snack” as the player grows
 
 ## Cost Analysis
 

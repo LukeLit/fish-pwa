@@ -109,7 +109,7 @@ interface FishData {
   description: string;
   type: 'prey' | 'predator' | 'mutant';
   stats: {
-    size: number;      // 20-200
+    size: number;      // Interpreted as relative tier scale, not raw pixels
     speed: number;     // 1-10
     health: number;    // 1-100
     damage: number;    // 1-50

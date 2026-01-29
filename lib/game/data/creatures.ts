@@ -283,24 +283,24 @@ export const CREATURES: Record<string, Creature> = {
  */
 export function getAllCreatures(): Creature[] {
   const creatures = Object.values(CREATURES);
-  
+
   // Add localStorage creatures if available
   if (typeof window !== 'undefined') {
     try {
       const localCreatures = listCreaturesFromLocal();
-      
+
       // Merge local creatures, avoiding duplicates
       const creatureMap = new Map<string, Creature>();
       creatures.forEach((c: Creature) => creatureMap.set(c.id, c));
       localCreatures.forEach((c: Creature) => creatureMap.set(c.id, c));
-      
+
       return Array.from(creatureMap.values());
     } catch (error) {
       // If localStorage module fails, just return static creatures
       console.warn('[getAllCreatures] localStorage not available:', error);
     }
   }
-  
+
   return creatures;
 }
 
@@ -312,16 +312,16 @@ export async function getAllCreaturesFromBlob(): Promise<Creature[]> {
   try {
     const response = await fetch('/api/list-creatures');
     const result = await response.json();
-    
+
     if (result.success && result.creatures) {
       return result.creatures;
     }
-    
-    console.warn('[Creatures] Failed to load from blob storage, using static data');
-    return getAllCreatures();
+
+    console.warn('[Creatures] Failed to load from blob storage, returning empty list');
+    return [];
   } catch (error) {
     console.error('[Creatures] Error loading from blob storage:', error);
-    return getAllCreatures();
+    return [];
   }
 }
 
@@ -332,15 +332,52 @@ export async function getAllCreaturesFromBlob(): Promise<Creature[]> {
 export async function getCombinedCreatures(): Promise<Creature[]> {
   const staticCreatures = getAllCreatures();
   const blobCreatures = await getAllCreaturesFromBlob();
-  
+
   // Create a map with static creatures as base
   const creatureMap = new Map<string, Creature>();
   staticCreatures.forEach(creature => creatureMap.set(creature.id, creature));
-  
+
   // Override with blob creatures
   blobCreatures.forEach(creature => creatureMap.set(creature.id, creature));
-  
+
   return Array.from(creatureMap.values());
+}
+
+/**
+ * Size tier used for biome-based scaling.
+ * For now we reuse the common tiers from markdown: prey, mid, predator, boss.
+ */
+export type SizeTier = 'prey' | 'mid' | 'predator' | 'boss' | string;
+
+/**
+ * Get blob creatures filtered by biome.
+ * If none exist for that biome, falls back to blob creatures from any biome,
+ * and only if there are no blob creatures at all do we fall back to static data.
+ */
+export async function getBlobCreaturesByBiome(biomeId: string): Promise<Creature[]> {
+  try {
+    const blobCreatures = await getAllCreaturesFromBlob();
+
+    // First preference: blob creatures that can appear in this biome
+    const filtered = blobCreatures.filter((creature) =>
+      creature.spawnRules.canAppearIn.includes(biomeId)
+    );
+
+    if (filtered.length === 0) {
+      // Second preference: any blob creatures at all
+      if (blobCreatures.length > 0) {
+        return blobCreatures;
+      }
+
+      // Final fallback: static creatures
+      return getCreaturesByBiome(biomeId);
+    }
+
+    return filtered;
+  } catch (error) {
+    console.error(`[getBlobCreaturesByBiome] Error for biome ${biomeId}:`, error);
+    return getCreaturesByBiome(biomeId);
+  }
 }
 
 /**
@@ -351,14 +388,14 @@ export async function getCreatureById(id: string): Promise<Creature | undefined>
   try {
     const response = await fetch(`/api/get-creature?id=${id}`);
     const result = await response.json();
-    
+
     if (result.success && result.creature) {
       return result.creature;
     }
   } catch (error) {
     console.warn(`[Creatures] Failed to load ${id} from blob storage, checking static data`);
   }
-  
+
   // Fall back to static data
   return CREATURES[id];
 }
@@ -372,7 +409,7 @@ export function getCreature(id: string): Creature | undefined {
   if (hardcodedCreature) {
     return hardcodedCreature;
   }
-  
+
   // Check localStorage for custom created fish
   if (typeof window !== 'undefined') {
     try {
@@ -385,7 +422,7 @@ export function getCreature(id: string): Creature | undefined {
       console.warn('[getCreature] localStorage not available:', error);
     }
   }
-  
+
   return undefined;
 }
 

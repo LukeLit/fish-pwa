@@ -52,7 +52,7 @@ const CHROMA_KEY = { r: 255, g: 0, b: 255 }; // #FF00FF
  */
 function isCreature(fish: Creature | { id: string; sprite: string; type: string }): fish is Creature {
   return (
-    'stats' in fish && 
+    'stats' in fish &&
     'essenceTypes' in fish &&
     'rarity' in fish &&
     'spawnRules' in fish
@@ -198,6 +198,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
   return canvas;
 }
 
+export default function FishEditorCanvas({
   background,
   playerFishSprite,
   spawnedFish,
@@ -243,17 +244,75 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
 
   // Shared spawn logic for player and AI
   const spawnPlayerFish = (fish: FishData) => {
-    // Despawn current player
-    playerRef.current = spawnFishFromData(fish, { isPlayer: true })
-    // Optionally reset other player state here
+    // Load sprite and convert to canvas before assigning
+    if (!fish.sprite) {
+      playerRef.current.sprite = null;
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const processedSprite = removeBackground(img, chromaToleranceRef.current);
+      const spawned = spawnFishFromData(fish, { isPlayer: true });
+      // Preserve baseSize for scoring while using spawned size as baseline
+      playerRef.current = {
+        ...spawned,
+        baseSize: spawned.size,
+        sprite: processedSprite,
+      };
+    };
+    img.onerror = () => {
+      console.error('Failed to load player fish sprite:', fish.sprite);
+      playerRef.current.sprite = null;
+    };
+    // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+    if (fish.sprite.startsWith('data:')) {
+      img.src = fish.sprite;
+    } else {
+      const cleanUrl = fish.sprite.split('?')[0];
+      img.src = `${cleanUrl}?t=${Date.now()}`;
+    }
   }
 
   const spawnAIFish = (fish: FishData) => {
-    // Add to fishListRef as AI
-    const canvas = canvasRef.current
-    const pos = canvas ? { x: Math.random() * canvas.width, y: Math.random() * canvas.height } : { x: 400, y: 300 }
-    const aiFish = spawnFishFromData(fish, { isPlayer: false, position: pos })
-    fishListRef.current.push(aiFish)
+    // Load sprite and convert to canvas before adding to list
+    if (!fish.sprite) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const pos = canvas ? { x: Math.random() * canvas.width, y: Math.random() * canvas.height } : { x: 400, y: 300 };
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const processedSprite = removeBackground(img, chromaToleranceRef.current);
+      const aiFish = spawnFishFromData(fish, { isPlayer: false, position: pos });
+      // Find existing fish or add new one
+      const existingIndex = fishListRef.current.findIndex(f => f.id === aiFish.id);
+      if (existingIndex >= 0) {
+        fishListRef.current[existingIndex] = {
+          ...aiFish,
+          sprite: processedSprite,
+        };
+      } else {
+        fishListRef.current.push({
+          ...aiFish,
+          sprite: processedSprite,
+        });
+      }
+    };
+    img.onerror = () => {
+      console.error('Failed to load AI fish sprite:', fish.sprite);
+    };
+    // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+    if (fish.sprite.startsWith('data:')) {
+      img.src = fish.sprite;
+    } else {
+      const cleanUrl = fish.sprite.split('?')[0];
+      img.src = `${cleanUrl}?t=${Date.now()}`;
+    }
   }
 
   // Listen for global events from overlay
@@ -281,7 +340,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
   const scoreRef = useRef<number>(0);
   const fishEatenRef = useRef<number>(0);
   const essenceCollectedRef = useRef<number>(0);
-  
+
   // FPS tracking
   const fpsRef = useRef<number>(60);
   const lastFrameTimeRef = useRef<number>(0);
@@ -343,6 +402,14 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
     creatureData?: Creature;
   }>>([]);
 
+  /** Cache processed sprites by creature id for respawn (game mode). */
+  const spriteCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
+  const spawnPoolRef = useRef<(Creature | { id: string; sprite: string; type: string })[]>([]);
+  const lastRespawnTimeRef = useRef(0);
+  const MAX_FISH_IN_WORLD = 28;
+  const RESPAWN_INTERVAL_MS = 3500;
+
   const keyKeysRef = useRef<Set<string>>(new Set());
   const joystickVelocityRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const joystickActiveRef = useRef<boolean>(false);
@@ -359,16 +426,16 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
   const checkEditButtonClick = useCallback((clientX: number, clientY: number) => {
     // Allow clicks even when paused - we want to be able to click edit buttons
     if (!showEditButtonsRef.current || editModeRef.current || !onEditFish) return false;
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return false;
-    
+
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const x = (clientX - rect.left) * scaleX;
     const y = (clientY - rect.top) * scaleY;
-    
+
     // Check if click is on an edit button
     const currentZoom = zoomRef.current;
     for (const [fishId, pos] of editButtonPositionsRef.current.entries()) {
@@ -376,11 +443,11 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
       const screenX = pos.x * currentZoom;
       const screenY = pos.y * currentZoom - pos.size * currentZoom / 2 - 24 - 5;
       const buttonSize = 24;
-      
+
       const dx = x - screenX;
       const dy = y - screenY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      
+
       if (dist < buttonSize / 2) {
         onEditFish(fishId);
         return true;
@@ -445,7 +512,13 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
       console.error('Failed to load player fish sprite');
       playerRef.current.sprite = null;
     };
-    img.src = playerFishSprite;
+    // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+    if (playerFishSprite.startsWith('data:')) {
+      img.src = playerFishSprite;
+    } else {
+      const cleanUrl = playerFishSprite.split('?')[0];
+      img.src = `${cleanUrl}?t=${Date.now()}`;
+    }
   }, [playerFishSprite]);
 
   // Update fish sizes from fishData
@@ -458,10 +531,14 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
     });
   }, [fishData]);
 
-  // Spawn new fish using full Creature data when available, or legacy format
+  // Spawn new fish using full Creature data when available, or legacy format.
+  // Also sync spawn pool and sprite cache for continuous respawn in game mode.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Keep spawn pool in sync for respawn (use full list so weighting matches initial spawn)
+    spawnPoolRef.current = spawnedFish.length ? [...spawnedFish] : [];
 
     spawnedFish.forEach((fishItem) => {
       if (eatenIdsRef.current.has(fishItem.id)) return;
@@ -470,13 +547,15 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           const processedSprite = removeBackground(img, chromaToleranceRef.current);
-          
+          // Cache by creature id for respawn in game mode
+          spriteCacheRef.current.set(fishItem.id, processedSprite);
+
           // Check if this is a full Creature object or legacy format
           let fishSize: number;
           let baseSpeed: number;
           let fishType: string;
           let creatureData: Creature | undefined;
-          
+
           if (isCreature(fishItem)) {
             // Use full creature metadata
             fishSize = fishItem.stats.size;
@@ -491,12 +570,12 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
             baseSpeed = fishInfo?.stats.speed ?? 2;
             fishType = fishItem.type;
           }
-          
+
           // Calculate velocity based on speed
           const speedScale = 0.1; // Scale down for canvas movement
           const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
           const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
-          
+
           const newFish = {
             id: fishItem.id,
             x: Math.random() * canvas.width,
@@ -517,12 +596,18 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         img.onerror = () => {
           console.error('Failed to load fish sprite:', fishItem.id);
         };
-        img.src = fishItem.sprite;
+        // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+        if (fishItem.sprite.startsWith('data:')) {
+          img.src = fishItem.sprite;
+        } else {
+          const cleanUrl = fishItem.sprite.split('?')[0];
+          img.src = `${cleanUrl}?t=${Date.now()}`;
+        }
       }
     });
 
     fishListRef.current = fishListRef.current.filter((fish) =>
-      spawnedFish.find((f) => f.id === fish.id)
+      spawnedFish.find((f) => f.id === fish.id) || fish.id.includes('-r-')
     );
     // Clear eaten set when user clears all fish
     if (spawnedFish.length === 0) eatenIdsRef.current.clear();
@@ -553,7 +638,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       keyKeysRef.current.add(key);
-      
+
       // Toggle FPS with F key
       if (key === 'f') {
         setShowFPS(prev => !prev);
@@ -578,7 +663,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
     const gameLoop = () => {
       const player = playerRef.current;
       const isPaused = pausedRef.current;
-      
+
       // Calculate FPS
       const currentTime = performance.now();
       if (lastFrameTimeRef.current > 0) {
@@ -591,15 +676,15 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         }
       }
       lastFrameTimeRef.current = currentTime;
-      
+
       // Skip game state updates if paused, but continue to render
-      
+
       // Initialize game start time in game mode
       if (gameMode && gameStartTimeRef.current === 0) {
         gameStartTimeRef.current = Date.now();
         fishEatenRef.current = 0;
         scoreRef.current = 0;
-        
+
         // Load essence collected from run state
         const runState = loadRunState();
         if (runState) {
@@ -609,7 +694,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           essenceCollectedRef.current = 0;
         }
       }
-      
+
       // Check game timer in game mode
       if (gameMode && !levelCompleteFiredRef.current && !gameOverFiredRef.current) {
         const elapsed = Date.now() - gameStartTimeRef.current;
@@ -620,7 +705,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           }
           return; // Stop game loop
         }
-        
+
         // Sync essence collected from run state (updated by engine)
         const runState = loadRunState();
         if (runState) {
@@ -687,7 +772,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
       // Update hunger in game mode
       if (gameMode && !isPaused) {
         player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / HUNGER_FRAME_RATE));
-        
+
         // Check starvation death
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
           gameOverFiredRef.current = true;
@@ -714,7 +799,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         const dx = fish.x - player.x;
         const dy = fish.y - player.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (dist < playerR + fishR) {
           // In game mode, check if player can eat this fish or gets eaten
           if (gameMode) {
@@ -741,11 +826,11 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
               eatenIdsRef.current.add(fish.id);
               fishListRef.current.splice(idx, 1);
               player.size = Math.min(150, player.size + fish.size * 0.1);
-              
+
               // Restore hunger based on fish size
               const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger);
               player.hunger = Math.min(HUNGER_MAX, player.hunger + hungerRestore);
-              
+
               player.chompPhase = 1;
               player.chompEndTime = now + 280;
               const eatX = (fish.x + player.x) * 0.5;
@@ -819,17 +904,54 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         return b.life > 0;
       });
 
+      // Game mode: continuous respawn so player doesn't run out of prey
+      if (gameMode && spawnPoolRef.current.length > 0) {
+        const pool = spawnPoolRef.current;
+        const now = performance.now();
+        if (
+          now - lastRespawnTimeRef.current >= RESPAWN_INTERVAL_MS &&
+          fishListRef.current.length < MAX_FISH_IN_WORLD
+        ) {
+          const creature = pool[Math.floor(Math.random() * pool.length)];
+          const sprite = spriteCacheRef.current.get(creature.id);
+          if (sprite && canvas) {
+            const fishSize = isCreature(creature) ? creature.stats.size : 60;
+            const baseSpeed = isCreature(creature) ? (creature.stats.speed ?? 2) : 2;
+            const speedScale = 0.1;
+            const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
+            const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
+            const bounds = worldBoundsRef.current;
+            const newFish = {
+              id: `${creature.id}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              x: bounds.minX + Math.random() * (bounds.maxX - bounds.minX),
+              y: bounds.minY + Math.random() * (bounds.maxY - bounds.minY),
+              vx,
+              vy,
+              size: fishSize,
+              sprite,
+              type: isCreature(creature) ? creature.type : 'prey',
+              facingRight: vx >= 0,
+              verticalTilt: 0,
+              animTime: Math.random() * Math.PI * 2,
+              creatureData: isCreature(creature) ? creature : undefined,
+            };
+            fishListRef.current.push(newFish);
+          }
+          lastRespawnTimeRef.current = now;
+        }
+      }
+
       // Game mode: constrain to world bounds, else wrap around screen
       if (gameMode) {
         // Constrain player to world bounds
         const bounds = worldBoundsRef.current;
         player.x = Math.max(bounds.minX, Math.min(bounds.maxX, player.x));
         player.y = Math.max(bounds.minY, Math.min(bounds.maxY, player.y));
-        
+
         // Update camera to follow player
         cameraRef.current.x = player.x;
         cameraRef.current.y = player.y;
-        
+
         // Update score based on size
         scoreRef.current = Math.floor((player.size - player.baseSize) * 10);
       } else {
@@ -901,7 +1023,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
       let currentZoom = zoomRef.current;
       let cameraX = 0;
       let cameraY = 0;
-      
+
       const currentSelectedFishId = selectedFishIdRef.current;
       if (currentEditMode && currentSelectedFishId) {
         // Find selected fish (could be AI fish or player)
@@ -909,7 +1031,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         let selectedSize = 0;
         let selectedX = 0;
         let selectedY = 0;
-        
+
         if (selectedFish) {
           selectedSize = selectedFish.size;
           selectedX = selectedFish.x;
@@ -920,7 +1042,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           selectedX = player.x;
           selectedY = player.y;
         }
-        
+
         if (selectedSize > 0) {
           // In edit mode, we want to show fish in top area (50% of screen height)
           // Calculate zoom to fit fish in top half horizontally with padding
@@ -929,10 +1051,10 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           const targetWidth = canvas.width - padding * 2;
           const baseZoomToFit = targetWidth / selectedSize;
           const baseZoom = Math.max(1, baseZoomToFit);
-          
+
           // Apply manual zoom multiplier (allows zooming in/out from base)
           currentZoom = baseZoom * zoomRef.current;
-          
+
           // Position camera to show fish in top area (center horizontally, top 25% vertically)
           cameraX = selectedX;
           cameraY = selectedY;
@@ -960,19 +1082,19 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
       if (backgroundImageRef.current) {
         ctx.save();
         ctx.filter = 'blur(6px)';
-        
+
         if (gameMode) {
           // Parallax background - moves slower than camera
           const camera = cameraRef.current;
           const parallaxFactor = 0.3;
           const bgOffsetX = camera.x * parallaxFactor;
           const bgOffsetY = camera.y * parallaxFactor;
-          
+
           // Calculate scaling to maintain aspect ratio
           const img = backgroundImageRef.current;
           const imgAspect = img.width / img.height;
           const screenAspect = scaledWidth / scaledHeight;
-          
+
           let drawWidth, drawHeight;
           if (imgAspect > screenAspect) {
             drawHeight = scaledHeight * 1.5;
@@ -981,10 +1103,10 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
             drawWidth = scaledWidth * 1.5;
             drawHeight = drawWidth / imgAspect;
           }
-          
+
           const bgX = (scaledWidth - drawWidth) / 2 - bgOffsetX + camera.x - scaledWidth / 2;
           const bgY = (scaledHeight - drawHeight) / 2 - bgOffsetY + camera.y - scaledHeight / 2;
-          
+
           ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         } else {
           // Editor mode - normal background
@@ -1047,7 +1169,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           ctx.arc(fish.x, fish.y, fish.size / 2, 0, Math.PI * 2);
           ctx.fill();
         }
-        
+
         // Store position for edit button
         buttonPositions.set(fish.id, { x: fish.x, y: fish.y, size: fish.size });
       });
@@ -1076,10 +1198,10 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         ctx.fill();
         ctx.stroke();
       }
-      
+
       // Store player position for edit button (use special ID "player")
       buttonPositions.set('player', { x: player.x, y: player.y, size: player.size });
-      
+
       // Update edit button positions ref
       editButtonPositionsRef.current = buttonPositions;
 
@@ -1101,7 +1223,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         ctx.translate(p.x, p.y);
         ctx.globalAlpha = Math.max(0, p.life);
         ctx.font = `bold ${Math.round(16 * p.scale)}px sans-serif`;
-        
+
         // Color based on text type
         let fillColor = '#fff';
         if (p.text === 'CHOMP') {
@@ -1109,7 +1231,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         } else if (p.text.startsWith('+')) {
           fillColor = '#4ade80'; // Green for hunger restore
         }
-        
+
         ctx.fillStyle = fillColor;
         ctx.strokeStyle = 'rgba(0,0,0,0.4)';
         ctx.lineWidth = 1.5;
@@ -1155,17 +1277,17 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
       }
 
       ctx.restore();
-      
+
       // Low hunger visual warning (red tint and vignette)
       if (gameMode && player.hunger <= HUNGER_LOW_THRESHOLD) {
         ctx.save();
         const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
         const intensity = (1 - player.hunger / HUNGER_LOW_THRESHOLD) * HUNGER_WARNING_INTENSITY * pulse;
-        
+
         // Red tint overlay
         ctx.fillStyle = `rgba(255, 0, 0, ${intensity})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         // Vignette effect
         const vignette = ctx.createRadialGradient(
           canvas.width / 2, canvas.height / 2, 0,
@@ -1175,7 +1297,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         vignette.addColorStop(1, `rgba(139, 0, 0, ${intensity * 0.6})`);
         ctx.fillStyle = vignette;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         ctx.restore();
       }
 
@@ -1188,11 +1310,11 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           // Calculate screen position - buttons are drawn after all transforms are restored
           const screenX = pos.x * currentZoom;
           const screenY = pos.y * currentZoom;
-          
+
           // Draw edit button above fish
           const buttonSize = 24;
           const buttonY = screenY - pos.size * currentZoom / 2 - buttonSize - 5;
-          
+
           ctx.save();
           ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
@@ -1201,7 +1323,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           ctx.arc(screenX, buttonY, buttonSize / 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
-          
+
           // Draw edit icon (pencil)
           ctx.fillStyle = 'white';
           ctx.font = '12px Arial';
@@ -1215,7 +1337,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
       // UI text overlay
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.font = '14px monospace';
-      
+
       if (gameMode) {
         // Game mode UI
         const elapsed = Date.now() - gameStartTimeRef.current;
@@ -1223,14 +1345,14 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         ctx.fillText(`Score: ${scoreRef.current}`, 10, 20);
         ctx.fillText(`Size: ${Math.floor(player.size)}`, 10, 40);
         ctx.fillText(`Time: ${timeLeft}s`, 10, 60);
-        
+
         // Hunger Meter - centered at top
         const hungerBarWidth = 300;
         const hungerBarHeight = 30;
         const hungerBarX = (canvas.width - hungerBarWidth) / 2;
         const hungerBarY = 20;
         const hungerPercent = player.hunger / 100;
-        
+
         // Background with chunky border (DICE VADERS style)
         ctx.save();
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
@@ -1238,7 +1360,7 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
         ctx.fillRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
         ctx.strokeRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
-        
+
         // Hunger fill - color-coded
         let hungerColor;
         if (hungerPercent > 0.5) {
@@ -1248,11 +1370,11 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
         } else {
           hungerColor = '#ef4444'; // Red
         }
-        
+
         ctx.fillStyle = hungerColor;
         const fillWidth = (hungerBarWidth - 8) * hungerPercent;
         ctx.fillRect(hungerBarX + 4, hungerBarY + 4, fillWidth, hungerBarHeight - 8);
-        
+
         // Glow effect for low hunger
         if (hungerPercent <= 0.25) {
           const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
@@ -1264,14 +1386,14 @@ function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCa
           ctx.shadowBlur = 0;
           ctx.shadowColor = 'transparent';
         }
-        
+
         // Text label
         ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.font = 'bold 16px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(`HUNGER: ${Math.ceil(player.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
-        
+
         ctx.restore();
       } else if (!currentEditMode) {
         // Editor mode UI

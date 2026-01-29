@@ -7,14 +7,16 @@
 import { useEffect, useState } from 'react';
 import FishEditorCanvas from './FishEditorCanvas';
 import type { RunState, Creature } from '@/lib/game/types';
-import { 
-  loadRunState, 
-  saveRunState, 
+import {
+  loadRunState,
+  saveRunState,
   createNewRunState,
-  clearRunState 
+  clearRunState,
+  PLAYER_START_SIZE_MULT,
 } from '@/lib/game/run-state';
 import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
-import { getCreaturesByBiome } from '@/lib/game/data/creatures';
+import { getCreaturesByBiome, getBlobCreaturesByBiome, getCreatureById } from '@/lib/game/data/creatures';
+import { computeEncounterSize } from '@/lib/game/spawn-fish';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -25,7 +27,7 @@ interface GameCanvasProps {
 export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: GameCanvasProps) {
   const [isClient, setIsClient] = useState(false);
   const [runState, setRunState] = useState<RunState | null>(null);
-  
+
   // Game state - using simplified state for now
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
@@ -35,11 +37,11 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
   useEffect(() => {
     setIsClient(true);
-    
+
     // Initialize or load run state
     const initializeRunState = () => {
       let currentRunState = loadRunState();
-      
+
       if (!currentRunState) {
         // No existing run, create new one with default starter fish
         currentRunState = createNewRunState(DEFAULT_STARTER_FISH_ID);
@@ -49,23 +51,23 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         }
         saveRunState(currentRunState);
       }
-      
+
       setRunState(currentRunState);
       return currentRunState;
     };
-    
+
     // Load assets based on run state
     const loadGameAssets = async (currentRunState: RunState) => {
       try {
         // Parse level to get difficulty scaling
         const level = parseLevelString(currentRunState.currentLevel);
         setCurrentLevel(currentRunState.currentLevel);
-        
+
         // Calculate level-based difficulty
         const duration = 60000 + (level.levelNum - 1) * 15000; // 60s, 75s, 90s
-        const fishCount = 10 + (level.levelNum - 1) * 5; // 10, 15, 20
+        const fishCount = 18 + (level.levelNum - 1) * 4; // 18, 22, 26 to avoid running out
         setLevelDuration(duration);
-        
+
         // Load background
         const bgResponse = await fetch('/api/list-assets?type=background');
         const bgData = await bgResponse.json();
@@ -74,31 +76,91 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           setSelectedBackground(randomBg.url);
         }
 
-        // Load player fish sprite from run state
-        const playerCreature = getCreature(currentRunState.selectedFishId);
-        if (!playerCreature) {
-          console.error(`Player creature ${currentRunState.selectedFishId} not found`);
-          // Fallback to sprite from run state
-          setPlayerFishSprite(currentRunState.fishState.sprite);
-        } else {
-          // Use sprite from run state (may have evolved)
-          setPlayerFishSprite(currentRunState.fishState.sprite);
+        // Determine which fish ID to use for the player:
+        // - Prefer the fish selected in FishSelectionScreen (sessionStorage)
+        // - Fall back to the run state's selectedFishId
+        let selectedFishId = currentRunState.selectedFishId;
+        if (typeof window !== 'undefined') {
+          const sessionSelected = sessionStorage.getItem('selected_fish_id');
+          if (sessionSelected) {
+            selectedFishId = sessionSelected;
+          }
         }
 
-        // Spawn prey fish based on current level using creature definitions
+        // Try to load the player creature from blob storage first
+        let playerSprite: string | null = null;
+        try {
+          const blobCreature = await getCreatureById(selectedFishId);
+          if (blobCreature?.sprite) {
+            playerSprite = blobCreature.sprite;
+
+            // Sync run state: use tier-scaled size * player start mult so player starts smaller
+            const baseSize = computeEncounterSize({
+              creature: blobCreature,
+              biomeId: blobCreature.biomeId,
+              levelNumber: 1,
+            });
+            const startSize = Math.max(40, baseSize * PLAYER_START_SIZE_MULT);
+
+            const updatedRunState: RunState = {
+              ...currentRunState,
+              selectedFishId,
+              fishState: {
+                size: startSize,
+                speed: blobCreature.stats.speed,
+                health: blobCreature.stats.health,
+                damage: blobCreature.stats.damage,
+                sprite: blobCreature.sprite,
+              },
+            };
+            setRunState(updatedRunState);
+            saveRunState(updatedRunState);
+          }
+        } catch (err) {
+          console.error('Failed to load player creature from blob storage:', err);
+        }
+
+        // Fallback to static/local creature data if needed
+        if (!playerSprite) {
+          const fallbackCreature =
+            getCreature(selectedFishId) || getCreature(DEFAULT_STARTER_FISH_ID);
+          if (fallbackCreature?.sprite) {
+            playerSprite = fallbackCreature.sprite;
+          } else {
+            // Last resort: use whatever sprite is already in run state
+            playerSprite = currentRunState.fishState.sprite;
+          }
+        }
+
+        setPlayerFishSprite(playerSprite);
+
+        // Spawn prey fish based on current level using blob-backed creature definitions
         // TODO: Dynamically determine biome based on current level/run state
         // For now, using 'shallow' as the default starter biome
-        const biomeCreatures = getCreaturesByBiome('shallow');
+        const biomeCreatures = await getBlobCreaturesByBiome('shallow');
         if (biomeCreatures.length > 0) {
           // Filter for prey creatures
           const preyCreatures = biomeCreatures.filter(c => c.type === 'prey');
           const pool = preyCreatures.length > 0 ? preyCreatures : biomeCreatures;
-          
-          // Spawn fish based on level difficulty, using creature definitions
+
+          // Spawn fish based on level difficulty, using creature definitions.
+          // Use computeEncounterSize so sizes are biome/level aware instead of raw stats.
           const spawned: Creature[] = [];
           for (let i = 0; i < fishCount; i++) {
             const creature = pool[i % pool.length];
-            spawned.push(creature);
+            const encounterSize = computeEncounterSize({
+              creature,
+              biomeId: creature.biomeId,
+              levelNumber: level.levelNum,
+              playerSize: playerSprite ? currentRunState.fishState.size : undefined,
+            });
+            spawned.push({
+              ...creature,
+              stats: {
+                ...creature.stats,
+                size: encounterSize,
+              },
+            });
           }
           setSpawnedFish(spawned);
         }
@@ -106,7 +168,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         console.error('Failed to load game assets:', error);
       }
     };
-    
+
     // Helper to parse level string (e.g., "1-1" -> {biome: 1, levelNum: 1})
     const parseLevelString = (levelStr: string): { biome: number; levelNum: number } => {
       const parts = levelStr.split('-');
@@ -139,7 +201,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       <div className="absolute top-4 left-4 z-40 bg-black/70 px-4 py-2 rounded-lg border border-cyan-400">
         <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
       </div>
-      
+
       <FishEditorCanvas
         background={selectedBackground}
         playerFishSprite={playerFishSprite}

@@ -3,12 +3,27 @@
  * Uses Black Forest Labs Flux 2 Pro via Vercel AI Gateway to generate high-quality 2D fish sprites
  */
 
+import type { BasicFishPromptData, ComposedPromptResult } from './prompt-builder';
+import { composeFishPrompt } from './prompt-builder';
+
 export interface FishSpriteParams {
+  /**
+   * Legacy type flag used by the original hardcoded prompts.
+   * Still supported for backward compatibility.
+   */
   type: 'prey' | 'predator' | 'mutant';
   mutations?: string[];
   seed?: string;
   model?: 'bfl/flux-2-pro' | 'google/imagen-4.0-generate-001' | 'google/imagen-4.0-fast-generate-001';
+  /**
+   * If provided, overrides all modular prompt composition.
+   */
   customPrompt?: string;
+  /**
+   * Optional rich fish data used for modular prompt composition.
+   * When present (and customPrompt is not), the modular system is used.
+   */
+  fishData?: BasicFishPromptData;
 }
 
 export interface FishSpriteResult {
@@ -25,7 +40,16 @@ export class FishSpriteService {
    * Generate a fish sprite
    */
   async generateFishSprite(params: FishSpriteParams): Promise<FishSpriteResult | null> {
-    const cacheKey = `fish_sprite_${params.type}_${params.seed || 'default'}`;
+    // Decide cache key and prompt source up front
+    let composed: ComposedPromptResult | null = null;
+    let cacheKey: string;
+
+    if (params.fishData && !params.customPrompt) {
+      composed = composeFishPrompt(params.fishData);
+      cacheKey = composed.cacheKey;
+    } else {
+      cacheKey = `fish_sprite_${params.type}_${params.seed || 'default'}`;
+    }
 
     // Check cache
     if (this.cache.has(cacheKey)) {
@@ -35,7 +59,10 @@ export class FishSpriteService {
     }
 
     // Build prompt
-    const prompt = params.customPrompt || this.buildFishPrompt(params);
+    const prompt =
+      params.customPrompt ||
+      composed?.prompt ||
+      this.buildFishPrompt(params);
     const model = params.model || 'bfl/flux-2-pro';
 
     try {
@@ -111,6 +138,13 @@ export class FishSpriteService {
     prompt += ', isolated on solid bright magenta background (#FF00FF), no other background elements, digital illustration, side view right-facing, game sprite, vibrant colors, detailed scales and fins';
 
     return prompt;
+  }
+
+  /**
+   * Expose modular prompt composition for callers that only need the text / cache key.
+   */
+  buildModularPrompt(fishData: BasicFishPromptData): ComposedPromptResult {
+    return composeFishPrompt(fishData);
   }
 
   /**

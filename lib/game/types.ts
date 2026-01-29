@@ -116,31 +116,82 @@ export interface BaseFishData {
 }
 
 /**
+ * Essence Data Structure - New modular essence system
+ */
+export interface EssenceData {
+  primary: {
+    type: string; // EssenceType ID
+    baseYield: number; // Base essence amount
+    visualChunks?: string[]; // Visual cues for this essence type
+  };
+  secondary?: Array<{
+    type: string; // EssenceType ID
+    baseYield: number;
+    visualChunks?: string[]; // Optional visual cues
+  }>;
+}
+
+/**
+ * Fusion Metadata - For fusion creatures
+ */
+export interface FusionMetadata {
+  fusionParentIds: string[]; // Array of parent creature IDs (2+)
+  fusionType?: 'balanced' | 'dominant_first' | 'dominant_second'; // How traits blend
+  fusionGeneration?: number; // How many fusions deep (1 = first-gen)
+}
+
+/**
+ * Mutation Metadata - For mutated creatures
+ */
+export interface MutationMetadata {
+  sourceCreatureId: string; // ID of the original creature
+  mutationType: string; // Type of mutation (polluted, abyssal, cosmic, etc.)
+  mutationLevel: number; // Intensity of mutation (1-5)
+  mutationTrigger?: string; // What caused it (upgrade ID, biome ID, etc.)
+}
+
+/**
  * Creature - Complete creature data structure (extends BaseFishData)
  */
 export interface Creature extends BaseFishData {
   // Identity (inherited from BaseFishData)
   rarity: 'common' | 'rare' | 'epic' | 'legendary' | 'uncommon';
   playable?: boolean; // If true, can be selected as player fish in fish selection
-  
+
   // Visual
   biomeId: string; // Native biome ID
-  
-  // Essence system
+
+  // Optional size tier used by biome ecosystems and runtime scaling
+  sizeTier?: 'prey' | 'mid' | 'predator' | 'boss' | string;
+
+  // NEW: Modular Prompt System
+  descriptionChunks?: string[]; // Modular prompt segments describing the creature
+  visualMotif?: string; // High-level visual theme/aesthetic
+
+  // NEW: Enhanced Essence System
+  essence?: EssenceData; // New modular essence structure
+
+  // Legacy: Essence system (maintained for backward compatibility)
   essenceTypes: Array<{
     type: string; // EssenceType ID
     baseYield: number; // Base essence amount (before multipliers)
   }>; // All essence types are always granted (no chance-based drops)
-  
+
+  // NEW: Fusion/Mutation Metadata
+  fusionParentIds?: string[]; // Parent creature IDs if this is a fusion
+  fusionType?: 'balanced' | 'dominant_first' | 'dominant_second';
+  fusionGeneration?: number;
+  mutationSource?: MutationMetadata; // Mutation data if this is a mutant
+
   // Progression
   unlockRequirement?: {
     biomeUnlocked: string[]; // Array of biome IDs that must be unlocked
     essenceSpent?: Record<string, number>; // Essence types and amounts spent
   };
-  
+
   // Abilities this creature can grant when consumed
   grantedAbilities?: string[]; // Array of Ability IDs
-  
+
   // Spawn rules
   spawnRules: {
     canAppearIn: string[]; // Array of biome IDs where this creature can spawn

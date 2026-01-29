@@ -1,56 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fish PWA
 
-## Environment Setup
+A roguelite fish game built with [Next.js](https://nextjs.org): eat smaller fish to grow, avoid predators, and unlock biomes. Fish art is AI-generated from modular prompts and stored in Vercel Blob; the Fish Editor lets you create, flip, and regenerate sprites.
 
-This project uses Vercel Blob Storage for storing game data and AI-generated assets. To run the project, you need to configure the following environment variables:
-
-1. Copy `.env.example` to `.env.local`:
-   ```bash
-   cp .env.example .env.local
-   ```
-
-2. Configure the following environment variables in `.env.local`:
-   - `OPENAI_API_KEY`: Your Vercel AI Gateway key (starts with `vck_`) for AI image generation
-   - `BLOB_READ_WRITE_TOKEN`: Your Vercel Blob Storage token for the "fish-art" storage
-
-### Setting up Vercel Blob Storage
-
-1. Go to your [Vercel Dashboard](https://vercel.com/dashboard)
-2. Navigate to Storage and create a new Blob store named "fish-art"
-3. Copy the `BLOB_READ_WRITE_TOKEN` from the storage settings
-4. Add it to your `.env.local` file
-
-## Getting Started
-
-First, run the development server:
+## Quick start
 
 ```bash
+cp .env.example .env.local   # add OPENAI_API_KEY and BLOB_READ_WRITE_TOKEN
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Use **Fish Select** to pick your fish, then **Dive** to play.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Fish art & blob creatures
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+All playable and AI fish come from **Vercel Blob Storage** (sprites + metadata). You can:
 
-## Learn More
+| Goal | Command |
+|------|--------|
+| **Add new fish** | Add entries to `docs/biomes/*.md`, then `npx tsx scripts/batch-generate-fish.ts` (skips fish that already exist). |
+| **Patch tiers/stats on existing fish** | `npx tsx scripts/batch-update-creature-metadata.ts` (no sprite regeneration). |
+| **Snapshot what’s in blob** | `npx tsx scripts/export-creature-list.ts` → writes `docs/BLOB_CREATURES.md`. |
 
-To learn more about Next.js, take a look at the following resources:
+Dev server must be running for these scripts. Full details, env vars, and JSON/CSV import options: **[scripts/README.md](scripts/README.md)**.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Setup
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Copy `.env.example` to `.env.local` and set:
+   - **`OPENAI_API_KEY`** — Vercel AI Gateway key (starts with `vck_`) for fish image generation
+   - **`BLOB_READ_WRITE_TOKEN`** — Vercel Blob Storage token for the "fish-art" store
+
+2. Create the Blob store in your [Vercel Dashboard](https://vercel.com/dashboard) → Storage → new Blob store named **fish-art**, then paste the token into `.env.local`.
+
+3. Run `npm run dev` and open [http://localhost:3000](http://localhost:3000).
+
+## Docs
+
+- **[scripts/README.md](scripts/README.md)** — Bulk creature import, batch fish generation from biome docs, metadata patches, and export.
+- **docs/biomes/** — Markdown fish definitions (description chunks, visual motif, size tier, essence) used by the batch pipeline.
+- **docs/MODULAR_PROMPT_SYSTEM.md**, **docs/FISH_DATA_STRUCTURE_BATCH.md** — Prompt and data shape for fish art.
 
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy with the [Vercel Platform](https://vercel.com/new); set `OPENAI_API_KEY` and `BLOB_READ_WRITE_TOKEN` in the project environment. See [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying) for details.

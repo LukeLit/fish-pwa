@@ -1,76 +1,188 @@
-# Shallow Biome Fish List
+# Shallow Biome: Coral Shallows
 
 ## Overview
-This document lists all fish designed for the Shallow biome, including real-world inspired commons and rare/creative variants. Each entry includes modular prompt chunks and metadata for batch upload and future expansion.
 
----
+**Biome ID**: `shallow`  
+**Name**: Coral Shallows  
+**Base Depth**: Shallow (0-50m)  
+**Modifiers**: None  
+**Visual Theme**: Bright, colorful coral reef with tropical fish and clear waters
 
-## Fish Entries
+## Essence Types
 
-### Common Fish
-1. **Bluegill Sunfish**
-   - Description Chunks: ["rounded body", "iridescent blue and orange scales", "short, spiny dorsal fin"]
-   - Visual Motif: "shimmering spots"
-   - Essence: { shallow: 8, deep_sea: 1, tropical: 0, polluted: 0, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: prey
-   - Rarity: common
-2. **Largemouth Bass**
-   - Description Chunks: ["large mouth", "greenish body", "horizontal stripe"]
-   - Visual Motif: "subtle fin glow"
-   - Essence: { shallow: 12, deep_sea: 2, tropical: 0, polluted: 0, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: mid
-   - Rarity: common
-3. **Pumpkinseed**
-   - Description Chunks: ["bright orange spots", "oval shape", "spiky fins"]
-   - Visual Motif: "sunburst pattern"
-   - Essence: { shallow: 7, deep_sea: 1, tropical: 0, polluted: 0, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: prey
-   - Rarity: common
-4. **Yellow Perch**
-   - Description Chunks: ["vertical black bars", "yellow body", "forked tail"]
-   - Visual Motif: "striped shimmer"
-   - Essence: { shallow: 9, deep_sea: 1, tropical: 0, polluted: 0, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: prey
-   - Rarity: common
-5. **Common Carp**
-   - Description Chunks: ["thick body", "golden scales", "whisker-like barbels"]
-   - Visual Motif: "reflective scales"
-   - Essence: { shallow: 10, deep_sea: 2, tropical: 0, polluted: 0, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: mid
-   - Rarity: common
-6. **Mosquitofish**
-   - Description Chunks: ["tiny size", "rounded fins", "silvery body"]
-   - Visual Motif: "subtle sparkle"
-   - Essence: { shallow: 4, deep_sea: 0, tropical: 0, polluted: 0, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: prey
-   - Rarity: common
-7. **Channel Catfish**
-   - Description Chunks: ["whiskered face", "smooth skin", "long body"]
-   - Visual Motif: "faint blue glow"
-   - Essence: { shallow: 13, deep_sea: 2, tropical: 0, polluted: 0, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: predator
-   - Rarity: common
+- **Primary**: Shallow
+- **Secondary**: None
 
-### Rare/Creative Fish
-8. **Shallow Mutant (original)**
-   - Description Chunks: ["extra fins", "asymmetrical body", "glowing eyes"]
-   - Visual Motif: "mutant aura"
-   - Essence: { shallow: 20, deep_sea: 5, tropical: 0, polluted: 3, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: mid
-   - Rarity: rare
-9. **Zombie Sunfish (original)**
-   - Description Chunks: ["torn fins", "exposed bone", "pale, decaying scales"]
-   - Visual Motif: "zombie rot"
-   - Essence: { shallow: 18, deep_sea: 3, tropical: 0, polluted: 5, cosmic: 0, demonic: 0, robotic: 0 }
-   - Size Tier: prey
-   - Rarity: rare
-10. **Shallow Guardian (original boss)**
-    - Description Chunks: ["massive armored body", "crystal growths", "piercing gaze"]
-    - Visual Motif: "crystalline armor"
-    - Essence: { shallow: 40, deep_sea: 10, tropical: 0, polluted: 0, cosmic: 5, demonic: 0, robotic: 0 }
-    - Size Tier: boss
-    - Rarity: rare
+## Unlock Requirements
 
----
+- **Starting biome** - No unlock cost
 
-See also: `MODULAR_PROMPT_SYSTEM.md`, `FISH_DATA_STRUCTURE_BATCH.md`, `VISUAL_MOTIFS.md`
+## Creatures
+
+### Common Creatures
+
+#### Goldfish (goldfish_starter)
+- **Type**: Prey
+- **Rarity**: Common
+- **Playable**: Yes
+- **Stats**: Size 20, Speed 7, Health 15, Damage 3
+- **Description Chunks**:
+  - small golden-orange fish
+  - rounded streamlined body
+  - flowing translucent fins
+  - bright reflective scales
+  - large alert eyes
+- **Visual Motif**: "swift schooling fish with vibrant coloration"
+- **Essence**: Shallow (3 base yield)
+- **Granted Abilities**: None
+
+#### Guppy (tiny_fish)
+- **Type**: Prey
+- **Rarity**: Common
+- **Playable**: No
+- **Stats**: Size 8, Speed 6, Health 3, Damage 0.5
+- **Description Chunks**:
+  - extremely tiny colorful fish
+  - vibrant rainbow scales
+  - delicate transparent fins
+  - quick darting movements
+- **Visual Motif**: "miniature tropical schooling fish"
+- **Essence**: Shallow (1 base yield)
+- **Granted Abilities**: None
+
+#### Minnow (small_prey)
+- **Type**: Prey
+- **Rarity**: Common
+- **Playable**: No
+- **Stats**: Size 10, Speed 5, Health 5, Damage 1
+- **Description Chunks**:
+  - tiny silver fish
+  - streamlined slender body
+  - large reflective eyes
+  - translucent fins
+  - shimmering metallic scales
+- **Visual Motif**: "swift schooling prey fish"
+- **Essence**: Shallow (2 base yield)
+- **Granted Abilities**: None
+
+### Medium Creatures
+
+#### Perch (medium_fish)
+- **Type**: Prey
+- **Rarity**: Common
+- **Playable**: No
+- **Stats**: Size 30, Speed 4, Health 20, Damage 5
+- **Description Chunks**:
+  - medium-sized silver fish
+  - vertical black stripes
+  - spiny dorsal fin
+  - broad streamlined body
+  - cautious alert posture
+- **Visual Motif**: "wary mid-sized schooling fish"
+- **Essence**: Shallow (5 base yield)
+- **Granted Abilities**: None
+
+#### Bass (medium_predator)
+- **Type**: Predator
+- **Rarity**: Common
+- **Playable**: No
+- **Stats**: Size 40, Speed 4, Health 30, Damage 10
+- **Description Chunks**:
+  - medium-sized predatory fish
+  - muscular powerful body
+  - large mouth with sharp teeth
+  - dark green scaled body
+  - aggressive forward-facing eyes
+- **Visual Motif**: "territorial shallow-water hunter"
+- **Essence**: Shallow (8 base yield)
+- **Granted Abilities**: ambush_strike
+
+### Large Creatures
+
+#### Pike (large_predator)
+- **Type**: Predator
+- **Rarity**: Uncommon
+- **Playable**: No
+- **Stats**: Size 70, Speed 5, Health 50, Damage 20
+- **Description Chunks**:
+  - large elongated predator
+  - torpedo-shaped muscular body
+  - massive jaw with razor teeth
+  - camouflaged green-brown scales
+  - menacing predatory stance
+- **Visual Motif**: "apex shallow-water ambush predator"
+- **Essence**: Shallow (15 base yield), Deep Sea (5 base yield)
+- **Granted Abilities**: ambush_strike, speed_burst
+
+### Rare Creatures
+
+#### Tropical Parrotfish (rare_tropical)
+- **Type**: Prey
+- **Rarity**: Rare
+- **Playable**: Yes
+- **Stats**: Size 50, Speed 3, Health 35, Damage 8
+- **Description Chunks**:
+  - vibrant rainbow-colored fish
+  - parrot-like beak mouth
+  - large flowing fins
+  - iridescent multi-colored scales
+  - elegant graceful movements
+- **Visual Motif**: "dazzling tropical reef dweller"
+- **Essence**: Shallow (10 base yield), Tropical (8 base yield)
+- **Granted Abilities**: reef_camouflage, hard_scales
+
+### Epic Creatures
+
+#### Great White Shark (epic_shark)
+- **Type**: Predator
+- **Rarity**: Epic
+- **Playable**: Yes
+- **Stats**: Size 120, Speed 6, Health 80, Damage 35
+- **Description Chunks**:
+  - massive apex predator
+  - powerful streamlined body
+  - rows of serrated teeth
+  - gray-white countershaded scales
+  - intimidating presence
+  - signature dorsal fin
+- **Visual Motif**: "legendary ocean apex predator"
+- **Essence**: Shallow (30 base yield), Deep Sea (20 base yield)
+- **Granted Abilities**: apex_predator, blood_sense, speed_burst
+
+## Spawn Weights
+
+- Guppy: 40 (Most common)
+- Minnow: 30
+- Perch: 20
+- Bass: 15
+- Goldfish: 10 (Starting fish)
+- Pike: 5
+- Tropical Parrotfish: 5
+- Great White Shark: 2 (Rarest)
+
+## Prompt Chunk Examples
+
+### Biome-Specific Art Modifiers
+```typescript
+SHALLOW_ART_CHUNKS = [
+  "bright, saturated colors",
+  "clear, well-lit appearance",
+  "tropical color palette",
+  "sunlit water adaptations"
+]
+```
+
+### Recommended Visual Motifs
+- "vibrant reef dweller with tropical colors"
+- "swift schooling fish with reflective scales"
+- "territorial shallow-water hunter"
+- "graceful tropical swimmer"
+- "coral reef ambusher"
+
+## Notes
+
+- Starting biome for all players
+- Highest variety of fish types
+- Good balance of prey and predators
+- Ideal for learning game mechanics
+- Moderate essence orb spawn rate (0.5)

@@ -1,12 +1,15 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env tsx
 /**
  * Bulk import creatures from JSON files to blob storage
  * 
+ * Updated to support modular prompt system with descriptionChunks, visualMotif,
+ * essence object, fusion/mutation metadata, and automatic migration from legacy format.
+ * 
  * Usage:
- *   npx ts-node scripts/import-creatures.ts <creatures-dir>
+ *   npx tsx scripts/import-creatures.ts <creatures-dir>
  * 
  * Example:
- *   npx ts-node scripts/import-creatures.ts ./data/creatures
+ *   npx tsx scripts/import-creatures.ts ./data/creatures
  * 
  * Directory structure:
  *   creatures/
@@ -21,12 +24,41 @@ import { readdir, readFile } from 'fs/promises';
 import { join, basename, extname } from 'path';
 import { put } from '@vercel/blob';
 
+/**
+ * Enhanced Essence Data Structure
+ */
+interface EssenceData {
+  primary: {
+    type: string;
+    baseYield: number;
+    visualChunks?: string[];
+  };
+  secondary?: Array<{
+    type: string;
+    baseYield: number;
+    visualChunks?: string[];
+  }>;
+}
+
+/**
+ * Mutation Metadata
+ */
+interface MutationMetadata {
+  sourceCreatureId: string;
+  mutationType: string;
+  mutationLevel: number;
+  mutationTrigger?: string;
+}
+
+/**
+ * Complete Creature Data Structure with Modular Prompt Support
+ */
 interface CreatureData {
   id: string;
   name: string;
-  description?: string;
-  type?: 'prey' | 'predator' | 'mutant' | string;
-  stats?: {
+  description: string; // Legacy field
+  type: 'prey' | 'predator' | 'mutant';
+  stats: {
     size: number;
     speed: number;
     health: number;
@@ -36,27 +68,23 @@ interface CreatureData {
   rarity?: string;
   playable?: boolean;
   biomeId?: string;
-  // Old format (legacy support)
-  essenceTypes?: Array<{ type: string; baseYield: number }>;
-  // New format: all essence types as object
-  essence?: {
-    shallow?: number;
-    deep_sea?: number;
-    tropical?: number;
-    polluted?: number;
-    cosmic?: number;
-    demonic?: number;
-    robotic?: number;
-  };
-  // Modular prompt system
+
+  // NEW: Modular Prompt System
   descriptionChunks?: string[];
-  visualMotif?: string | string[];
+  visualMotif?: string;
+
+  // NEW: Enhanced Essence System
+  essence?: EssenceData;
+
+  // Legacy essence (maintained for backward compatibility)
+  essenceTypes?: Array<{ type: string; baseYield: number }>;
+
+  // NEW: Fusion/Mutation Metadata
   fusionParentIds?: string[];
-  mutationSource?: string | null;
-  // For future: ability/essence/biome prompt chunks
-  abilityPromptChunks?: string[];
-  essencePromptChunks?: string[];
-  biomePromptChunks?: string[];
+  fusionType?: 'balanced' | 'dominant_first' | 'dominant_second';
+  fusionGeneration?: number;
+  mutationSource?: MutationMetadata;
+
   spawnRules?: {
     canAppearIn?: string[];
     spawnWeight?: number;
@@ -70,6 +98,135 @@ interface CreatureData {
   };
 }
 
+/**
+ * Migrate legacy essence types to new essence structure
+ */
+function migrateEssenceTypes(essenceTypes?: Array<{ type: string; baseYield: number }>): EssenceData | undefined {
+  if (!essenceTypes || essenceTypes.length === 0) {
+    return undefined;
+  }
+
+  const [primary, ...secondary] = essenceTypes;
+
+  return {
+    primary: {
+      type: primary.type,
+      baseYield: primary.baseYield,
+      visualChunks: [] // Can be populated manually or via defaults
+    },
+    secondary: secondary.length > 0 ? secondary.map(ess => ({
+      type: ess.type,
+      baseYield: ess.baseYield,
+      visualChunks: []
+    })) : undefined
+  };
+}
+
+/**
+ * Migrate legacy description to description chunks
+ */
+function migrateDescriptionToChunks(description?: string): string[] | undefined {
+  if (!description) {
+    return undefined;
+  }
+
+  // Split on periods, commas, and semicolons, then clean up
+  const chunks = description
+    .split(/[.,;]\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0); // Remove empty strings after split
+
+  return chunks.length > 0 ? chunks : undefined;
+}
+
+/**
+ * Extract visual motif from description (first sentence)
+ */
+function extractVisualMotif(description?: string): string | undefined {
+  if (!description) {
+    return undefined;
+  }
+
+  const firstSentence = description.split(/[.!?]/)[0]?.trim();
+  return firstSentence || undefined;
+}
+
+/**
+ * Apply automatic migration to creature data
+ */
+function applyMigration(creature: CreatureData): CreatureData {
+  const migrated = { ...creature };
+
+  // Migrate description chunks if not present but description exists
+  if (!migrated.descriptionChunks && migrated.description) {
+    migrated.descriptionChunks = migrateDescriptionToChunks(migrated.description);
+    console.log(`    ℹ️  Auto-migrated description to ${migrated.descriptionChunks?.length || 0} chunks`);
+  }
+
+  // Extract visual motif if not present but description exists
+  if (!migrated.visualMotif && migrated.description) {
+    migrated.visualMotif = extractVisualMotif(migrated.description);
+    console.log(`    ℹ️  Auto-extracted visual motif: "${migrated.visualMotif}"`);
+  }
+
+  // Migrate essence types to essence object if not present
+  if (!migrated.essence && migrated.essenceTypes) {
+    migrated.essence = migrateEssenceTypes(migrated.essenceTypes);
+    console.log(`    ℹ️  Auto-migrated essence types to essence object`);
+  }
+
+  // Ensure essenceTypes exists for backward compatibility
+  if (!migrated.essenceTypes && migrated.essence) {
+    migrated.essenceTypes = [
+      { type: migrated.essence.primary.type, baseYield: migrated.essence.primary.baseYield },
+      ...(migrated.essence.secondary?.map(sec => ({ type: sec.type, baseYield: sec.baseYield })) || [])
+    ];
+    console.log(`    ℹ️  Created legacy essenceTypes for backward compatibility`);
+  }
+
+  return migrated;
+}
+
+/**
+ * Validate creature data
+ */
+function validateCreature(creature: CreatureData): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  // Required fields
+  if (!creature.id) errors.push('Missing id');
+  if (!creature.name) errors.push('Missing name');
+  if (!creature.type) errors.push('Missing type');
+  if (!creature.stats) errors.push('Missing stats');
+
+  // Stats validation
+  if (creature.stats) {
+    if (creature.stats.size < 1 || creature.stats.size > 200) {
+      errors.push('Stats size out of range (1-200)');
+    }
+    if (creature.stats.speed < 0 || creature.stats.speed > 10) {
+      errors.push('Stats speed out of range (0-10)');
+    }
+    if (creature.stats.health < 1 || creature.stats.health > 100) {
+      errors.push('Stats health out of range (1-100)');
+    }
+    if (creature.stats.damage < 0 || creature.stats.damage > 50) {
+      errors.push('Stats damage out of range (0-50)');
+    }
+  }
+
+  // Essence validation - must have either essence or essenceTypes
+  // Note: baseYield of 0 is allowed for essence types that provide no yield but are part of the creature's identity
+  if (!creature.essence && !creature.essenceTypes) {
+    errors.push('Missing both essence and essenceTypes (at least one required)');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
 async function importCreatures(directory: string) {
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
   if (!blobToken) {
@@ -78,6 +235,7 @@ async function importCreatures(directory: string) {
   }
 
   console.log(`📁 Reading creatures from: ${directory}`);
+  console.log(`📦 Modular prompt system enabled`);
 
   const files = await readdir(directory);
   const jsonFiles = files.filter(f => extname(f) === '.json');
@@ -88,6 +246,7 @@ async function importCreatures(directory: string) {
 
   let successCount = 0;
   let failCount = 0;
+  let migratedCount = 0;
 
   for (const jsonFile of jsonFiles) {
     const creatureId = basename(jsonFile, '.json');
@@ -97,10 +256,24 @@ async function importCreatures(directory: string) {
       // Read creature data
       const jsonPath = join(directory, jsonFile);
       const jsonContent = await readFile(jsonPath, 'utf-8');
-      const creatureData: CreatureData = JSON.parse(jsonContent);
+      let creatureData: CreatureData = JSON.parse(jsonContent);
 
       // Ensure ID matches filename
       creatureData.id = creatureId;
+
+      // Apply automatic migration
+      const hadModularFields = !!(creatureData.descriptionChunks || creatureData.essence);
+      creatureData = applyMigration(creatureData);
+      if (!hadModularFields && (creatureData.descriptionChunks || creatureData.essence)) {
+        migratedCount++;
+      }
+
+      // Validate creature data
+      const validation = validateCreature(creatureData);
+      if (!validation.valid) {
+        console.log(`  ⚠️  Validation warnings for ${creatureId}:`);
+        validation.errors.forEach(err => console.log(`    - ${err}`));
+      }
 
       // Find sprite file
       let spriteUrl: string | undefined;
@@ -163,13 +336,19 @@ async function importCreatures(directory: string) {
   console.log(`\n${'='.repeat(50)}`);
   console.log(`✅ Success: ${successCount}`);
   console.log(`❌ Failed: ${failCount}`);
+  console.log(`🔄 Auto-migrated: ${migratedCount}`);
   console.log(`Total: ${jsonFiles.length}`);
+  console.log(`\n💡 Tip: Review migrated creatures and manually add visual chunks for better prompt quality`);
 }
 
 // Main
 const args = process.argv.slice(2);
 if (args.length === 0) {
-  console.error('Usage: npx ts-node scripts/import-creatures.ts <creatures-dir>');
+  console.error('Usage: npx tsx scripts/import-creatures.ts <creatures-dir>');
+  console.error('\nSupports modular prompt system:');
+  console.error('  - Auto-migrates legacy description to descriptionChunks');
+  console.error('  - Auto-migrates essenceTypes to essence object');
+  console.error('  - Maintains backward compatibility with legacy fields');
   process.exit(1);
 }
 

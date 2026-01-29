@@ -16,6 +16,7 @@ import { Fish } from './entities';
 import type { PhysicsEngine } from './physics';
 import type { Creature } from './types';
 import { FishData } from '@/components/FishEditOverlay';
+import type { SizeTier } from './data/creatures';
 
 /**
  * Options for spawning a fish entity (game engine)
@@ -23,34 +24,34 @@ import { FishData } from '@/components/FishEditOverlay';
 export interface SpawnFishOptions {
   /** The creature definition to spawn from */
   creature: Creature;
-  
+
   /** Physics engine instance */
   physics: PhysicsEngine;
-  
+
   /** Spawn position */
   position: {
     x: number;
     y: number;
   };
-  
+
   /** Whether this is a player-controlled fish */
   isPlayer?: boolean;
-  
+
   /** Override size (otherwise uses creature.stats.size with variance) */
   size?: number;
-  
+
   /** Override speed (otherwise uses creature.stats.speed with variance) */
   speed?: number;
-  
+
   /** Size variance multiplier (default: 0.9-1.1 for AI, 1.0 for player) */
   sizeVariance?: { min: number; max: number };
-  
+
   /** Speed variance multiplier (default: 0.9-1.1 for AI, 1.0 for player) */
   speedVariance?: { min: number; max: number };
-  
+
   /** Reference size for relative size calculation (e.g., player size) */
   relativeToSize?: number;
-  
+
   /** Custom ID for the fish entity */
   id?: string;
 }
@@ -93,7 +94,7 @@ export function spawnFish(options: SpawnFishOptions): Fish {
 
   // Calculate size with variance if not overridden
   let finalSize = overrideSize ?? creature.stats.size;
-  
+
   if (!overrideSize && !isPlayer) {
     // Apply size variance for AI fish
     const variance = sizeVariance ?? getDefaultSizeVariance(creature, relativeToSize);
@@ -103,7 +104,7 @@ export function spawnFish(options: SpawnFishOptions): Fish {
 
   // Calculate speed with variance if not overridden
   let finalSpeed = overrideSpeed ?? creature.stats.speed;
-  
+
   if (!overrideSpeed && !isPlayer) {
     // Apply speed variance for AI fish
     const variance = speedVariance ?? { min: 0.9, max: 1.1 };
@@ -212,6 +213,64 @@ export function spawnAIFish(
     relativeToSize: playerSize,
     id,
   });
+}
+
+/**
+ * Compute an encounter size for a creature based on its size tier, biome, and level.
+ * This is used by both the game loop and editor to avoid hard-coding absolute sizes.
+ */
+export function computeEncounterSize(options: {
+  creature: Creature;
+  biomeId?: string;
+  levelNumber?: number;
+  playerSize?: number;
+}): number {
+  const { creature, levelNumber = 1, playerSize } = options;
+
+  const baseStatSize = creature.stats.size || 60;
+
+  // Prefer explicit sizeTier when present, otherwise infer from stats/type.
+  const tier: SizeTier = (creature.sizeTier as SizeTier) ?? inferSizeTierFromStats(creature);
+
+  // Base multipliers per tier (relative to stat size).
+  const BASE_SIZE_BY_TIER: Record<string, number> = {
+    prey: 0.8,
+    mid: 1.0,
+    predator: 1.3,
+    boss: 1.6,
+  };
+
+  const tierMult = BASE_SIZE_BY_TIER[tier] ?? 1.0;
+
+  // Simple level-based scaling (15% per level as a starting point).
+  const levelMult = 1 + (levelNumber - 1) * 0.15;
+
+  let size = baseStatSize * tierMult * levelMult;
+
+  // Optionally nudge size relative to player so prey tend to be smaller
+  // and predators tend to be larger, even as the player grows.
+  if (playerSize && playerSize > 0) {
+    let targetRatio = 1.0;
+    if (creature.type === 'prey') {
+      targetRatio = 0.7;
+    } else if (creature.type === 'predator' || tier === 'boss') {
+      targetRatio = 1.4;
+    }
+    const desired = playerSize * targetRatio;
+    // Blend between computed size and desired ratio to keep behaviour stable.
+    size = (size * 0.5) + (desired * 0.5);
+  }
+
+  // Clamp to sensible bounds so sprites are visible but not absurd.
+  return Math.max(40, Math.min(size, 260));
+}
+
+function inferSizeTierFromStats(creature: Creature): SizeTier {
+  const s = creature.stats.size;
+  if (s <= 70) return 'prey';
+  if (s <= 90) return 'mid';
+  if (s <= 120) return 'predator';
+  return 'boss';
 }
 
 /**
