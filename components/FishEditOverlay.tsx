@@ -76,6 +76,7 @@ export interface FishData {
 }
 
 // Type alias for updateField values to improve readability
+// Includes undefined to allow clearing optional fields like fusion metadata
 type FishFieldValue =
   | string
   | number
@@ -85,7 +86,8 @@ type FishFieldValue =
   | EssenceData
   | MutationMetadata
   | { canAppearIn: string[]; spawnWeight: number; minDepth?: number; maxDepth?: number }
-  | { biomeUnlocked: string[]; essenceSpent?: Record<string, number> };
+  | { biomeUnlocked: string[]; essenceSpent?: Record<string, number> }
+  | undefined;
 
 interface FishEditOverlayProps {
   fish: FishData | null;
