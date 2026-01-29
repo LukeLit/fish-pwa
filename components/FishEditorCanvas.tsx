@@ -868,7 +868,13 @@ export default function FishEditorCanvas({
               fishEatenRef.current += 1;
               eatenIdsRef.current.add(fish.id);
               fishListRef.current.splice(idx, 1);
-              player.size = Math.min(150, player.size + fish.size * 0.1);
+
+              // Diminishing returns: bigger fish relative to prey = less growth
+              // Encourages eating appropriately-sized targets, not grinding tiny fish
+              const sizeRatio = player.size / fish.size;
+              const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+              const sizeGain = fish.size * 0.15 * efficiencyMult;
+              player.size = Math.min(200, player.size + sizeGain);
 
               // Restore hunger based on fish size
               const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger);
@@ -911,7 +917,11 @@ export default function FishEditorCanvas({
             if (fish.type !== 'prey') continue;
             eatenIdsRef.current.add(fish.id);
             fishListRef.current.splice(idx, 1);
-            player.size = Math.min(150, player.size + 10);
+            // Diminishing returns in editor mode too
+            const sizeRatio = player.size / fish.size;
+            const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+            const sizeGain = fish.size * 0.15 * efficiencyMult;
+            player.size = Math.min(200, player.size + sizeGain);
             player.chompPhase = 1;
             player.chompEndTime = now + 280;
             const eatX = (fish.x + player.x) * 0.5;

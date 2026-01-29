@@ -42,6 +42,8 @@ interface PauseMenuProps {
   // Canvas interaction
   onSetPlayer?: (fish: FishData) => void;
   onSpawnFish?: (sprite: string, type: string) => void;
+  /** IDs of fish currently spawned in the scene */
+  spawnedFishIds?: string[];
   // Navigation for edit overlay
   onPreviousFish?: () => void;
   onNextFish?: () => void;
@@ -81,6 +83,7 @@ export default function PauseMenu({
   onAddNewCreature,
   onSetPlayer,
   onSpawnFish,
+  spawnedFishIds = [],
   onPreviousFish,
   onNextFish,
   hasPrevious = false,
@@ -313,6 +316,7 @@ export default function PauseMenu({
                 onAddNew={onAddNewCreature}
                 onSetPlayer={onSetPlayer}
                 onSpawnFish={onSpawnFish}
+                spawnedFishIds={spawnedFishIds}
               />
             ) : selectedFish ? (
               <div className="h-full flex flex-col">

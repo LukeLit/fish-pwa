@@ -14,11 +14,10 @@ import {
   saveRunState,
   createNewRunState,
   clearRunState,
-  PLAYER_START_SIZE_MULT,
 } from '@/lib/game/run-state';
 import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { getCreaturesByBiome, getBlobCreaturesByBiome, getCreatureById } from '@/lib/game/data/creatures';
-import { computeEncounterSize } from '@/lib/game/spawn-fish';
+import { computeEncounterSize, PLAYER_BASE_SIZE } from '@/lib/game/spawn-fish';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -167,13 +166,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
               biomeId: blobCreature.biomeId,
             });
 
-            // Sync run state: use tier-scaled size * player start mult so player starts smaller
-            const baseSize = computeEncounterSize({
-              creature: blobCreature,
-              biomeId: blobCreature.biomeId,
-              levelNumber: 1,
-            });
-            startSize = Math.max(40, baseSize * PLAYER_START_SIZE_MULT);
+            // All players start at fixed base size for consistent gameplay.
+            // Creature choice affects speed/health/damage, not starting size.
+            startSize = PLAYER_BASE_SIZE;
 
             const updatedRunState: RunState = {
               ...currentRunState,
@@ -207,34 +202,54 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
         setPlayerFishSprite(playerSprite);
 
-        // Spawn prey fish based on current level using blob-backed creature definitions
+        // Spawn fish based on current level using blob-backed creature definitions
         // TODO: Dynamically determine biome based on current level/run state
         // For now, using 'shallow' as the default starter biome
         const biomeCreatures = await getBlobCreaturesByBiome('shallow');
         if (biomeCreatures.length > 0) {
-          // Filter for prey creatures
+          // Separate creatures by type
           const preyCreatures = biomeCreatures.filter(c => c.type === 'prey');
-          const pool = preyCreatures.length > 0 ? preyCreatures : biomeCreatures;
+          const predatorCreatures = biomeCreatures.filter(c => c.type === 'predator');
 
-          // Spawn fish based on level difficulty, using creature definitions.
-          // Use computeEncounterSize so sizes are biome/level aware instead of raw stats.
           const spawned: Creature[] = [];
-          for (let i = 0; i < fishCount; i++) {
-            const creature = pool[i % pool.length];
+
+          // Always spawn 1-2 apex predators (scales with level)
+          const apexCount = Math.min(1 + Math.floor((level.levelNum - 1) / 2), 3);
+          const apexPool = predatorCreatures.length > 0 ? predatorCreatures : [];
+
+          for (let i = 0; i < apexCount && i < apexPool.length; i++) {
+            const creature = apexPool[i % apexPool.length];
             const encounterSize = computeEncounterSize({
               creature,
               biomeId: creature.biomeId,
               levelNumber: level.levelNum,
-              playerSize: startSize, // Use computed start size, not stale runState
             });
             spawned.push({
               ...creature,
-              stats: {
-                ...creature.stats,
-                size: encounterSize,
-              },
+              stats: { ...creature.stats, size: encounterSize },
             });
           }
+
+          // Fill remaining slots with prey (varied sizes)
+          const preyPool = preyCreatures.length > 0 ? preyCreatures : biomeCreatures;
+          const remainingSlots = fishCount - spawned.length;
+
+          for (let i = 0; i < remainingSlots; i++) {
+            const creature = preyPool[i % preyPool.length];
+            // Every 3rd prey is extra small (easy first targets)
+            const isSmallPrey = i % 3 === 0;
+            const encounterSize = computeEncounterSize({
+              creature,
+              biomeId: creature.biomeId,
+              levelNumber: level.levelNum,
+              forceSmall: isSmallPrey,
+            });
+            spawned.push({
+              ...creature,
+              stats: { ...creature.stats, size: encounterSize },
+            });
+          }
+
           setSpawnedFish(spawned);
         }
       } catch (error) {
@@ -393,6 +408,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         onSaveFish={handleSaveFish}
         onAddNewCreature={handleAddNewCreature}
         onSetPlayer={handleSetPlayer}
+        spawnedFishIds={spawnedFish.map(f => f.id)}
       />
     </div>
   );

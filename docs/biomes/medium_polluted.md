@@ -20,30 +20,66 @@
 
 ## Creatures
 
-### Medium Creatures
+Mutated fish adapted to toxic industrial runoff at medium depths.
 
-#### Bass (medium_predator)
-- See shallow biome documentation  
-- May appear with pollution adaptations
+### Prey Tier
 
-### Large Creatures
+1. **Mutant Minnow (mutant_minnow_medium_polluted)**
+   - Description Chunks: ["extra pair of eyes", "sickly green glow", "twitching movements", "translucent patches"]
+   - Visual Motif: "radiation-touched survivor"
+   - Essence: { shallow: 3, polluted: 12 }
+   - Size Tier: prey
+   - Rarity: common
 
-#### Pike (large_predator)
-- See shallow biome documentation
-- May appear with toxic mutations
+2. **Sludge Fish (sludge_fish_medium_polluted)**
+   - Description Chunks: ["murky brown coloring", "asymmetric fins", "oil-slick sheen", "misshapen body"]
+   - Visual Motif: "waste-dwelling scavenger"
+   - Essence: { shallow: 2, polluted: 10 }
+   - Size Tier: prey
+   - Rarity: common
 
-### Unique Mutants
+### Mid Tier
 
-Future creatures specific to this biome:
+3. **Toxic Bass (toxic_bass_medium_polluted)**
+   - Description Chunks: ["green bioluminescent spots", "enlarged toxic glands", "mutated jaw", "chemical burns"]
+   - Visual Motif: "polluted predator adaptation"
+   - Essence: { shallow: 8, polluted: 18 }
+   - Size Tier: mid
+   - Rarity: common
 
-- **Toxic Mutants**: Polluted variants of common fish
-- **Waste Scavengers**: Fish adapted to contaminated environments
-- **Industrial Survivors**: Armored fish with pollution resistance
+4. **Armored Carp (armored_carp_medium_polluted)**
+   - Description Chunks: ["industrial metal plating", "rust-colored scales", "reinforced skull", "filter mouth"]
+   - Visual Motif: "industrial waste survivor"
+   - Essence: { shallow: 10, polluted: 15 }
+   - Size Tier: mid
+   - Rarity: uncommon
+
+### Predator Tier
+
+5. **Chemical Eel (chemical_eel_medium_polluted)**
+   - Description Chunks: ["neon green veins", "corrosive slime coating", "elongated mutant body", "glowing eyes"]
+   - Visual Motif: "toxic ambush hunter"
+   - Essence: { shallow: 12, polluted: 25 }
+   - Size Tier: predator
+   - Rarity: uncommon
+
+### Boss Tier
+
+6. **Waste Leviathan (waste_leviathan_medium_polluted)**
+   - Description Chunks: ["massive mutated body", "trash and debris encrusted", "multiple tumorous growths", "chemical aura"]
+   - Visual Motif: "apex polluted nightmare"
+   - Essence: { shallow: 15, polluted: 40 }
+   - Size Tier: boss
+   - Rarity: rare
 
 ## Spawn Weights
 
-- Bass: 30
-- Pike: 20
+- Mutant Minnow: 30
+- Sludge Fish: 25
+- Toxic Bass: 20
+- Armored Carp: 15
+- Chemical Eel: 8
+- Waste Leviathan: 4
 
 ## Prompt Chunk Examples
 

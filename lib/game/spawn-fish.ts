@@ -216,59 +216,85 @@ export function spawnAIFish(
 }
 
 /**
- * Compute an encounter size for a creature based on its size tier, biome, and level.
- * This is used by both the game loop and editor to avoid hard-coding absolute sizes.
+ * Fixed player starting size - consistent for all creatures.
+ * Creature choice affects speed/health/damage, not starting size.
+ * This makes gameplay predictable and balanced.
+ */
+export const PLAYER_BASE_SIZE = 45;
+
+/**
+ * Absolute size ranges per tier - simple and predictable.
+ * No complex multipliers or player-relative blending.
+ */
+export const TIER_SIZE_RANGES: Record<string, { min: number; max: number }> = {
+  prey: { min: 25, max: 38 },      // Clearly smaller than player
+  mid: { min: 42, max: 58 },       // Similar to player, some eatable
+  predator: { min: 70, max: 95 },  // Dangerous, need to grow first
+  boss: { min: 110, max: 150 },    // End-goal, very threatening
+};
+
+/**
+ * Compute an encounter size for a creature based on its tier.
+ * 
+ * SIMPLIFIED DESIGN:
+ * - Sizes are determined by tier, not creature stats
+ * - Small random variance within tier for visual variety
+ * - Level scaling adds 10% per level
+ * - No player-relative blending (removed - was causing confusion)
+ * 
+ * @param forceSmall - If true, use the minimum of the tier range
  */
 export function computeEncounterSize(options: {
   creature: Creature;
   biomeId?: string;
   levelNumber?: number;
-  playerSize?: number;
+  playerSize?: number; // Kept for API compatibility, but not used
+  forceSmall?: boolean;
 }): number {
-  const { creature, levelNumber = 1, playerSize } = options;
+  const { creature, levelNumber = 1, forceSmall = false } = options;
 
-  const baseStatSize = creature.stats.size || 60;
+  // Determine tier from explicit sizeTier, creature type, or infer from stats
+  const tier: SizeTier = (creature.sizeTier as SizeTier)
+    ?? inferTierFromType(creature.type)
+    ?? inferSizeTierFromStats(creature);
 
-  // Prefer explicit sizeTier when present, otherwise infer from stats/type.
-  const tier: SizeTier = (creature.sizeTier as SizeTier) ?? inferSizeTierFromStats(creature);
+  const range = TIER_SIZE_RANGES[tier] ?? TIER_SIZE_RANGES.mid;
 
-  // Base multipliers per tier (relative to stat size).
-  const BASE_SIZE_BY_TIER: Record<string, number> = {
-    prey: 0.8,
-    mid: 1.0,
-    predator: 1.3,
-    boss: 1.6,
-  };
-
-  const tierMult = BASE_SIZE_BY_TIER[tier] ?? 1.0;
-
-  // Simple level-based scaling (15% per level as a starting point).
-  const levelMult = 1 + (levelNumber - 1) * 0.15;
-
-  let size = baseStatSize * tierMult * levelMult;
-
-  // Optionally nudge size relative to player so prey tend to be smaller
-  // and predators tend to be larger, even as the player grows.
-  if (playerSize && playerSize > 0) {
-    let targetRatio = 1.0;
-    if (creature.type === 'prey') {
-      targetRatio = 0.7;
-    } else if (creature.type === 'predator' || tier === 'boss') {
-      targetRatio = 1.4;
-    }
-    const desired = playerSize * targetRatio;
-    // Blend between computed size and desired ratio to keep behaviour stable.
-    size = (size * 0.5) + (desired * 0.5);
+  // Pick size within tier range
+  let size: number;
+  if (forceSmall) {
+    // Use minimum of range for "easy targets"
+    size = range.min;
+  } else {
+    // Random variance within tier range
+    size = range.min + Math.random() * (range.max - range.min);
   }
 
-  // Clamp to sensible bounds so sprites are visible but not absurd.
-  return Math.max(40, Math.min(size, 260));
+  // Level scaling: +10% per level beyond 1
+  const levelMult = 1 + (levelNumber - 1) * 0.10;
+  size *= levelMult;
+
+  // Clamp to reasonable bounds
+  return Math.round(Math.max(20, Math.min(size, 200)));
 }
 
+/**
+ * Infer tier from creature type (prey/predator/mutant)
+ */
+function inferTierFromType(type: string): SizeTier | null {
+  if (type === 'prey') return 'prey';
+  if (type === 'predator') return 'predator';
+  if (type === 'mutant') return 'predator';
+  return null;
+}
+
+/**
+ * Fallback: infer tier from stats.size if type doesn't give us info
+ */
 function inferSizeTierFromStats(creature: Creature): SizeTier {
   const s = creature.stats.size;
-  if (s <= 70) return 'prey';
-  if (s <= 90) return 'mid';
+  if (s <= 50) return 'prey';
+  if (s <= 80) return 'mid';
   if (s <= 120) return 'predator';
   return 'boss';
 }

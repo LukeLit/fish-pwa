@@ -19,58 +19,74 @@
 
 ## Creatures
 
-### Large Creatures
+Creatures adapted to crushing pressure and eternal darkness.
 
-#### Pike (large_predator)
-- See shallow biome documentation
-- May appear with deep-sea adaptations
+### Prey Tier
 
-### Epic Creatures
+1. **Bristlemouth (bristlemouth_deep)**
+   - Description Chunks: ["tiny bioluminescent body", "rows of light-producing organs", "delicate transparent fins", "huge eyes"]
+   - Visual Motif: "living constellation of the deep"
+   - Essence: { deep_sea: 15 }
+   - Size Tier: prey
+   - Rarity: common
 
-#### Great White Shark (epic_shark)
-- See shallow biome documentation
-- Ventures into deep waters
+2. **Glass Squid (glass_squid_deep)**
+   - Description Chunks: ["completely transparent body", "visible internal organs", "glowing photophores", "ghostly drifting movement"]
+   - Visual Motif: "spectral deep-sea phantom"
+   - Essence: { deep_sea: 18 }
+   - Size Tier: prey
+   - Rarity: common
 
-### Unique Deep Sea Creatures
+### Mid Tier
 
-Future deep-sea specific creatures:
+3. **Giant Isopod (giant_isopod_deep)**
+   - Description Chunks: ["armored segmented body", "multiple legs", "prehistoric appearance", "scavenging adapted"]
+   - Visual Motif: "ancient armored scavenger"
+   - Essence: { deep_sea: 20 }
+   - Size Tier: mid
+   - Rarity: uncommon
 
-#### Anglerfish
-- **Type**: Predator
-- **Rarity**: Rare
-- **Stats**: Size 60, Speed 3, Health 40, Damage 15
-- **Description Chunks**:
-  - grotesque deep-sea predator
-  - massive gaping mouth with needle-sharp teeth
-  - bioluminescent lure extending from head
-  - dark blue-black scaled body
-  - bulbous compressed body shape
-- **Visual Motif**: "terrifying abyssal ambush hunter with glowing lure"
-- **Essence**: Deep Sea (30), Shallow (6)
-- **Granted Abilities**: bioluminescence, lure_trap
+4. **Vampire Squid (vampire_squid_deep)**
+   - Description Chunks: ["webbed arms like cloak", "red eyes", "bioluminescent tips", "ancient living fossil"]
+   - Visual Motif: "ancient deep-sea survivor with otherworldly features"
+   - Essence: { deep_sea: 22 }
+   - Size Tier: mid
+   - Rarity: rare
 
-#### Gulper Eel
-- **Type**: Predator
-- **Rarity**: Epic
-- **Description Chunks**:
-  - serpentine deep-sea predator
-  - massively expandable jaw
-  - bioluminescent tail lure
-  - elongated eel-like body
-  - translucent nightmare features
-- **Visual Motif**: "bizarre abyssal predator with expandable jaws"
+### Predator Tier
 
-#### Vampire Squid (if cephalopods added)
-- **Type**: Mutant
-- **Rarity**: Legendary
-- **Visual Motif**: "ancient deep-sea survivor with otherworldly features"
+5. **Anglerfish (anglerfish_deep)**
+   - Description Chunks: ["grotesque deep-sea predator", "massive gaping mouth with needle-sharp teeth", "bioluminescent lure extending from head", "dark blue-black scaled body"]
+   - Visual Motif: "terrifying abyssal ambush hunter with glowing lure"
+   - Essence: { deep_sea: 30, shallow: 6 }
+   - Size Tier: predator
+   - Rarity: rare
+
+6. **Gulper Eel (gulper_eel_deep)**
+   - Description Chunks: ["serpentine deep-sea predator", "massively expandable jaw", "bioluminescent tail lure", "elongated eel-like body"]
+   - Visual Motif: "bizarre abyssal predator with expandable jaws"
+   - Essence: { deep_sea: 35 }
+   - Size Tier: predator
+   - Rarity: epic
+
+### Boss Tier
+
+7. **Oarfish (oarfish_deep)**
+   - Description Chunks: ["serpentine ribbon-like body", "bright red dorsal crest", "silvery undulating form", "legendary sea serpent appearance"]
+   - Visual Motif: "mythical deep-sea leviathan"
+   - Essence: { deep_sea: 50 }
+   - Size Tier: boss
+   - Rarity: rare
 
 ## Spawn Weights
 
-- Pike: 20
-- Great White Shark: 10
-- Anglerfish: 15 (future)
-- Gulper Eel: 8 (future)
+- Bristlemouth: 30
+- Glass Squid: 25
+- Giant Isopod: 15
+- Vampire Squid: 10
+- Anglerfish: 12
+- Gulper Eel: 6
+- Oarfish: 3
 
 ## Prompt Chunk Examples
 

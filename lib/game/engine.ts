@@ -77,7 +77,7 @@ export class GameEngine {
   private lastEssenceOrbSpawn: number = 0;
   private essenceOrbSpawnInterval: number = 3000; // Spawn essence orbs every 3 seconds
   private currentBiomeId: string = 'shallow'; // Default to shallow biome
-  
+
   // World bounds (larger world for better gameplay)
   private worldBounds = {
     minX: -2000,
@@ -167,23 +167,23 @@ export class GameEngine {
     const { loadPlayerState } = await import('./player-state');
     const playerState = loadPlayerState();
     const metaUpgrades = playerState.metaUpgrades;
-    
+
     // Apply starting size upgrade
     if (metaUpgrades.meta_starting_size) {
       const sizeBonus = metaUpgrades.meta_starting_size * 5;
       this.player.stats.size += sizeBonus;
       this.player.size = this.player.stats.size;
     }
-    
+
     // Apply starting speed upgrade
     if (metaUpgrades.meta_starting_speed) {
       const speedBonus = metaUpgrades.meta_starting_speed * 1;
       this.player.stats.speed += speedBonus;
     }
-    
+
     // Apply essence multiplier (stored for later use when collecting essence)
     // Note: This is applied in dropEssenceFromFish and collectEssenceOrb methods
-    
+
     // Apply hunger reduction
     if (metaUpgrades.meta_hunger_reduction) {
       // Hunger drain modifier is applied in Player.update()
@@ -210,7 +210,7 @@ export class GameEngine {
     this.camera = { x: startX, y: startY };
     this.lastSpawnTime = Date.now();
     this.lastEssenceOrbSpawn = Date.now();
-    
+
     // Apply initial difficulty scaling for level 1
     this.applyLevelDifficultyScaling(1);
   }
@@ -238,7 +238,7 @@ export class GameEngine {
     // Update player
     this.player.update(deltaTime, this.physics);
     this.state.score = this.player.stats.score;
-    
+
     // Constrain player within world bounds
     this.constrainToBounds(this.player);
 
@@ -256,7 +256,7 @@ export class GameEngine {
 
     // Spawn entities
     this.spawnEntities();
-    
+
     // Spawn essence orbs periodically
     this.spawnEssenceOrbs();
 
@@ -290,7 +290,7 @@ export class GameEngine {
         life: p.life - deltaTime,
       }))
       .filter(p => p.life > 0);
-    
+
     // Update floating texts
     this.floatingTexts = this.floatingTexts
       .map(t => ({
@@ -347,7 +347,7 @@ export class GameEngine {
 
     const now = Date.now();
     if (now - this.lastSpawnTime < this.spawnInterval) return;
-    
+
     // Don't spawn if at entity limit
     if (this.entities.length >= this.maxEntities) {
       this.lastSpawnTime = now;
@@ -364,13 +364,13 @@ export class GameEngine {
     // Spawn 1-3 fish per interval, but respect entity limit
     const maxToSpawn = Math.min(3, this.maxEntities - this.entities.length);
     const spawnCount = Math.floor(Math.random() * maxToSpawn) + 1;
-    
+
     for (let i = 0; i < spawnCount; i++) {
       // Select creature based on spawn weights
       const totalWeight = availableCreatures.reduce((sum, c) => sum + c.spawnRules.spawnWeight, 0);
       let randomWeight = Math.random() * totalWeight;
       let selectedCreature = availableCreatures[0]; // Default to first creature
-      
+
       for (const creature of availableCreatures) {
         randomWeight -= creature.spawnRules.spawnWeight;
         if (randomWeight < 0) {
@@ -384,7 +384,7 @@ export class GameEngine {
       const distance = 200 + Math.random() * 400;
       let x = this.player.x + Math.cos(angle) * distance;
       let y = this.player.y + Math.sin(angle) * distance;
-      
+
       // Clamp to world bounds
       x = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
       y = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
@@ -396,7 +396,7 @@ export class GameEngine {
         { x, y },
         this.player.stats.size
       );
-      
+
       this.entities.push(fish);
     }
 
@@ -426,23 +426,23 @@ export class GameEngine {
     // Spawn essence orbs based on biome's available essence types
     const essenceTypes = biome.availableEssenceTypes;
     const orbCount = 2 + Math.floor(Math.random() * 2); // 2-3 orbs
-    
+
     for (let i = 0; i < orbCount; i++) {
       // Spawn near player but not too close
       const angle = Math.random() * Math.PI * 2;
       const distance = 100 + Math.random() * 300;
       const x = this.player.x + Math.cos(angle) * distance;
       const y = this.player.y + Math.sin(angle) * distance;
-      
+
       // Clamp to world bounds
       const clampedX = Math.max(this.worldBounds.minX, Math.min(this.worldBounds.maxX, x));
       const clampedY = Math.max(this.worldBounds.minY, Math.min(this.worldBounds.maxY, y));
-      
+
       // Pick random essence type from biome's available types
       const essenceType = essenceTypes[Math.floor(Math.random() * essenceTypes.length)];
       const essenceColor = ESSENCE_TYPES[essenceType]?.color || DEFAULT_ESSENCE_COLOR;
       const amount = 1 + Math.floor(Math.random() * 3); // 1-3 essence per orb
-      
+
       const orb = new EssenceOrb(
         this.physics,
         clampedX,
@@ -451,7 +451,7 @@ export class GameEngine {
         amount,
         essenceColor
       );
-      
+
       this.entities.push(orb);
     }
 
@@ -478,14 +478,14 @@ export class GameEngine {
           this.collectEssenceOrb(entity);
           return;
         }
-        
+
         // Check if collision is from the front
         const isPlayerFrontCollision = this.player.isFrontCollision(entity);
         const isEntityFrontCollision = entity.isFrontCollision(this.player);
-        
+
         const sizeDiff = Math.abs(this.player.stats.size - entity.size);
         const sizeRatio = this.player.stats.size / entity.size;
-        
+
         // Battle mechanic: if similar size (within 20%), engage in battle
         if (sizeDiff < this.player.stats.size * 0.2 && entity instanceof Fish) {
           // Battle - try to chomp each other
@@ -497,7 +497,7 @@ export class GameEngine {
             this.createParticles(this.player.x, this.player.y, '#ff0000', 5);
             this.audio.playSound('bite', 0.2);
           }
-          
+
           // Check if either lost all stamina
           if (this.player.stamina <= 0) {
             // Player loses battle
@@ -533,31 +533,35 @@ export class GameEngine {
         }
       }
     });
-    
+
     // Also check fish-to-fish collisions for predator eating prey
     for (let i = 0; i < this.entities.length; i++) {
       const fish1 = this.entities[i];
       if (!(fish1 instanceof Fish) || !fish1.alive) continue;
-      
+
       for (let j = i + 1; j < this.entities.length; j++) {
         const fish2 = this.entities[j];
         if (!(fish2 instanceof Fish) || !fish2.alive) continue;
-        
+
         const distance = Math.sqrt(
           Math.pow(fish1.x - fish2.x, 2) + Math.pow(fish1.y - fish2.y, 2)
         );
         const collisionDistance = fish1.size + fish2.size;
-        
+
         if (distance < collisionDistance) {
           // Check which fish is predator and which is prey
           if (fish1.type === 'predator' && fish1.size >= fish2.size * 1.2 && fish1.isFrontCollision(fish2)) {
-            // fish1 eats fish2
-            fish1.size += fish2.size * 0.05; // Predators grow by eating
+            // fish1 eats fish2 - diminishing returns for AI too
+            const sizeRatio = fish1.size / fish2.size;
+            const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+            fish1.size += fish2.size * 0.1 * efficiencyMult;
             fish2.destroy(this.physics);
             this.createParticles(fish2.x, fish2.y, fish2.color, 5);
           } else if (fish2.type === 'predator' && fish2.size >= fish1.size * 1.2 && fish2.isFrontCollision(fish1)) {
-            // fish2 eats fish1
-            fish2.size += fish1.size * 0.05; // Predators grow by eating
+            // fish2 eats fish1 - diminishing returns for AI too
+            const sizeRatio = fish2.size / fish1.size;
+            const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+            fish2.size += fish1.size * 0.1 * efficiencyMult;
             fish1.destroy(this.physics);
             this.createParticles(fish1.x, fish1.y, fish1.color, 5);
           }
@@ -682,7 +686,7 @@ export class GameEngine {
     if (this.player.stats.size < 1) {
       this.gameOver();
     }
-    
+
     // Die if starving
     if (this.player.isStarving()) {
       this.gameOver();
@@ -722,10 +726,10 @@ export class GameEngine {
 
     // Increment level
     this.state.level += 1;
-    
+
     // Apply difficulty scaling based on level
     this.applyLevelDifficultyScaling(this.state.level);
-    
+
     // Reset level-specific state but keep player progress
     this.entities.forEach(e => e.destroy(this.physics));
     this.entities = [];
@@ -797,7 +801,7 @@ export class GameEngine {
 
     await this.essenceManager.add(essenceEarned);
     await this.storage.setHighScore(this.state.score);
-    
+
     // Update cached essence
     this.state.cachedEssence = await this.essenceManager.getAmount();
 
@@ -871,7 +875,7 @@ export class GameEngine {
       // Calculate scaling to maintain aspect ratio and cover screen
       const imgAspect = this.backgroundImage.width / this.backgroundImage.height;
       const screenAspect = p5.width / p5.height;
-      
+
       let drawWidth, drawHeight;
       if (imgAspect > screenAspect) {
         // Image is wider than screen
@@ -906,7 +910,7 @@ export class GameEngine {
         const x = spacing * (index + 1) - stageOffsetX;
         const y = p5.height - img.height * 0.3 - stageOffsetY * 0.2; // Bottom aligned
         const scale = 0.3; // Scale down to fit screen
-        
+
         p5.push();
         p5.imageMode(p5.CENTER);
         p5.image(img, x, y, img.width * scale, img.height * scale);
@@ -929,7 +933,7 @@ export class GameEngine {
     // Translate to camera
     p5.push();
     p5.translate(p5.width / 2 - this.camera.x, p5.height / 2 - this.camera.y);
-    
+
     // Draw world bounds
     p5.push();
     p5.noFill();
@@ -982,12 +986,12 @@ export class GameEngine {
       p5.push();
       const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
       const intensity = (1 - this.player.stats.hunger / HUNGER_LOW_THRESHOLD) * HUNGER_WARNING_INTENSITY * pulse;
-      
+
       // Red tint overlay
       p5.fill(255, 0, 0, intensity * 255);
       p5.noStroke();
       p5.rect(0, 0, p5.width, p5.height);
-      
+
       // Vignette effect (darker edges)
       p5.push();
       const ctx = p5.drawingContext as CanvasRenderingContext2D;
@@ -1000,7 +1004,7 @@ export class GameEngine {
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, p5.width, p5.height);
       p5.pop();
-      
+
       p5.pop();
     }
 
@@ -1023,18 +1027,18 @@ export class GameEngine {
     p5.text(`Score: ${this.state.score}`, 10, 10);
     p5.text(`Size: ${Math.floor(this.player.stats.size)}`, 10, 30);
     p5.text(`Level: ${this.state.level}`, 10, 50);
-    
+
     // Timer (countdown)
     const timeLeft = Math.max(0, this.state.levelDuration - this.state.currentTime);
     const seconds = Math.ceil(timeLeft / 1000);
     p5.text(`Time: ${seconds}s`, 10, 70);
-    
+
     // Show collected essence from run state
     const runState = loadRunState();
     const collectedEssence = runState?.collectedEssence || {};
     const totalCollected = Object.values(collectedEssence).reduce((sum, val) => sum + val, 0);
     p5.text(`Essence Collected: ${totalCollected}`, 10, 90);
-    
+
     // Stamina bar
     const staminaPercent = this.player.stamina / this.player.maxStamina;
     p5.text(`Stamina:`, 10, 110);
@@ -1049,13 +1053,13 @@ export class GameEngine {
     const hungerBarX = (p5.width - hungerBarWidth) / 2;
     const hungerBarY = 20;
     const hungerPercent = this.player.stats.hunger / 100;
-    
+
     // Background with chunky border (DICE VADERS style)
     p5.strokeWeight(4);
     p5.stroke(255, 255, 255, 230);
     p5.fill(0, 0, 0, 150);
     p5.rect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
-    
+
     // Hunger fill - color-coded
     let hungerColor;
     if (hungerPercent > 0.5) {
@@ -1065,12 +1069,12 @@ export class GameEngine {
     } else {
       hungerColor = p5.color(239, 68, 68); // Red
     }
-    
+
     p5.noStroke();
     p5.fill(hungerColor);
     const fillWidth = (hungerBarWidth - 8) * hungerPercent;
     p5.rect(hungerBarX + 4, hungerBarY + 4, fillWidth, hungerBarHeight - 8);
-    
+
     // Glow effect for low hunger
     if (hungerPercent <= 0.25) {
       p5.push();
@@ -1085,7 +1089,7 @@ export class GameEngine {
       p5.drawingContext.shadowColor = 'transparent';
       p5.pop();
     }
-    
+
     // Text label
     p5.fill(255, 255, 255, 240);
     p5.noStroke();

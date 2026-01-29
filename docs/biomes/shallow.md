@@ -23,6 +23,7 @@
 
 #### Goldfish (goldfish_starter)
 - **Type**: Prey
+- **Size Tier**: prey
 - **Rarity**: Common
 - **Playable**: Yes
 - **Stats**: Size 20, Speed 7, Health 15, Damage 3
@@ -38,6 +39,7 @@
 
 #### Guppy (tiny_fish)
 - **Type**: Prey
+- **Size Tier**: prey
 - **Rarity**: Common
 - **Playable**: No
 - **Stats**: Size 8, Speed 6, Health 3, Damage 0.5
@@ -52,6 +54,7 @@
 
 #### Minnow (small_prey)
 - **Type**: Prey
+- **Size Tier**: prey
 - **Rarity**: Common
 - **Playable**: No
 - **Stats**: Size 10, Speed 5, Health 5, Damage 1
@@ -69,6 +72,7 @@
 
 #### Perch (medium_fish)
 - **Type**: Prey
+- **Size Tier**: mid
 - **Rarity**: Common
 - **Playable**: No
 - **Stats**: Size 30, Speed 4, Health 20, Damage 5
@@ -84,6 +88,7 @@
 
 #### Bass (medium_predator)
 - **Type**: Predator
+- **Size Tier**: predator
 - **Rarity**: Common
 - **Playable**: No
 - **Stats**: Size 40, Speed 4, Health 30, Damage 10
@@ -101,6 +106,7 @@
 
 #### Pike (large_predator)
 - **Type**: Predator
+- **Size Tier**: predator
 - **Rarity**: Uncommon
 - **Playable**: No
 - **Stats**: Size 70, Speed 5, Health 50, Damage 20
@@ -118,6 +124,7 @@
 
 #### Tropical Parrotfish (rare_tropical)
 - **Type**: Prey
+- **Size Tier**: mid
 - **Rarity**: Rare
 - **Playable**: Yes
 - **Stats**: Size 50, Speed 3, Health 35, Damage 8
@@ -135,6 +142,7 @@
 
 #### Great White Shark (epic_shark)
 - **Type**: Predator
+- **Size Tier**: boss
 - **Rarity**: Epic
 - **Playable**: Yes
 - **Stats**: Size 120, Speed 6, Health 80, Damage 35

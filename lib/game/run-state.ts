@@ -12,10 +12,7 @@
  */
 import type { RunState } from './types';
 import { getCreature } from './data';
-import { computeEncounterSize } from './spawn-fish';
-
-/** Player starts smaller than their tier would suggest so more fish are eatable. */
-export const PLAYER_START_SIZE_MULT = 0.7;
+import { PLAYER_BASE_SIZE } from './spawn-fish';
 
 /**
  * Create a new run state with default values
@@ -43,8 +40,9 @@ export function createNewRunState(fishId: string): RunState | null {
     return null;
   }
 
-  const baseSize = computeEncounterSize({ creature, biomeId: creature.biomeId, levelNumber: 1 });
-  const startSize = Math.max(40, baseSize * PLAYER_START_SIZE_MULT);
+  // All players start at the same base size for consistent, predictable gameplay.
+  // Creature choice affects speed/health/damage, not starting size.
+  const startSize = PLAYER_BASE_SIZE;
 
   return {
     runId: `run_${Date.now()}_${crypto.randomUUID ? crypto.randomUUID().slice(0, 9) : Math.random().toString(36).substr(2, 9)}`,

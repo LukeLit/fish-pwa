@@ -513,6 +513,7 @@ export default function FishEditorPage() {
         onAddNewCreature={handleAddNewCreature}
         onSetPlayer={handleSetPlayerFish}
         onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
+        spawnedFishIds={spawnedFish.map(f => f.id)}
         onPreviousFish={handlePreviousFish}
         onNextFish={handleNextFish}
         hasPrevious={hasPrevious}

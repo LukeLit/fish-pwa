@@ -20,38 +20,67 @@
 
 ## Creatures
 
-This biome shares creatures with the shallow biome but with tropical variants.
+Vibrant reef fish native to tropical shallow waters.
 
-### Common Creatures
+### Prey Tier
 
-#### Guppy (tiny_fish)
-- See shallow biome documentation
+1. **Clownfish (clownfish_tropical)**
+   - Description Chunks: ["bright orange body", "white vertical stripes", "rounded fins", "anemone dweller"]
+   - Visual Motif: "iconic reef symbiote"
+   - Essence: { shallow: 5, tropical: 10 }
+   - Size Tier: prey
+   - Rarity: common
 
-#### Minnow (small_prey) 
-- See shallow biome documentation
+2. **Blue Tang (blue_tang_tropical)**
+   - Description Chunks: ["electric blue body", "yellow tail fin", "oval disc shape", "black markings"]
+   - Visual Motif: "vibrant reef swimmer"
+   - Essence: { shallow: 5, tropical: 12 }
+   - Size Tier: prey
+   - Rarity: common
 
-### Rare Creatures
+3. **Tropical Parrotfish (rare_tropical)**
+   - Description Chunks: ["vibrant rainbow-colored fish", "parrot-like beak mouth", "large flowing fins", "iridescent multi-colored scales"]
+   - Visual Motif: "dazzling tropical reef dweller"
+   - Essence: { shallow: 10, tropical: 8 }
+   - Size Tier: prey
+   - Rarity: rare
+   - Playable: yes
 
-#### Tropical Parrotfish (rare_tropical)
-- **Type**: Prey
-- **Rarity**: Rare
-- **Playable**: Yes
-- **Stats**: Size 50, Speed 3, Health 35, Damage 8
-- **Description Chunks**:
-  - vibrant rainbow-colored fish
-  - parrot-like beak mouth
-  - large flowing fins
-  - iridescent multi-colored scales
-  - elegant graceful movements
-- **Visual Motif**: "dazzling tropical reef dweller"
-- **Essence**: Shallow (10 base yield), Tropical (8 base yield)
-- **Granted Abilities**: reef_camouflage, hard_scales
+### Mid Tier
+
+4. **Butterflyfish (butterflyfish_tropical)**
+   - Description Chunks: ["bright yellow body", "black eye stripe", "disc-shaped silhouette", "delicate trailing fins"]
+   - Visual Motif: "elegant reef dancer"
+   - Essence: { shallow: 8, tropical: 15 }
+   - Size Tier: mid
+   - Rarity: common
+
+### Predator Tier
+
+5. **Lionfish (lionfish_tropical)**
+   - Description Chunks: ["venomous flowing spines", "striped red and white body", "fan-like pectoral fins", "menacing display"]
+   - Visual Motif: "dangerous beauty of the reef"
+   - Essence: { shallow: 12, tropical: 20 }
+   - Size Tier: predator
+   - Rarity: uncommon
+
+### Boss Tier
+
+6. **Moray Eel (moray_eel_tropical)**
+   - Description Chunks: ["serpentine muscular body", "gaping jaws with needle teeth", "mottled pattern", "lurking in coral crevice"]
+   - Visual Motif: "ambush predator of the reef"
+   - Essence: { shallow: 15, tropical: 30 }
+   - Size Tier: boss
+   - Rarity: rare
 
 ## Spawn Weights
 
-- Guppy: 30
-- Minnow: 25
+- Clownfish: 30
+- Blue Tang: 25
 - Tropical Parrotfish: 15
+- Butterflyfish: 20
+- Lionfish: 10
+- Moray Eel: 5
 
 ## Prompt Chunk Examples
 
