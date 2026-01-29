@@ -89,7 +89,7 @@ function deriveBiomeIdFromFile(path: string, content: string): string {
 
 /**
  * Extract the bullet/block section following a fish header until the next
- * blank line or header.
+ * #### or numbered fish header (stops at next #### or "1. **").
  */
 function extractFishBlock(lines: string[], start: number): string[] {
   const block: string[] = [];
@@ -97,9 +97,36 @@ function extractFishBlock(lines: string[], start: number): string[] {
     const line = lines[i];
     if (/^#{1,6}\s/.test(line)) break; // new markdown heading
     if (/^\d+\.\s+\*\*/.test(line.trim())) break; // next numbered fish
-    block.push(line.trim());
+    if (/^####\s/.test(line.trim())) break; // next #### fish (shallow format)
+    block.push(line);
   }
   return block;
+}
+
+/** Strip optional ** around key names for shallow format ("**Type**: Prey" -> "Type". */
+function normalizeKey(line: string): string {
+  return line.replace(/^-\s*/, '').replace(/^\*\*|\*\*:.*$/g, '').trim();
+}
+
+/** Parse "Stats: Size 20, Speed 7" or "**Stats**: Size 20, ..." and return size number if present. */
+function parseStatsSize(withoutDash: string): number | undefined {
+  const sizeMatch = withoutDash.match(/Size\s+(\d+)/i);
+  return sizeMatch ? parseInt(sizeMatch[1], 10) : undefined;
+}
+
+/**
+ * Infer sizeTier from Type (Prey/Predator) and optional Stats Size.
+ * Shallow format: Prey + Size>=30 -> mid; Predator + Size>=100 -> boss, else predator.
+ */
+function inferSizeTier(type: string, statsSize: number | undefined): ParsedFish['sizeTier'] {
+  const t = type.toLowerCase();
+  if (t === 'predator') {
+    if (statsSize !== undefined && statsSize >= 100) return 'boss';
+    return 'predator';
+  }
+  if (t === 'prey' && statsSize !== undefined && statsSize >= 30) return 'mid';
+  if (t === 'prey') return 'prey';
+  return 'prey';
 }
 
 function parseFishBlock(
@@ -118,46 +145,80 @@ function parseFishBlock(
     descriptionChunks: [],
   };
 
-  for (const raw of block) {
+  let typeFromDoc: string | undefined;
+  let statsSize: number | undefined;
+
+  for (let idx = 0; idx < block.length; idx++) {
+    const raw = block[idx];
     const line = raw.trim();
     if (!line.startsWith('-')) continue;
 
-    // Normalize "- Key: value" form
+    // Normalize: strip "- " and optional ** around key (shallow format)
     const withoutDash = line.replace(/^-\s*/, '');
+    const keyNormalized = withoutDash.replace(/^\*\*([^*]+)\*\*:.*$/, '$1').trim();
 
-    // Rarity / sizeTier lines
-    if (/^Size Tier:/i.test(withoutDash)) {
+    // Size Tier (explicit)
+    if (/^(\*\*)?Size Tier:/i.test(withoutDash) || keyNormalized === 'Size Tier') {
       const val = withoutDash.split(':')[1]?.trim() || '';
       result.sizeTier = val.toLowerCase() as ParsedFish['sizeTier'];
       continue;
     }
-    if (/^Rarity:/i.test(withoutDash)) {
+
+    // Type (shallow format: "**Type**: Prey" -> infer sizeTier later with Stats)
+    if (/^(\*\*)?Type:/i.test(withoutDash) || keyNormalized === 'Type') {
+      const val = withoutDash.split(':')[1]?.trim() || '';
+      typeFromDoc = val;
+      continue;
+    }
+
+    // Stats (shallow: "**Stats**: Size 20, Speed 7" -> extract Size for tier)
+    if (/^(\*\*)?Stats:/i.test(withoutDash) || keyNormalized === 'Stats') {
+      const size = parseStatsSize(withoutDash);
+      if (size !== undefined) statsSize = size;
+      continue;
+    }
+
+    // Rarity
+    if (/^(\*\*)?Rarity:/i.test(withoutDash) || keyNormalized === 'Rarity') {
       const val = withoutDash.split(':')[1]?.trim() || '';
       result.rarity = val.toLowerCase();
       continue;
     }
 
-    // Description Chunks
-    if (/^Description Chunks/i.test(withoutDash)) {
+    // Description Chunks — bracket form: [ "a", "b" ]
+    if (/^(\*\*)?Description Chunks?/i.test(withoutDash)) {
       const bracketMatch = withoutDash.match(/\[(.+)\]/);
       if (bracketMatch) {
         try {
           const arr = JSON.parse(bracketMatch[0]) as string[];
           result.descriptionChunks.push(...arr);
         } catch {
-          // Fall back to simple splitting if JSON parse fails
           const inner = bracketMatch[1];
           inner.split(',').forEach((chunk) => {
             const trimmed = chunk.replace(/^"|"$/g, '').trim();
             if (trimmed) result.descriptionChunks.push(trimmed);
           });
         }
+      } else {
+        // Shallow format: "- **Description Chunks**:" then sub-bullets "  - text"
+        for (let j = idx + 1; j < block.length; j++) {
+          const sub = block[j];
+          const subTrim = sub.trim();
+          if (subTrim.startsWith('-') && !/^\s*-\s*\*\*/.test(sub)) {
+            const chunk = sub.replace(/^\s*-\s*/, '').trim();
+            if (chunk) result.descriptionChunks.push(chunk);
+          } else if (subTrim && subTrim.startsWith('-') && /^\s*-\s*\*\*/.test(sub)) {
+            break; // next key line, stop collecting chunks
+          } else if (!subTrim) {
+            break;
+          }
+        }
       }
       continue;
     }
 
     // Visual Motif
-    if (/^Visual Motif/i.test(withoutDash)) {
+    if (/^(\*\*)?Visual Motif/i.test(withoutDash)) {
       const colonIdx = withoutDash.indexOf(':');
       if (colonIdx !== -1) {
         let motif = withoutDash.slice(colonIdx + 1).trim();
@@ -167,31 +228,41 @@ function parseFishBlock(
       continue;
     }
 
-    // Essence
-    if (/^Essence:/i.test(withoutDash)) {
+    // Essence — "Essence: Shallow (3 base yield)" or { shallow: 3 }
+    if (/^(\*\*)?Essence:/i.test(withoutDash)) {
       const braceMatch = withoutDash.match(/\{(.+)\}/);
       if (braceMatch) {
         try {
           const obj = JSON.parse(braceMatch[0]) as Record<string, number>;
           result.essence = obj;
         } catch {
-          // Very simple fallback: split on commas
           const inner = braceMatch[1];
           inner.split(',').forEach((pair) => {
             const [k, v] = pair.split(':').map((s) => s.trim());
             const num = Number(v);
-            if (k && !Number.isNaN(num)) {
-              result.essence[k] = num;
-            }
+            if (k && !Number.isNaN(num)) result.essence[k] = num;
           });
         }
+      } else {
+        // Shallow format: "Essence: Shallow (3 base yield)" or "Shallow (15), Deep Sea (5)"
+        const part = withoutDash.split(':')[1]?.trim() || '';
+        part.split(',').forEach((seg) => {
+          const m = seg.trim().match(/(\w+(?:\s+\w+)?)\s*\((\d+)/);
+          if (m) {
+            const k = m[1].toLowerCase().replace(/\s+/g, '_');
+            result.essence[k] = parseInt(m[2], 10);
+          }
+        });
       }
       continue;
     }
   }
 
+  if (typeFromDoc !== undefined) {
+    result.sizeTier = inferSizeTier(typeFromDoc, statsSize);
+  }
+
   if (result.descriptionChunks.length === 0 && !result.visualMotif) {
-    // This fish entry is probably not in the expected modular format.
     return null;
   }
 

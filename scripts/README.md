@@ -169,9 +169,38 @@ Total: 40
 ```
 
 **Tips:**
+- The script **skips fish that already exist** in blob storage (resume mode). Set `BATCH_SKIP_EXISTING=0` to regenerate all.
 - The script processes all fish sequentially (one at a time) to avoid API rate limits
 - If a fish fails, the script continues with the next one
 - Failed fish can be re-run later (they won't overwrite successfully uploaded ones)
+
+### Step 5: Patch Existing Creatures (Tiers & Ecosystems)
+
+If you added **size tiers** or **spawn rules** after some fish were already uploaded, patch existing blob creatures **without regenerating sprites**:
+
+```bash
+# Dev server must be running
+npx tsx scripts/batch-update-creature-metadata.ts
+```
+
+**What it does:**
+- Fetches all creatures from `/api/list-creatures`
+- For each creature, sets `sizeTier` from `docs/biomes/*.md` (or infers from `stats.size` if not in docs)
+- Ensures `spawnRules.canAppearIn` matches the biome from docs
+- POSTs metadata-only to `/api/save-creature` (no sprite file), so existing art is unchanged
+
+Run this after adding tier/ecosystem support so existing fish participate correctly in `computeEncounterSize` and biome spawn pools.
+
+### Step 6: Track Fish in a Doc (Snapshot)
+
+To keep a record of which fish are in blob storage (for adding more or adding stats), export the current list to a markdown doc:
+
+```bash
+# Dev server must be running
+npx tsx scripts/export-creature-list.ts
+```
+
+This writes **`docs/BLOB_CREATURES.md`** with a table of all blob-stored creatures (id, name, biome, tier, rarity, type, playable, size) and a “Last updated” date. Commit that file to track what’s imported; re-run the script whenever you add or change fish.
 - Check the console output for any error messages if generation fails
 
 ## Export Existing Data
