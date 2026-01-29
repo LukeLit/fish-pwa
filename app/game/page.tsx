@@ -16,13 +16,13 @@ import DigestionScreen from '@/components/DigestionScreen';
 import UpgradeSelectionScreen from '@/components/UpgradeSelectionScreen';
 import EvolutionScreen from '@/components/EvolutionScreen';
 import { EssenceManager } from '@/lib/meta/essence';
-import { 
-  clearRunState, 
-  loadRunState, 
-  saveRunState, 
-  useReroll, 
+import {
+  clearRunState,
+  loadRunState,
+  saveRunState,
+  useReroll,
   applyUpgrade,
-  progressToNextLevel 
+  progressToNextLevel
 } from '@/lib/game/run-state';
 import type { RunState } from '@/lib/game/types';
 
@@ -47,7 +47,7 @@ export default function GamePage() {
     if (!runState) return;
 
     setCurrentRunState(runState);
-    
+
     // Show digestion screen with collected essence
     setShowDigestionScreen(true);
   };
@@ -59,7 +59,7 @@ export default function GamePage() {
 
   const handleDigestionComplete = () => {
     setShowDigestionScreen(false);
-    
+
     // If there are pending level-ups, show upgrade selection
     if (pendingLevelUps.length > 0) {
       setCurrentUpgradeType(pendingLevelUps[0]);
@@ -90,12 +90,12 @@ export default function GamePage() {
     } else {
       // All upgrades selected, show evolution screen
       setShowUpgradeScreen(false);
-      
+
       // Increment evolution level before showing evolution screen
       runState.evolutionLevel += 1;
       saveRunState(runState);
       setCurrentRunState(runState);
-      
+
       setShowEvolutionScreen(true);
     }
   };
@@ -123,13 +123,13 @@ export default function GamePage() {
 
     runState = progressToNextLevel(runState);
     saveRunState(runState);
-    
+
     // Reset screens and reload game with new level
     setShowDigestionScreen(false);
     setShowUpgradeScreen(false);
     setShowEvolutionScreen(false);
     setPendingLevelUps([]);
-    
+
     // Reload page to start next level (GameCanvas will read updated runState)
     setCurrentRunState(runState);
     window.location.reload();
@@ -162,7 +162,7 @@ export default function GamePage() {
 
   return (
     <div className="relative w-full h-screen bg-black">
-      <GameCanvas 
+      <GameCanvas
         onGameEnd={handleGameEnd}
         onGameOver={(stats) => {
           setDeathStats(stats);
@@ -171,17 +171,8 @@ export default function GamePage() {
         }}
         onLevelComplete={handleLevelComplete}
       />
-      
-      {/* Fish Editor Menu Button (top right) */}
-      {!showDeathScreen && !showEndScreen && !showDigestionScreen && !showUpgradeScreen && !showEvolutionScreen && (
-        <button
-          onClick={() => router.push('/fish-editor')}
-          className="fixed top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-40 border border-gray-600"
-        >
-          Fish Editor
-        </button>
-      )}
-      
+
+
       {/* Death Screen */}
       {showDeathScreen && deathStats && (
         <DeathScreen stats={deathStats} onReturnToMenu={handleReturnToMenu} />
@@ -214,7 +205,7 @@ export default function GamePage() {
           onContinue={handleEvolutionComplete}
         />
       )}
-      
+
       {/* Level Complete Screen */}
       {showEndScreen && !showDeathScreen && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">

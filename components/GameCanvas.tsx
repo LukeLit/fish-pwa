@@ -4,8 +4,10 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
-import FishEditorCanvas from './FishEditorCanvas';
+import { useEffect, useState, useCallback } from 'react';
+import FishEditorCanvas, { type PlayerGameStats } from './FishEditorCanvas';
+import PauseMenu from './PauseMenu';
+import { type FishData } from './FishEditOverlay';
 import type { RunState, Creature } from '@/lib/game/types';
 import {
   loadRunState,
@@ -34,6 +36,63 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [spawnedFish, setSpawnedFish] = useState<Creature[]>([]);
   const [levelDuration, setLevelDuration] = useState<number>(60000);
   const [currentLevel, setCurrentLevel] = useState<string>('1-1');
+
+  // Pause menu state
+  const [paused, setPaused] = useState(false);
+  const [playerStats, setPlayerStats] = useState<PlayerGameStats | null>(null);
+  const [playerFishData, setPlayerFishData] = useState<FishData | null>(null);
+  const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
+  const [selectedFish, setSelectedFish] = useState<FishData | null>(null);
+
+  // Close pause menu and reset state
+  const handleClosePauseMenu = useCallback(() => {
+    setPaused(false);
+    setSelectedFish(null);
+  }, []);
+
+  // Handle Escape key for pause
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setPaused(prev => {
+          if (prev) {
+            // Was paused, now unpausing - reset selection
+            setSelectedFish(null);
+          }
+          return !prev;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Handle stats update from canvas
+  const handleStatsUpdate = useCallback((stats: PlayerGameStats) => {
+    setPlayerStats(stats);
+  }, []);
+
+  // Load fish library for pause menu
+  useEffect(() => {
+    const loadFishLibrary = async () => {
+      try {
+        const response = await fetch('/api/list-creatures');
+        const result = await response.json();
+        if (result.success && result.creatures) {
+          const newFishData = new Map<string, FishData>();
+          (result.creatures as FishData[]).forEach((creature) => {
+            newFishData.set(creature.id, creature);
+          });
+          setFishData(newFishData);
+        }
+      } catch (err) {
+        console.error('Failed to load fish library:', err);
+      }
+    };
+    loadFishLibrary();
+  }, []);
 
   useEffect(() => {
     setIsClient(true);
@@ -89,10 +148,24 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
         // Try to load the player creature from blob storage first
         let playerSprite: string | null = null;
+        let startSize: number | undefined; // Track computed player start size for AI fish scaling
         try {
           const blobCreature = await getCreatureById(selectedFishId);
           if (blobCreature?.sprite) {
             playerSprite = blobCreature.sprite;
+
+            // Set player fish data for pause menu
+            setPlayerFishData({
+              id: blobCreature.id,
+              name: blobCreature.name,
+              description: blobCreature.description || '',
+              type: blobCreature.type,
+              stats: blobCreature.stats,
+              sprite: blobCreature.sprite,
+              rarity: blobCreature.rarity,
+              playable: blobCreature.playable,
+              biomeId: blobCreature.biomeId,
+            });
 
             // Sync run state: use tier-scaled size * player start mult so player starts smaller
             const baseSize = computeEncounterSize({
@@ -100,7 +173,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
               biomeId: blobCreature.biomeId,
               levelNumber: 1,
             });
-            const startSize = Math.max(40, baseSize * PLAYER_START_SIZE_MULT);
+            startSize = Math.max(40, baseSize * PLAYER_START_SIZE_MULT);
 
             const updatedRunState: RunState = {
               ...currentRunState,
@@ -152,7 +225,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
               creature,
               biomeId: creature.biomeId,
               levelNumber: level.levelNum,
-              playerSize: playerSprite ? currentRunState.fishState.size : undefined,
+              playerSize: startSize, // Use computed start size, not stale runState
             });
             spawned.push({
               ...creature,
@@ -187,6 +260,60 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     }
   }, []);
 
+  // Handlers for pause menu - must be before early return to maintain hook order
+  const handleSelectFish = useCallback((fish: FishData) => {
+    setSelectedFish(fish);
+    // Also update fishData if not already present
+    if (fish && !fishData.has(fish.id)) {
+      setFishData(prev => {
+        const newMap = new Map(prev);
+        newMap.set(fish.id, fish);
+        return newMap;
+      });
+    }
+  }, [fishData]);
+
+  const handleSaveFish = useCallback((fish: FishData) => {
+    setFishData(prev => {
+      const newMap = new Map(prev);
+      newMap.set(fish.id, fish);
+      return newMap;
+    });
+    // If saving the player fish, update the sprite
+    if (playerFishData && fish.id === playerFishData.id) {
+      setPlayerFishSprite(fish.sprite);
+      setPlayerFishData(fish);
+    }
+  }, [playerFishData]);
+
+  const handleAddNewCreature = useCallback(() => {
+    const newId = `creature_${Date.now()}`;
+    const newFish: FishData = {
+      id: newId,
+      name: 'New Creature',
+      description: 'A newly created creature',
+      type: 'prey',
+      stats: { size: 60, speed: 5, health: 20, damage: 5 },
+      sprite: '',
+      rarity: 'common',
+      playable: false,
+      biomeId: 'shallow',
+    };
+    setFishData(prev => {
+      const newMap = new Map(prev);
+      newMap.set(newId, newFish);
+      return newMap;
+    });
+    setSelectedFish(newFish);
+  }, []);
+
+  const handleSetPlayer = useCallback((fish: FishData) => {
+    if (fish.sprite) {
+      setPlayerFishSprite(fish.sprite);
+      setPlayerFishData(fish);
+    }
+  }, []);
+
   if (!isClient) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black" style={{ minHeight: '600px' }}>
@@ -202,6 +329,25 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
       </div>
 
+      {/* Pause Button */}
+      <div className="absolute top-4 right-4 z-40 flex gap-2">
+        <button
+          onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
+          className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
+          title={paused ? 'Resume' : 'Pause'}
+        >
+          {paused ? (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+            </svg>
+          )}
+        </button>
+      </div>
+
       <FishEditorCanvas
         background={selectedBackground}
         playerFishSprite={playerFishSprite}
@@ -212,6 +358,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         deformationIntensity={1}
         gameMode={true}
         levelDuration={levelDuration}
+        paused={paused}
+        onStatsUpdate={handleStatsUpdate}
         onGameOver={(stats) => {
           clearRunState();
           if (onGameOver) {
@@ -230,6 +378,21 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             onGameEnd(score, 0);
           }
         }}
+      />
+
+      {/* Pause Menu */}
+      <PauseMenu
+        isOpen={paused}
+        onClose={handleClosePauseMenu}
+        mode="game"
+        playerFish={playerFishData}
+        playerStats={playerStats || undefined}
+        creatures={fishData}
+        selectedFish={selectedFish}
+        onSelectFish={handleSelectFish}
+        onSaveFish={handleSaveFish}
+        onAddNewCreature={handleAddNewCreature}
+        onSetPlayer={handleSetPlayer}
       />
     </div>
   );

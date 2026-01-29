@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { loadPlayerState } from '@/lib/game/player-state';
 import { getPlayableCreaturesFromLocal } from '@/lib/storage/local-fish-storage';
+import { clearRunState } from '@/lib/game/run-state';
 import type { PlayerState, Creature } from '@/lib/game/types';
 
 export default function FishSelectionScreen() {
@@ -24,31 +25,31 @@ export default function FishSelectionScreen() {
     const loadData = async () => {
       const state = loadPlayerState();
       setPlayerState(state);
-      
+
       // First, try to load from localStorage
       const localFish = getPlayableCreaturesFromLocal();
       console.log('[FishSelection] Loaded from localStorage:', localFish.length, 'playable fish');
-      
+
       try {
         // Fetch playable fish from the API
         const response = await fetch('/api/list-creatures?playable=true');
         const data = await response.json();
-        
+
         if (data.success && data.creatures && data.creatures.length > 0) {
           // Combine API fish with local fish (API fish take precedence)
           const apiFish = data.creatures;
           const combinedFish = [...apiFish];
-          
+
           // Add local fish that aren't already in API results
           localFish.forEach(localCreature => {
             if (!apiFish.find((f: Creature) => f.id === localCreature.id)) {
               combinedFish.push(localCreature);
             }
           });
-          
+
           console.log('[FishSelection] Combined fish count:', combinedFish.length);
           setPlayableFish(combinedFish);
-          
+
           // Set initial selected fish to first playable fish
           const firstFish = combinedFish[0];
           setSelectedFishId(firstFish.id);
@@ -142,7 +143,7 @@ export default function FishSelectionScreen() {
         setLoading(false);
       }
     };
-    
+
     loadData();
   }, []);
 
@@ -161,6 +162,8 @@ export default function FishSelectionScreen() {
   };
 
   const handleDive = () => {
+    // Clear any existing run state - selecting a fish means starting fresh
+    clearRunState();
     // Store selected fish in session storage for game to use
     sessionStorage.setItem('selected_fish_id', selectedFishId);
     router.push('/game');
@@ -296,11 +299,10 @@ export default function FishSelectionScreen() {
                 <button
                   key={fish.id}
                   onClick={() => handleSelectFish(fish.id)}
-                  className={`relative w-24 h-24 md:w-32 md:h-32 rounded-lg border-2 md:border-4 transition-all transform hover:scale-105 flex-shrink-0 ${
-                    selectedFishId === fish.id
+                  className={`relative w-24 h-24 md:w-32 md:h-32 rounded-lg border-2 md:border-4 transition-all transform hover:scale-105 flex-shrink-0 ${selectedFishId === fish.id
                       ? 'border-cyan-400 bg-cyan-900/60 shadow-[0_0_25px_rgba(34,211,238,0.6)] scale-105'
                       : 'border-cyan-700/50 bg-cyan-900/30 hover:border-cyan-500'
-                  }`}
+                    }`}
                   aria-label={`Select ${fish.name}`}
                 >
                   {fish.sprite && (
@@ -317,7 +319,7 @@ export default function FishSelectionScreen() {
                   </div>
                 </button>
               ))}
-              
+
               {/* Show locked slots for visual balance - only on larger screens */}
               {playableFish.length < 4 && (
                 Array.from({ length: Math.min(4 - playableFish.length, 3) }).map((_, i) => (
@@ -345,7 +347,7 @@ export default function FishSelectionScreen() {
             <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Back</span>
             <div className="absolute inset-0 bg-white/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
           </button>
-          
+
           <button
             onClick={handleDive}
             className="group relative bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-bold py-3 md:py-4 px-8 md:px-12 rounded-lg text-lg md:text-xl uppercase tracking-wider transition-all transform hover:scale-105 border-2 md:border-4 border-red-400/50 shadow-[0_0_25px_rgba(220,38,38,0.5)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)]"

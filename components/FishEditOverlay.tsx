@@ -98,6 +98,8 @@ interface FishEditOverlayProps {
   hasPrevious: boolean;
   hasNext: boolean;
   onOpenArtSelector?: (callback: (url: string, filename: string) => void) => void;
+  /** When true, removes absolute positioning for embedding in another container */
+  embedded?: boolean;
 }
 
 export default function FishEditOverlay({
@@ -109,6 +111,7 @@ export default function FishEditOverlay({
   hasPrevious,
   hasNext,
   onOpenArtSelector,
+  embedded = false,
 }: FishEditOverlayProps) {
   const [editedFish, setEditedFish] = useState<FishData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -518,7 +521,10 @@ export default function FishEditOverlay({
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md z-50 flex flex-col border-t border-gray-700" style={{ height: '50%', maxHeight: '600px' }}>
+    <div
+      className={`${embedded ? 'relative h-full' : 'absolute bottom-0 left-0 right-0'} bg-gray-900/95 backdrop-blur-md z-50 flex flex-col border-t border-gray-700`}
+      style={embedded ? {} : { height: '50%', maxHeight: '600px' }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-gray-800/90 border-b border-gray-700">
         <div className="flex items-center gap-3">

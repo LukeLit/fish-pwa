@@ -6,15 +6,12 @@
 export const dynamic = 'force-dynamic';
 export const ssr = false;
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import FishEditorCanvas from '@/components/FishEditorCanvas';
-import FishEditOverlay, { type FishData } from '@/components/FishEditOverlay';
-import FishLibraryPanel from '@/components/FishLibraryPanel';
-import BackgroundEditor from '@/components/BackgroundEditor';
-import BackgroundLibraryPanel from '@/components/BackgroundLibraryPanel';
+import { type FishData } from '@/components/FishEditOverlay';
+import PauseMenu from '@/components/PauseMenu';
 import ArtSelectorPanel from '@/components/ArtSelectorPanel';
-import BottomSheet from '@/components/BottomSheet';
 
 export default function FishEditorPage() {
   const router = useRouter();
@@ -29,12 +26,31 @@ export default function FishEditorPage() {
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'scene' | 'library' | 'backgrounds'>('library');
-  const [editingBackground, setEditingBackground] = useState<boolean>(false);
   const [selectedBackgroundData, setSelectedBackgroundData] = useState<any>(null);
   const [showArtSelector, setShowArtSelector] = useState(false);
   const [artSelectorType, setArtSelectorType] = useState<'fish' | 'background'>('fish');
   const [artSelectorCallback, setArtSelectorCallback] = useState<((url: string, filename: string) => void) | null>(null);
+
+  // Handle Escape key for pause toggle - uses callback form to access current state
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // When unpausing, reset edit mode too
+        setPaused(prev => {
+          if (prev) {
+            // Was paused, now unpausing - reset edit state
+            setEditMode(false);
+            setSelectedFishId(null);
+          }
+          return !prev;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Load random background, player fish, and spawn default prey on mount
   useEffect(() => {
@@ -208,6 +224,7 @@ export default function FishEditorPage() {
   const handleEditFish = (fishId: string) => {
     setSelectedFishId(fishId);
     setEditMode(true);
+    setPaused(true); // Open pause menu to show edit UI
   };
 
   // Initialize player fish data when player sprite is set
@@ -235,6 +252,13 @@ export default function FishEditorPage() {
   }, [playerFishSprite, fishData]);
 
   const handleExitEditMode = () => {
+    setEditMode(false);
+    setSelectedFishId(null);
+  };
+
+  // Close pause menu AND reset all edit state
+  const handleClosePauseMenu = () => {
+    setPaused(false);
     setEditMode(false);
     setSelectedFishId(null);
   };
@@ -338,18 +362,12 @@ export default function FishEditorPage() {
   };
 
   const handleAddNewBackground = () => {
-    setEditingBackground(true);
     setSelectedBackgroundData(null);
   };
 
   const handleSelectBackground = (background: any) => {
     setSelectedBackgroundData(background);
-    setEditingBackground(true);
-  };
-
-  const handleBackFromBackgroundEdit = () => {
-    setEditingBackground(false);
-    setSelectedBackgroundData(null);
+    setSelectedBackground(background.url);
   };
 
   const handleOpenArtSelector = (type: 'fish' | 'background', callback: (url: string, filename: string) => void) => {
@@ -432,13 +450,23 @@ export default function FishEditorPage() {
   const hasPrevious = selectedIndex > 0;
   const hasNext = selectedIndex >= 0 && selectedIndex < fishIds.length - 1;
 
+  // Callback wrappers for PauseMenu
+  const handlePauseMenuSelectFish = useCallback((fish: FishData) => {
+    handleSelectFishFromLibrary(fish);
+    setEditMode(true);
+  }, [handleSelectFishFromLibrary]);
+
+  const handlePauseMenuBack = useCallback(() => {
+    handleExitEditMode();
+  }, []);
+
   return (
     <div className="relative w-full h-screen bg-black flex flex-col overflow-hidden">
       {/* Top Right Icon Buttons */}
       <div className="absolute top-4 right-4 z-40 flex gap-2">
         {/* Pause Icon */}
         <button
-          onClick={() => setPaused(!paused)}
+          onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
           className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
           title={paused ? 'Resume' : 'Pause'}
         >
@@ -473,191 +501,44 @@ export default function FishEditorPage() {
         />
       </div>
 
-      {/* Edit Mode Overlay - Bottom panel (doesn't cover top area) */}
-      {editMode && selectedFish && (
-        <FishEditOverlay
-          fish={selectedFish}
-          onSave={handleSaveFish}
-          onBack={handleExitEditMode}
-          onPrevious={handlePreviousFish}
-          onNext={handleNextFish}
-          hasPrevious={hasPrevious}
-          hasNext={hasNext}
-          onOpenArtSelector={(callback) => handleOpenArtSelector('fish', callback)}
-        />
-      )}
-
-      {/* Bottom Sheet - Controls and Library (hidden in edit mode) */}
-      {!editMode && (
-        <BottomSheet defaultHeight={30} minHeight={10} maxHeight={90}>
-          <div className="h-full flex flex-col">
-            {/* Tabs */}
-            <div className="flex border-b border-gray-700 px-4">
-              <button
-                onClick={() => setActiveTab('library')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'library'
-                  ? 'text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white'
-                  }`}
-              >
-                Fish
-              </button>
-              <button
-                onClick={() => setActiveTab('backgrounds')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'backgrounds'
-                  ? 'text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white'
-                  }`}
-              >
-                Backgrounds
-              </button>
-              <button
-                onClick={() => setActiveTab('scene')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'scene'
-                  ? 'text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white'
-                  }`}
-              >
-                Scene
-              </button>
-            </div>
-
-            {/* Tab Content */}
-            <div className="flex-1 overflow-y-auto">
-              {activeTab === 'library' && (
-                <FishLibraryPanel
-                  onSelectFish={handleSelectFishFromLibrary}
-                  onAddNew={handleAddNewCreature}
-                  onSetPlayer={handleSetPlayerFish}
-                  onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
-                />
-              )}
-              {activeTab === 'backgrounds' && !editingBackground && (
-                <BackgroundLibraryPanel
-                  onSelectBackground={handleSelectBackground}
-                  onAddNew={handleAddNewBackground}
-                />
-              )}
-              {activeTab === 'backgrounds' && editingBackground && (
-                <div className="h-full overflow-y-auto p-4">
-                  <div className="mb-4">
-                    <button
-                      onClick={handleBackFromBackgroundEdit}
-                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-                    >
-                      ← Back to Library
-                    </button>
-                  </div>
-                  <BackgroundEditor
-                    currentBackground={selectedBackgroundData?.url || selectedBackground}
-                    onBackgroundChange={(url, type) => {
-                      setSelectedBackground(url);
-                    }}
-                    onOpenArtSelector={(callback) => handleOpenArtSelector('background', callback)}
-                  />
-                </div>
-              )}
-              {activeTab === 'scene' && (
-                <div className="px-4 pb-4 pt-2">
-                  <div className="space-y-4">
-                    {/* Scene controls header */}
-                    <div>
-                      <h2 className="text-lg font-bold text-white mb-1">Scene Controls</h2>
-                      <p className="text-xs text-gray-400">Adjust canvas display settings</p>
-                    </div>
-
-                    {/* Zoom */}
-                    <div>
-                      <label className="block text-sm font-bold text-white mb-2">
-                        Zoom: {zoom.toFixed(1)}x
-                      </label>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="3"
-                        step="0.1"
-                        value={zoom}
-                        onChange={(e) => setZoom(parseFloat(e.target.value))}
-                        className="w-full"
-                      />
-                    </div>
-
-                    {/* Chroma Tolerance */}
-                    <div>
-                      <label className="block text-sm font-bold text-white mb-2">
-                        Background Removal: {chromaTolerance}
-                      </label>
-                      <input
-                        type="range"
-                        min="10"
-                        max="150"
-                        value={chromaTolerance}
-                        onChange={(e) => setChromaTolerance(parseInt(e.target.value))}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-xs text-gray-400 mt-1">
-                        <span>Less</span>
-                        <span>More</span>
-                      </div>
-                    </div>
-
-                    {/* Water Distortion */}
-                    <div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={enableWaterDistortion}
-                          onChange={(e) => setEnableWaterDistortion(e.target.checked)}
-                          className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                        />
-                        <span className="text-sm font-bold text-white">Enable Water Distortion</span>
-                      </label>
-                    </div>
-
-                    {/* Deformation Intensity */}
-                    {enableWaterDistortion && (
-                      <div>
-                        <label className="block text-sm font-bold text-white mb-2">
-                          Distortion Intensity: {deformationIntensity.toFixed(1)}
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="5"
-                          step="0.1"
-                          value={deformationIntensity}
-                          onChange={(e) => setDeformationIntensity(parseFloat(e.target.value))}
-                          className="w-full"
-                        />
-                      </div>
-                    )}
-
-                    {/* Clear fish */}
-                    <div className="border-t border-gray-700 pt-4">
-                      <button
-                        onClick={handleClearFish}
-                        className="w-full bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
-                      >
-                        Clear All Fish ({spawnedFish.length})
-                      </button>
-                    </div>
-
-                    {/* Back to menu */}
-                    <div>
-                      <button
-                        onClick={handleBackToMenu}
-                        className="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
-                      >
-                        ← Back to Menu
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </BottomSheet>
-      )}
+      {/* Pause Menu - All editor functionality is now in the pause menu */}
+      <PauseMenu
+        isOpen={paused}
+        onClose={handleClosePauseMenu}
+        mode="editor"
+        creatures={fishData}
+        selectedFish={selectedFish}
+        onSelectFish={handlePauseMenuSelectFish}
+        onSaveFish={handleSaveFish}
+        onAddNewCreature={handleAddNewCreature}
+        onSetPlayer={handleSetPlayerFish}
+        onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
+        onPreviousFish={handlePreviousFish}
+        onNextFish={handleNextFish}
+        hasPrevious={hasPrevious}
+        hasNext={hasNext}
+        onOpenArtSelector={(callback) => handleOpenArtSelector('fish', callback)}
+        onExitFishEdit={handleExitEditMode}
+        // Background props
+        currentBackground={selectedBackground}
+        onBackgroundChange={(url) => setSelectedBackground(url)}
+        onSelectBackground={handleSelectBackground}
+        onAddNewBackground={handleAddNewBackground}
+        // Scene settings props
+        sceneSettings={{
+          zoom,
+          chromaTolerance,
+          enableWaterDistortion,
+          deformationIntensity,
+          spawnedFishCount: spawnedFish.length,
+        }}
+        onZoomChange={setZoom}
+        onChromaToleranceChange={setChromaTolerance}
+        onWaterDistortionChange={setEnableWaterDistortion}
+        onDeformationIntensityChange={setDeformationIntensity}
+        onClearFish={handleClearFish}
+        onBackToMenu={handleBackToMenu}
+      />
 
       {/* Art Selector Modal - Rendered at page level */}
       {showArtSelector && (

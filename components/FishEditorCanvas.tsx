@@ -20,6 +20,14 @@ import {
 } from '@/lib/game/hunger-constants';
 import { loadRunState } from '@/lib/game/run-state';
 
+export interface PlayerGameStats {
+  size: number;
+  hunger: number;
+  score: number;
+  fishEaten: number;
+  timeSurvived: number;
+}
+
 interface FishEditorCanvasProps {
   background: string | null;
   playerFishSprite: string | null;
@@ -33,6 +41,7 @@ interface FishEditorCanvasProps {
   levelDuration?: number; // in milliseconds
   onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
   onLevelComplete?: (score: number) => void;
+  onStatsUpdate?: (stats: PlayerGameStats) => void;
   // Edit mode features
   editMode?: boolean;
   selectedFishId?: string | null;
@@ -210,6 +219,7 @@ export default function FishEditorCanvas({
   levelDuration = 60000,
   onGameOver,
   onLevelComplete,
+  onStatsUpdate,
   editMode = false,
   selectedFishId = null,
   onEditFish,
@@ -230,6 +240,11 @@ export default function FishEditorCanvas({
   const fishDataRef = useRef<Map<string, FishData>>(fishData);
   const pausedRef = useRef<boolean>(paused);
   const showEditButtonsRef = useRef<boolean>(showEditButtons);
+  // Smooth zoom animation refs
+  const animatedZoomRef = useRef<number>(zoom);
+  const animatedCameraRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const targetZoomRef = useRef<number>(zoom);
+  const targetCameraRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
 
   // Update refs when props change
@@ -340,6 +355,10 @@ export default function FishEditorCanvas({
   const scoreRef = useRef<number>(0);
   const fishEatenRef = useRef<number>(0);
   const essenceCollectedRef = useRef<number>(0);
+  // Pause timer tracking
+  const pauseStartTimeRef = useRef<number>(0);
+  const totalPausedTimeRef = useRef<number>(0);
+  const wasPausedRef = useRef<boolean>(false);
 
   // FPS tracking
   const fpsRef = useRef<number>(60);
@@ -683,11 +702,23 @@ export default function FishEditorCanvas({
 
       // Skip game state updates if paused, but continue to render
 
+      // Track pause time for level timer
+      if (isPaused && !wasPausedRef.current) {
+        // Just became paused - record start time
+        pauseStartTimeRef.current = Date.now();
+        wasPausedRef.current = true;
+      } else if (!isPaused && wasPausedRef.current) {
+        // Just unpaused - add paused duration to total
+        totalPausedTimeRef.current += Date.now() - pauseStartTimeRef.current;
+        wasPausedRef.current = false;
+      }
+
       // Initialize game start time in game mode
       if (gameMode && gameStartTimeRef.current === 0) {
         gameStartTimeRef.current = Date.now();
         fishEatenRef.current = 0;
         scoreRef.current = 0;
+        totalPausedTimeRef.current = 0; // Reset paused time on new game
 
         // Load essence collected from run state
         const runState = loadRunState();
@@ -699,9 +730,9 @@ export default function FishEditorCanvas({
         }
       }
 
-      // Check game timer in game mode
-      if (gameMode && !levelCompleteFiredRef.current && !gameOverFiredRef.current) {
-        const elapsed = Date.now() - gameStartTimeRef.current;
+      // Check game timer in game mode (only when not paused)
+      if (gameMode && !levelCompleteFiredRef.current && !gameOverFiredRef.current && !isPaused) {
+        const elapsed = Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current;
         if (elapsed >= levelDuration) {
           levelCompleteFiredRef.current = true;
           if (onLevelComplete) {
@@ -777,16 +808,19 @@ export default function FishEditorCanvas({
         player.chompPhase = 0;
       }
 
-      // Update hunger in game mode (delta-time adjusted)
+      // Update hunger in game mode (movement-based, delta-time adjusted)
       if (gameMode && !isPaused) {
-        // Hunger drain is per-second, so we divide by 60 (base framerate) and multiply by deltaTime
-        player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / HUNGER_FRAME_RATE) * deltaTime);
+        // Hunger only drains when moving - proportional to speed
+        // normalizedSpeed is 0 when still, 1 at max speed
+        const movementFactor = normalizedSpeed;
+        const effectiveDrainRate = player.hungerDrainRate * movementFactor;
+        player.hunger = Math.max(0, player.hunger - (effectiveDrainRate / HUNGER_FRAME_RATE) * deltaTime);
 
         // Check starvation death
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
           gameOverFiredRef.current = true;
           if (onGameOver) {
-            const timeSurvived = Math.floor((now - gameStartTimeRef.current) / 1000);
+            const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
             onGameOver({
               score: scoreRef.current,
               cause: 'starved',
@@ -817,7 +851,7 @@ export default function FishEditorCanvas({
               if (!gameOverFiredRef.current) {
                 gameOverFiredRef.current = true;
                 if (onGameOver) {
-                  const timeSurvived = Math.floor((now - gameStartTimeRef.current) / 1000);
+                  const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
                   onGameOver({
                     score: scoreRef.current,
                     cause: 'eaten',
@@ -963,6 +997,18 @@ export default function FishEditorCanvas({
 
         // Update score based on size
         scoreRef.current = Math.floor((player.size - player.baseSize) * 10);
+
+        // Report stats to parent (throttled to ~4fps to avoid excessive updates)
+        if (onStatsUpdate && Math.random() < 0.07) {
+          const timeSurvived = Math.floor((Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
+          onStatsUpdate({
+            size: player.size,
+            hunger: player.hunger,
+            score: scoreRef.current,
+            fishEaten: fishEatenRef.current,
+            timeSurvived,
+          });
+        }
       } else {
         // Wrap around screen (editor mode)
         if (player.x < 0) player.x = canvas.width;
@@ -1029,10 +1075,11 @@ export default function FishEditorCanvas({
       // Render
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Calculate zoom and camera for edit mode
-      let currentZoom = zoomRef.current;
-      let cameraX = 0;
-      let cameraY = 0;
+      // Calculate target zoom and camera for edit mode
+      let targetZoom = zoomRef.current;
+      let targetCameraX = 0;
+      let targetCameraY = 0;
+      let useEditModeCamera = false;
 
       const currentSelectedFishId = selectedFishIdRef.current;
       if (currentEditMode && currentSelectedFishId) {
@@ -1054,22 +1101,43 @@ export default function FishEditorCanvas({
         }
 
         if (selectedSize > 0) {
+          useEditModeCamera = true;
           // In edit mode, we want to show fish in top area (50% of screen height)
           // Calculate zoom to fit fish in top half horizontally with padding
           const padding = 40;
-          const topAreaHeight = canvas.height * 0.5; // Top 50% for fish display
           const targetWidth = canvas.width - padding * 2;
           const baseZoomToFit = targetWidth / selectedSize;
           const baseZoom = Math.max(1, baseZoomToFit);
 
           // Apply manual zoom multiplier (allows zooming in/out from base)
-          currentZoom = baseZoom * zoomRef.current;
+          targetZoom = baseZoom * zoomRef.current;
 
           // Position camera to show fish in top area (center horizontally, top 25% vertically)
-          cameraX = selectedX;
-          cameraY = selectedY;
+          targetCameraX = selectedX;
+          targetCameraY = selectedY;
         }
       }
+
+      // Update target refs
+      targetZoomRef.current = targetZoom;
+      targetCameraRef.current = { x: targetCameraX, y: targetCameraY };
+
+      // Smooth interpolation (lerp) for zoom and camera
+      const lerpSpeed = 0.08; // Adjust for faster/slower transitions
+      animatedZoomRef.current += (targetZoomRef.current - animatedZoomRef.current) * lerpSpeed;
+      animatedCameraRef.current.x += (targetCameraRef.current.x - animatedCameraRef.current.x) * lerpSpeed;
+      animatedCameraRef.current.y += (targetCameraRef.current.y - animatedCameraRef.current.y) * lerpSpeed;
+
+      // Use animated values
+      const currentZoom = animatedZoomRef.current;
+      const cameraX = animatedCameraRef.current.x;
+      const cameraY = animatedCameraRef.current.y;
+
+      // Check if we're close enough to target to snap (prevents endless tiny movements)
+      const zoomDiff = Math.abs(targetZoomRef.current - animatedZoomRef.current);
+      const cameraDiffX = Math.abs(targetCameraRef.current.x - animatedCameraRef.current.x);
+      const cameraDiffY = Math.abs(targetCameraRef.current.y - animatedCameraRef.current.y);
+      const isAnimating = zoomDiff > 0.01 || cameraDiffX > 1 || cameraDiffY > 1;
 
       // Apply zoom
       ctx.save();
@@ -1077,18 +1145,11 @@ export default function FishEditorCanvas({
       const scaledWidth = canvas.width / currentZoom;
       const scaledHeight = canvas.height / currentZoom;
 
-      // Apply camera transform
-      if (currentEditMode && currentSelectedFishId) {
-        // Position fish in top area: center horizontally, top 25% vertically
-        const topAreaCenterY = scaledHeight * 0.25;
-        ctx.translate(scaledWidth / 2 - cameraX, topAreaCenterY - cameraY);
-      } else if (gameMode) {
-        // In game mode, translate for camera following
-        const camera = cameraRef.current;
-        ctx.translate(scaledWidth / 2 - camera.x, scaledHeight / 2 - camera.y);
-      }
+      // Determine if we're using edit mode camera
+      const usingEditCamera = useEditModeCamera || (isAnimating && targetZoomRef.current !== zoomRef.current);
 
-      // Draw background
+      // Draw background BEFORE camera translation (so it stays in place)
+      // For edit mode, we want the background to fill the view centered on the fish
       if (backgroundImageRef.current) {
         ctx.save();
         ctx.filter = 'blur(6px)';
@@ -1116,6 +1177,29 @@ export default function FishEditorCanvas({
 
           const bgX = (scaledWidth - drawWidth) / 2 - bgOffsetX + camera.x - scaledWidth / 2;
           const bgY = (scaledHeight - drawHeight) / 2 - bgOffsetY + camera.y - scaledHeight / 2;
+
+          ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
+        } else if (usingEditCamera) {
+          // Edit mode with camera - draw background centered on fish position
+          const img = backgroundImageRef.current;
+          const imgAspect = img.width / img.height;
+          const screenAspect = scaledWidth / scaledHeight;
+
+          // Scale background to cover view with some extra for parallax effect
+          let drawWidth, drawHeight;
+          if (imgAspect > screenAspect) {
+            drawHeight = scaledHeight * 1.3;
+            drawWidth = drawHeight * imgAspect;
+          } else {
+            drawWidth = scaledWidth * 1.3;
+            drawHeight = drawWidth / imgAspect;
+          }
+
+          // Center background on fish with parallax
+          const topAreaCenterY = scaledHeight * 0.25;
+          const parallaxFactor = 0.5;
+          const bgX = (scaledWidth / 2) - (drawWidth / 2) - (cameraX - scaledWidth / 2) * parallaxFactor;
+          const bgY = topAreaCenterY - (drawHeight / 2) - (cameraY - scaledHeight / 2) * parallaxFactor;
 
           ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         } else {
@@ -1148,12 +1232,35 @@ export default function FishEditorCanvas({
           ctx.restore();
         }
       } else {
-        // Default gradient background
-        const gradient = ctx.createLinearGradient(0, 0, 0, scaledHeight);
-        gradient.addColorStop(0, '#1e40af');
-        gradient.addColorStop(1, '#1e3a8a');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, scaledWidth, scaledHeight);
+        // Default gradient background - need to account for camera offset in edit mode
+        if (usingEditCamera) {
+          const topAreaCenterY = scaledHeight * 0.25;
+          // Draw a larger gradient that covers the view even with camera offset
+          const offsetX = scaledWidth / 2 - cameraX;
+          const offsetY = topAreaCenterY - cameraY;
+          const gradient = ctx.createLinearGradient(-offsetX, -offsetY, -offsetX, scaledHeight - offsetY);
+          gradient.addColorStop(0, '#1e40af');
+          gradient.addColorStop(1, '#1e3a8a');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(-offsetX, -offsetY, scaledWidth * 2, scaledHeight * 2);
+        } else {
+          const gradient = ctx.createLinearGradient(0, 0, 0, scaledHeight);
+          gradient.addColorStop(0, '#1e40af');
+          gradient.addColorStop(1, '#1e3a8a');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, scaledWidth, scaledHeight);
+        }
+      }
+
+      // Apply camera transform AFTER background is drawn
+      if (usingEditCamera) {
+        // Position fish in top area: center horizontally, top 25% vertically
+        const topAreaCenterY = scaledHeight * 0.25;
+        ctx.translate(scaledWidth / 2 - cameraX, topAreaCenterY - cameraY);
+      } else if (gameMode) {
+        // In game mode, translate for camera following
+        const camera = cameraRef.current;
+        ctx.translate(scaledWidth / 2 - camera.x, scaledHeight / 2 - camera.y);
       }
 
       // Draw AI fish
@@ -1349,8 +1456,9 @@ export default function FishEditorCanvas({
       ctx.font = '14px monospace';
 
       if (gameMode) {
-        // Game mode UI
-        const elapsed = Date.now() - gameStartTimeRef.current;
+        // Game mode UI - account for paused time
+        const currentPausedTime = isPaused ? (Date.now() - pauseStartTimeRef.current) : 0;
+        const elapsed = Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current - currentPausedTime;
         const timeLeft = Math.max(0, Math.ceil((levelDuration - elapsed) / 1000));
         ctx.fillText(`Score: ${scoreRef.current}`, 10, 20);
         ctx.fillText(`Size: ${Math.floor(player.size)}`, 10, 40);
