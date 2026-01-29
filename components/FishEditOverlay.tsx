@@ -1296,7 +1296,8 @@ export default function FishEditOverlay({
                   value={(editedFish.fusionParentIds || []).join(', ')}
                   onChange={(e) => {
                     const ids = e.target.value.split(',').map(id => id.trim()).filter(id => id);
-                    updateField('fusionParentIds', ids.length > 0 ? ids : undefined);
+                    // Always store an array (possibly empty) to satisfy FishFieldValue
+                    updateField('fusionParentIds', ids);
                   }}
                   className="w-full bg-gray-800 text-white px-2 py-1 rounded border border-gray-600 text-sm"
                   placeholder="e.g., anglerfish, jellyfish"
