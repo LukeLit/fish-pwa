@@ -103,6 +103,30 @@ export const BIOME_CHUNKS: Record<string, string[]> = {
     'aquatic plants influence in patterns',
     'sunlit highlights on scales',
   ],
+  shallow_tropical: [
+    'vibrant tropical reef colors',
+    'coral-inspired patterns on fins',
+    'warm sunlit water tones',
+    'exotic reef dweller appearance',
+  ],
+  medium: [
+    'twilight zone adaptation',
+    'subdued blue-gray tones',
+    'beginning bioluminescent hints',
+    'transitional depth features',
+  ],
+  medium_polluted: [
+    'toxic green or murky brown tones',
+    'visible mutations or asymmetry',
+    'industrial contamination aesthetic',
+    'sickly polluted appearance',
+  ],
+  deep: [
+    'deep pressure adaptations',
+    'bioluminescent organs',
+    'translucent or dark coloration',
+    'alien-like deep features',
+  ],
   deep_sea: [
     'shadowy gradients in coloration',
     'faint blue bioluminescent glows',

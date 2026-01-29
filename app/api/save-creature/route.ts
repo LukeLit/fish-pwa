@@ -1,11 +1,13 @@
 /**
  * Save creature sprite and metadata to Vercel Blob Storage
  * Saves both the sprite image and complete creature metadata together
+ * 
+ * CACHE FIX: Deletes existing files before uploading to force CDN cache invalidation
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadAsset } from '@/lib/storage/blob-storage';
-import { put } from '@vercel/blob';
+import { uploadAsset, deleteAsset, listAssets } from '@/lib/storage/blob-storage';
+import { put, del, list } from '@vercel/blob';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +27,27 @@ export async function POST(request: NextRequest) {
 
     let spriteUrl: string | undefined;
 
-    // Upload sprite if provided (always overwrite existing)
+    // CACHE FIX: Delete existing sprite and metadata files first to invalidate CDN cache
+    try {
+      // Find and delete existing sprite
+      const existingSprites = await list({ prefix: `assets/creatures/${creatureId}.png` });
+      for (const blob of existingSprites.blobs) {
+        console.log('[SaveCreature] Deleting existing sprite:', blob.url);
+        await del(blob.url);
+      }
+
+      // Find and delete existing metadata
+      const existingMetadata = await list({ prefix: `assets/creatures/${creatureId}.json` });
+      for (const blob of existingMetadata.blobs) {
+        console.log('[SaveCreature] Deleting existing metadata:', blob.url);
+        await del(blob.url);
+      }
+    } catch (deleteErr) {
+      // Continue even if delete fails - file might not exist
+      console.log('[SaveCreature] Delete step (non-fatal):', deleteErr);
+    }
+
+    // Upload sprite if provided
     // Note: uploadAsset automatically adds 'assets/' prefix, so we just pass 'creatures/...'
     if (spriteFile) {
       const buffer = Buffer.from(await spriteFile.arrayBuffer());
@@ -55,7 +77,6 @@ export async function POST(request: NextRequest) {
       access: 'public',
       addRandomSuffix: false,
       contentType: 'application/json',
-      allowOverwrite: true,
     });
 
     // Verify what was actually saved by fetching it back

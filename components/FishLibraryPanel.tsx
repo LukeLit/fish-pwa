@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { FishData } from './FishEditOverlay';
 
 // Biome color configuration
@@ -54,9 +54,31 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('all');
+  // Cache buster version - increments when sprites are refreshed
+  const [thumbnailVersion, setThumbnailVersion] = useState(0);
 
   useEffect(() => {
     loadCreatures();
+  }, []);
+
+  // Listen for sprite refresh events to update thumbnails and reload list
+  useEffect(() => {
+    const handleRefresh = async () => {
+      console.log('[FishLibraryPanel] Refresh event received - reloading creatures and updating thumbnails');
+      setThumbnailVersion(v => v + 1);
+      // Also reload the creatures list to get fresh metadata/URLs
+      try {
+        const response = await fetch('/api/list-creatures', { cache: 'reload' });
+        const result = await response.json();
+        if (result.success) {
+          setCreatures(result.creatures || []);
+        }
+      } catch (err) {
+        console.error('[FishLibraryPanel] Failed to reload creatures:', err);
+      }
+    };
+    window.addEventListener('refreshFishSprites', handleRefresh);
+    return () => window.removeEventListener('refreshFishSprites', handleRefresh);
   }, []);
 
   // All hooks must be before any early returns!
@@ -228,11 +250,11 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
                   <div className="w-16 h-16 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
                     {creature.sprite && (
                       <img
-                        key={`${creature.id}-${creature.sprite}`}
+                        key={`${creature.id}-${creature.sprite}-v${thumbnailVersion}`}
                         src={
                           creature.sprite.startsWith('data:')
                             ? creature.sprite
-                            : creature.sprite.split('?')[0]
+                            : `${creature.sprite.split('?')[0]}?v=${thumbnailVersion}`
                         }
                         alt={creature.name}
                         className="w-full h-full object-contain"

@@ -50,6 +50,8 @@ interface FishEditorCanvasProps {
   fishData?: Map<string, FishData>;
   // Pause feature
   paused?: boolean;
+  // Cache refresh callback - called when textures are refreshed
+  onCacheRefreshed?: () => void;
 }
 
 // Chroma key color - bright magenta for easy removal
@@ -226,6 +228,7 @@ export default function FishEditorCanvas({
   showEditButtons = true,
   fishData = new Map(),
   paused = false,
+  onCacheRefreshed,
 }: FishEditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -552,6 +555,148 @@ export default function FishEditorCanvas({
 
   // Spawn new fish using full Creature data when available, or legacy format.
   // Also sync spawn pool and sprite cache for continuous respawn in game mode.
+  // Track sprite URLs and versions to detect changes
+  const fishSpriteUrlsRef = useRef<Map<string, string>>(new Map());
+  const spriteVersionRef = useRef<Map<string, number>>(new Map());
+
+  // Force refresh all sprites - clears ALL caches (SW, browser, localStorage, in-memory) and reloads from server
+  const refreshAllSprites = useCallback(async () => {
+    console.log('[FishEditorCanvas] NUCLEAR REFRESH - clearing ALL caches...');
+
+    // 1. Clear Service Worker's asset cache
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      console.log('[FishEditorCanvas] Clearing Service Worker asset cache...');
+      const messageChannel = new MessageChannel();
+      navigator.serviceWorker.controller.postMessage(
+        { type: 'CLEAR_ASSET_CACHE' },
+        [messageChannel.port2]
+      );
+      // Wait for confirmation
+      await new Promise<void>((resolve) => {
+        messageChannel.port1.onmessage = (event) => {
+          console.log('[FishEditorCanvas] SW cache cleared:', event.data);
+          resolve();
+        };
+        // Timeout after 1s
+        setTimeout(resolve, 1000);
+      });
+    }
+
+    // 2. Clear browser's Cache API (all caches we can access)
+    if ('caches' in window) {
+      console.log('[FishEditorCanvas] Clearing browser Cache API...');
+      const cacheNames = await caches.keys();
+      for (const cacheName of cacheNames) {
+        if (cacheName.includes('asset') || cacheName.includes('fish')) {
+          console.log('[FishEditorCanvas] Deleting cache:', cacheName);
+          await caches.delete(cacheName);
+        }
+      }
+    }
+
+    // 3. Clear localStorage fish cache (old creatures stored locally)
+    try {
+      const localCreatures = localStorage.getItem('fish_game_creatures');
+      if (localCreatures) {
+        console.log('[FishEditorCanvas] Clearing localStorage fish_game_creatures cache');
+        localStorage.removeItem('fish_game_creatures');
+      }
+    } catch (err) {
+      console.warn('[FishEditorCanvas] Could not clear localStorage:', err);
+    }
+
+    // 3. Clear all in-memory tracking refs
+    fishSpriteUrlsRef.current.clear();
+    spriteVersionRef.current.clear();
+    spriteCacheRef.current.clear();
+
+    // 4. Helper to reload sprite bypassing ALL caches
+    const reloadSprite = async (fishId: string, spriteUrl: string, onLoaded: (sprite: HTMLCanvasElement) => void) => {
+      if (spriteUrl.startsWith('data:')) {
+        // Data URLs don't need cache busting
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const processedSprite = removeBackground(img, chromaToleranceRef.current);
+          onLoaded(processedSprite);
+        };
+        img.src = spriteUrl;
+        return;
+      }
+
+      try {
+        // Use fetch with cache: 'reload' to bypass browser cache entirely
+        const cleanUrl = spriteUrl.split('?')[0];
+        console.log('[FishEditorCanvas] Fetching fresh:', cleanUrl);
+        const response = await fetch(cleanUrl, {
+          cache: 'reload',  // Bypass cache completely
+          mode: 'cors',
+        });
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const processedSprite = removeBackground(img, chromaToleranceRef.current);
+          onLoaded(processedSprite);
+          URL.revokeObjectURL(objectUrl); // Clean up
+        };
+        img.onerror = () => {
+          console.error('Failed to load sprite after fetch:', fishId);
+          URL.revokeObjectURL(objectUrl);
+        };
+        img.src = objectUrl;
+      } catch (err) {
+        console.error('Failed to fetch sprite:', fishId, err);
+      }
+    };
+
+    // 5. Reload all fish sprites
+    const reloadPromises: Promise<void>[] = [];
+    fishListRef.current.forEach((fish) => {
+      const data = fishDataRef.current.get(fish.id);
+      const spriteUrl = data?.sprite || spawnedFish.find(f => f.id === fish.id)?.sprite;
+      if (spriteUrl) {
+        console.log('[FishEditorCanvas] Queuing reload for:', fish.id);
+        reloadPromises.push(
+          reloadSprite(fish.id, spriteUrl, (processedSprite) => {
+            fish.sprite = processedSprite;
+            spriteCacheRef.current.set(fish.id, processedSprite);
+            fishSpriteUrlsRef.current.set(fish.id, spriteUrl);
+          })
+        );
+      }
+    });
+
+    // 6. Also reload player sprite
+    if (playerRef.current.sprite && playerFishSprite) {
+      console.log('[FishEditorCanvas] Queuing player sprite reload');
+      reloadPromises.push(
+        reloadSprite('player', playerFishSprite, (processedSprite) => {
+          playerRef.current.sprite = processedSprite;
+        })
+      );
+    }
+
+    await Promise.all(reloadPromises);
+    console.log('[FishEditorCanvas] All sprites reloaded!');
+
+    // Notify parent
+    if (onCacheRefreshed) {
+      onCacheRefreshed();
+    }
+  }, [spawnedFish, playerFishSprite, onCacheRefreshed]);
+
+  // Listen for global refresh event
+  useEffect(() => {
+    const handleRefresh = () => {
+      refreshAllSprites().catch(err => console.error('[FishEditorCanvas] Refresh error:', err));
+    };
+    window.addEventListener('refreshFishSprites', handleRefresh);
+    return () => window.removeEventListener('refreshFishSprites', handleRefresh);
+  }, [refreshAllSprites]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -559,13 +704,71 @@ export default function FishEditorCanvas({
     // Keep spawn pool in sync for respawn (use full list so weighting matches initial spawn)
     spawnPoolRef.current = spawnedFish.length ? [...spawnedFish] : [];
 
+    // Helper to load and process a sprite
+    const loadSprite = (spriteUrl: string, fishId: string, onLoaded: (processedSprite: HTMLCanvasElement) => void) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const processedSprite = removeBackground(img, chromaToleranceRef.current);
+        onLoaded(processedSprite);
+      };
+      img.onerror = () => {
+        console.error('Failed to load fish sprite:', spriteUrl);
+      };
+      // For data: URLs, use as-is; for HTTP(S), add cache buster to force reload
+      if (spriteUrl.startsWith('data:')) {
+        img.src = spriteUrl;
+      } else {
+        // Add cache buster with version to force reload after save
+        const version = spriteVersionRef.current.get(fishId) || 0;
+        img.src = `${spriteUrl.split('?')[0]}?v=${version}&t=${Date.now()}`;
+      }
+    };
+
     spawnedFish.forEach((fishItem) => {
       if (eatenIdsRef.current.has(fishItem.id)) return;
-      if (!fishListRef.current.find((f) => f.id === fishItem.id)) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          const processedSprite = removeBackground(img, chromaToleranceRef.current);
+
+      const existingFish = fishListRef.current.find((f) => f.id === fishItem.id);
+      const previousSpriteUrl = fishSpriteUrlsRef.current.get(fishItem.id);
+      const currentSpriteUrl = fishItem.sprite;
+
+      // Detect changes: URL changed OR it was a data URL and now it's a blob URL (after save)
+      const wasDataUrl = previousSpriteUrl?.startsWith('data:') || false;
+      const isNowBlobUrl = currentSpriteUrl && !currentSpriteUrl.startsWith('data:');
+      const urlChanged = previousSpriteUrl !== currentSpriteUrl;
+      const savedToBlobAfterRegenerate = wasDataUrl && isNowBlobUrl;
+      const spriteChanged = urlChanged || savedToBlobAfterRegenerate;
+
+      // Debug logging for sprite changes
+      if (existingFish && (urlChanged || savedToBlobAfterRegenerate)) {
+        console.log('[FishEditorCanvas] Sprite state for', fishItem.id, ':', {
+          previousUrl: previousSpriteUrl?.substring(0, 50),
+          currentUrl: currentSpriteUrl?.substring(0, 50),
+          wasDataUrl,
+          isNowBlobUrl,
+          urlChanged,
+          savedToBlobAfterRegenerate,
+          willReload: spriteChanged
+        });
+      }
+
+      // Update tracked sprite URL
+      fishSpriteUrlsRef.current.set(fishItem.id, currentSpriteUrl);
+
+      if (existingFish && spriteChanged) {
+        // SPRITE CHANGED - reload the sprite for existing fish
+        // Increment version to bust cache
+        const newVersion = (spriteVersionRef.current.get(fishItem.id) || 0) + 1;
+        spriteVersionRef.current.set(fishItem.id, newVersion);
+        console.log('[FishEditorCanvas] Sprite changed for fish:', fishItem.id, '- reloading (version:', newVersion, ')');
+        loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
+          existingFish.sprite = processedSprite;
+          // Update cache for respawn
+          spriteCacheRef.current.set(fishItem.id, processedSprite);
+        });
+      } else if (!existingFish) {
+        // NEW FISH - add to list
+        loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
           // Cache by creature id for respawn in game mode
           spriteCacheRef.current.set(fishItem.id, processedSprite);
 
@@ -611,17 +814,7 @@ export default function FishEditorCanvas({
             creatureData,
           };
           fishListRef.current.push(newFish);
-        };
-        img.onerror = () => {
-          console.error('Failed to load fish sprite:', fishItem.id);
-        };
-        // For HTTP(S) sprites, use clean URL to allow browser caching; for data: URLs, use as-is
-        if (fishItem.sprite.startsWith('data:')) {
-          img.src = fishItem.sprite;
-        } else {
-          // Remove any existing query params to use clean URL for caching
-          img.src = fishItem.sprite.split('?')[0];
-        }
+        });
       }
     });
 

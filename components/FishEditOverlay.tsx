@@ -123,6 +123,48 @@ export default function FishEditOverlay({
   const [showMutationSection, setShowMutationSection] = useState(false);
   const [showAIGeneration, setShowAIGeneration] = useState(false);
 
+  // Helper to generate fallback description chunks when missing
+  // This ensures the "Regenerate Sprite" produces quality similar to batch generation
+  const getFallbackDescriptionChunks = (fish: FishData): string[] => {
+    // If we already have description chunks, use them
+    if (fish.descriptionChunks && fish.descriptionChunks.length > 0) {
+      return fish.descriptionChunks;
+    }
+    // Generate fallback from description field or name/type
+    const chunks: string[] = [];
+    if (fish.description && fish.description.trim()) {
+      // Split description into chunk-like phrases
+      chunks.push(...fish.description.split(/[,;.]/).map(s => s.trim()).filter(s => s.length > 3));
+    }
+    // Add type-based fallbacks
+    if (fish.type === 'prey') {
+      chunks.push('small fish', 'vibrant coloring', 'schooling behavior');
+    } else if (fish.type === 'predator') {
+      chunks.push('fierce predatory fish', 'sharp teeth', 'powerful body');
+    } else if (fish.type === 'mutant') {
+      chunks.push('mutated fish', 'strange features', 'glowing elements');
+    }
+    // Add name-based hint
+    if (fish.name) {
+      chunks.push(`${fish.name.toLowerCase()} fish`);
+    }
+    return chunks;
+  };
+
+  const getFallbackVisualMotif = (fish: FishData): string => {
+    if (fish.visualMotif && fish.visualMotif.trim()) {
+      return fish.visualMotif;
+    }
+    // Generate based on type and biome
+    const typeMotifs: Record<string, string> = {
+      prey: 'swift schooling fish',
+      predator: 'fearsome aquatic hunter',
+      mutant: 'bizarre mutated creature',
+    };
+    const biomeHint = fish.biomeId ? ` of the ${fish.biomeId.replace(/_/g, ' ')}` : '';
+    return `${typeMotifs[fish.type] || 'unique fish'}${biomeHint}`;
+  };
+
   // Compute composed prompt at top level (Rules of Hooks)
   const composedPrompt = useMemo(() => {
     if (!editedFish) return '';
@@ -139,8 +181,8 @@ export default function FishEditOverlay({
             return acc;
           }, {} as Record<string, number>) || {}),
         } : undefined,
-        descriptionChunks: editedFish.descriptionChunks,
-        visualMotif: editedFish.visualMotif,
+        descriptionChunks: getFallbackDescriptionChunks(editedFish),
+        visualMotif: getFallbackVisualMotif(editedFish),
         grantedAbilities: editedFish.grantedAbilities,
       });
       return prompt;
@@ -165,6 +207,14 @@ export default function FishEditOverlay({
       // This prevents overwriting local edits when parent re-renders
       // IMPORTANT: Don't reset if we're currently saving (isSaving) to prevent race conditions
       if ((!editedFish || editedFish.id !== fish.id) && !isSaving) {
+        console.log('[FishEditOverlay] Initializing editedFish from fish prop:', {
+          id: fish.id,
+          name: fish.name,
+          hasDescriptionChunks: !!fish.descriptionChunks?.length,
+          descriptionChunks: fish.descriptionChunks,
+          hasVisualMotif: !!fish.visualMotif,
+          visualMotif: fish.visualMotif,
+        });
         setEditedFish({
           ...fish,
           rarity: fish.rarity || 'common',
@@ -199,6 +249,9 @@ export default function FishEditOverlay({
 
     setIsSaving(true);
     setSaveMessage('');
+
+    // Track if sprite was regenerated (data URL) - we'll need to refresh cache
+    const spriteWasRegenerated = editedFish.sprite?.startsWith('data:') || false;
 
     try {
       // Always convert sprite to blob for upload (whether data URL or blob URL)
@@ -295,7 +348,22 @@ export default function FishEditOverlay({
           window.dispatchEvent(event);
         }
 
-        setSaveMessage(`✓ Saved successfully! Sprite: ${spriteUrl.substring(0, 50)}...`);
+        // Only refresh textures if sprite was actually regenerated (was a data URL)
+        // This avoids unnecessary cache clearing for metadata-only saves
+        if (spriteWasRegenerated) {
+          setSaveMessage(`✓ Saved successfully! Refreshing textures...`);
+          
+          // Dispatch refresh event to reload sprites from server with new blob URLs
+          // Small delay to ensure blob storage has propagated
+          setTimeout(() => {
+            console.log('[FishEditOverlay] Sprite was regenerated - refreshing cache');
+            window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+            setSaveMessage(`✓ Saved and refreshed!`);
+          }, 500);
+        } else {
+          setSaveMessage(`✓ Saved successfully!`);
+          console.log('[FishEditOverlay] Metadata-only save - no cache refresh needed');
+        }
 
         // Verify the save by fetching the creature back
         setTimeout(async () => {
@@ -309,7 +377,7 @@ export default function FishEditOverlay({
           } catch (err) {
             console.error('[FishEditOverlay] Verification error:', err);
           }
-        }, 1000);
+        }, 1500);
       } else {
         setSaveMessage(`❌ Save failed: ${result.error || 'Unknown error'}`);
         console.error('[FishEditOverlay] Save failed:', result);
@@ -708,64 +776,6 @@ export default function FishEditOverlay({
           <div className="border-t border-gray-700 pt-4">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-bold text-white">Composed AI Prompt</label>
-              <button
-                onClick={async () => {
-                  if (!editedFish) return;
-                  setIsGenerating(true);
-                  setSaveMessage('Generating sprite with composed prompt...');
-                  try {
-                    const { prompt } = composeFishPrompt({
-                      id: editedFish.id,
-                      name: editedFish.name,
-                      biomeId: editedFish.biomeId,
-                      rarity: editedFish.rarity,
-                      essence: editedFish.essence?.primary ? {
-                        [editedFish.essence.primary.type]: editedFish.essence.primary.baseYield,
-                        ...(editedFish.essence.secondary?.reduce((acc, sec) => {
-                          acc[sec.type] = sec.baseYield;
-                          return acc;
-                        }, {} as Record<string, number>) || {}),
-                      } : undefined,
-                      descriptionChunks: editedFish.descriptionChunks,
-                      visualMotif: editedFish.visualMotif,
-                      grantedAbilities: editedFish.grantedAbilities,
-                    });
-
-                    const response = await fetch('/api/generate-fish-image', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        prompt,
-                        model: selectedModel,
-                      }),
-                    });
-
-                    const result = await response.json();
-                    if (result.success && result.imageBase64) {
-                      const dataUrl = `data:image/png;base64,${result.imageBase64}`;
-
-                      // Update local editor state only; user must click "Save Creature" to persist
-                      const updatedFish: FishData = {
-                        ...editedFish,
-                        sprite: dataUrl,
-                      };
-                      setEditedFish(updatedFish);
-
-                      setSaveMessage('✓ Sprite regenerated! Click "Save Creature" to persist.');
-                    } else {
-                      setSaveMessage(`❌ Generation failed: ${result.error || 'Unknown error'}`);
-                    }
-                  } catch (err: any) {
-                    setSaveMessage(`❌ Error: ${err.message || 'Unknown error'}`);
-                  } finally {
-                    setIsGenerating(false);
-                  }
-                }}
-                disabled={isGenerating}
-                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs font-medium transition-colors"
-              >
-                {isGenerating ? 'Regenerating...' : 'Regenerate Sprite'}
-              </button>
             </div>
             <div className="bg-gray-900 border border-gray-700 rounded p-3 text-xs font-mono text-gray-300 max-h-32 overflow-y-auto">
               {composedPrompt || 'No prompt available'}
@@ -901,8 +911,12 @@ export default function FishEditOverlay({
                     if (file) {
                       const reader = new FileReader();
                       reader.onload = (ev) => {
-                        updateField('sprite', ev.target?.result as string);
-                        setSaveMessage('✓ Image uploaded. Remember to save changes.');
+                        const spriteUrl = ev.target?.result as string;
+                        updateField('sprite', spriteUrl);
+                        // Update parent immediately so preview refreshes
+                        const updatedFish = { ...editedFish, sprite: spriteUrl };
+                        onSave(updatedFish);
+                        setSaveMessage('✓ Image uploaded. Click "Save Creature" to persist.');
                       };
                       reader.readAsDataURL(file);
                     }
@@ -912,6 +926,86 @@ export default function FishEditOverlay({
                 className="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
               >
                 Upload Image
+              </button>
+              <button
+                onClick={async () => {
+                  if (!editedFish) return;
+                  setIsGenerating(true);
+                  setSaveMessage('🎨 Regenerating sprite...');
+                  try {
+                    // Get the chunks that will be used
+                    const usedDescriptionChunks = getFallbackDescriptionChunks(editedFish);
+                    const usedVisualMotif = getFallbackVisualMotif(editedFish);
+
+                    // Log what data we have for debugging
+                    console.log('[Regenerate] Fish data:', {
+                      id: editedFish.id,
+                      name: editedFish.name,
+                      biomeId: editedFish.biomeId,
+                      hasDescriptionChunks: !!editedFish.descriptionChunks?.length,
+                      descriptionChunks: editedFish.descriptionChunks,
+                      hasVisualMotif: !!editedFish.visualMotif,
+                      visualMotif: editedFish.visualMotif,
+                      usedDescriptionChunks,
+                      usedVisualMotif,
+                    });
+
+                    const { prompt } = composeFishPrompt({
+                      id: editedFish.id,
+                      name: editedFish.name,
+                      biomeId: editedFish.biomeId,
+                      rarity: editedFish.rarity,
+                      essence: editedFish.essence?.primary ? {
+                        [editedFish.essence.primary.type]: editedFish.essence.primary.baseYield,
+                        ...(editedFish.essence.secondary?.reduce((acc, sec) => {
+                          acc[sec.type] = sec.baseYield;
+                          return acc;
+                        }, {} as Record<string, number>) || {}),
+                      } : undefined,
+                      descriptionChunks: usedDescriptionChunks,
+                      visualMotif: usedVisualMotif,
+                      grantedAbilities: editedFish.grantedAbilities,
+                    });
+
+                    console.log('[Regenerate] Using prompt:', prompt.substring(0, 200) + '...');
+
+                    const response = await fetch('/api/generate-fish-image', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        prompt,
+                        model: selectedModel,
+                      }),
+                    });
+
+                    const result = await response.json();
+                    if (result.success && result.imageBase64) {
+                      const dataUrl = `data:image/png;base64,${result.imageBase64}`;
+
+                      // Update local editor state
+                      const updatedFish: FishData = {
+                        ...editedFish,
+                        sprite: dataUrl,
+                      };
+                      setEditedFish(updatedFish);
+
+                      // Update parent immediately so preview fish refreshes
+                      onSave(updatedFish);
+
+                      setSaveMessage('✓ Sprite regenerated! Click "Save Creature" to persist.');
+                    } else {
+                      setSaveMessage(`❌ Generation failed: ${result.error || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    setSaveMessage(`❌ Error: ${err.message || 'Unknown error'}`);
+                  } finally {
+                    setIsGenerating(false);
+                  }
+                }}
+                disabled={isGenerating}
+                className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {isGenerating ? 'Regenerating...' : 'Regenerate Sprite'}
               </button>
             </div>
 
