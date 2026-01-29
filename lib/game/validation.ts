@@ -33,6 +33,7 @@ export function validateCreature(creature: Creature): ValidationResult {
 
   // Validate stats
   if (creature.stats.size <= 0) errors.push('Creature size must be > 0');
+  if (creature.stats.size < 60) errors.push('Creature size must be >= 60 (minimum renderable size)');
   if (creature.stats.speed <= 0) warnings.push('Creature speed should be > 0');
   if (creature.stats.health <= 0) errors.push('Creature health must be > 0');
 
@@ -125,7 +126,7 @@ export function validateUpgrade(upgrade: UpgradeNode): ValidationResult {
     const prereqExists = Object.values(UPGRADE_TREES)
       .flat()
       .some((u) => u.id === prereqId);
-    
+
     if (!prereqExists) {
       errors.push(`Upgrade ${upgrade.id} references non-existent prerequisite: ${prereqId}`);
     }

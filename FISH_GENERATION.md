@@ -20,11 +20,25 @@ The game uses **Vercel AI Gateway** with multiple model options:
 
 ## How It Works
 
+### Modular Prompt System
+- Prompts are built from reusable chunks defined in:
+  - `docs/MODULAR_PROMPT_SYSTEM.md`
+  - `docs/ART_STYLE_PROMPT_CHUNKS.md`
+  - `docs/VISUAL_MOTIFS.md`
+- Core implementation lives in:
+  - `lib/ai/prompt-chunks.ts` – shared style/format/biome/essence/ability chunks
+  - `lib/ai/prompt-builder.ts` – `composeFishPrompt()` to turn fish data into a final string
+  - `lib/ai/fish-sprite-service.ts` – uses modular prompts when `fishData` is provided
+- Each fish contributes:
+  - `descriptionChunks`: modular descriptive phrases
+  - `visualMotif`: high-level visual theme
+  - `essence` + `EssenceData.visualChunks`: visual flavor tied to currencies
+
 ### AI Asset Generation
 - Supports multiple models through Vercel AI Gateway
 - Generates both fish sprites and underwater backgrounds
 - Returns base64 encoded images directly
-- Caches sprites in localStorage (never regenerate the same fish!)
+- Uses a cache key derived from the composed prompt to avoid regenerating identical fish
 - Falls back to procedural generation if API fails
 
 ### Dev Tools Features
