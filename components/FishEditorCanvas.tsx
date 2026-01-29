@@ -266,12 +266,12 @@ export default function FishEditorCanvas({
       console.error('Failed to load player fish sprite:', fish.sprite);
       playerRef.current.sprite = null;
     };
-    // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+    // For HTTP(S) sprites, use clean URL to allow browser caching; for data: URLs, use as-is
     if (fish.sprite.startsWith('data:')) {
       img.src = fish.sprite;
     } else {
-      const cleanUrl = fish.sprite.split('?')[0];
-      img.src = `${cleanUrl}?t=${Date.now()}`;
+      // Remove any existing query params to use clean URL for caching
+      img.src = fish.sprite.split('?')[0];
     }
   }
 
@@ -306,12 +306,12 @@ export default function FishEditorCanvas({
     img.onerror = () => {
       console.error('Failed to load AI fish sprite:', fish.sprite);
     };
-    // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+    // For HTTP(S) sprites, use clean URL to allow browser caching; for data: URLs, use as-is
     if (fish.sprite.startsWith('data:')) {
       img.src = fish.sprite;
     } else {
-      const cleanUrl = fish.sprite.split('?')[0];
-      img.src = `${cleanUrl}?t=${Date.now()}`;
+      // Remove any existing query params to use clean URL for caching
+      img.src = fish.sprite.split('?')[0];
     }
   }
 
@@ -512,12 +512,12 @@ export default function FishEditorCanvas({
       console.error('Failed to load player fish sprite');
       playerRef.current.sprite = null;
     };
-    // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+    // For HTTP(S) sprites, use clean URL to allow browser caching; for data: URLs, use as-is
     if (playerFishSprite.startsWith('data:')) {
       img.src = playerFishSprite;
     } else {
-      const cleanUrl = playerFishSprite.split('?')[0];
-      img.src = `${cleanUrl}?t=${Date.now()}`;
+      // Remove any existing query params to use clean URL for caching
+      img.src = playerFishSprite.split('?')[0];
     }
   }, [playerFishSprite]);
 
@@ -596,12 +596,12 @@ export default function FishEditorCanvas({
         img.onerror = () => {
           console.error('Failed to load fish sprite:', fishItem.id);
         };
-        // For HTTP(S) sprites, add cache buster; for data: URLs, use as-is
+        // For HTTP(S) sprites, use clean URL to allow browser caching; for data: URLs, use as-is
         if (fishItem.sprite.startsWith('data:')) {
           img.src = fishItem.sprite;
         } else {
-          const cleanUrl = fishItem.sprite.split('?')[0];
-          img.src = `${cleanUrl}?t=${Date.now()}`;
+          // Remove any existing query params to use clean URL for caching
+          img.src = fishItem.sprite.split('?')[0];
         }
       }
     });
@@ -664,10 +664,14 @@ export default function FishEditorCanvas({
       const player = playerRef.current;
       const isPaused = pausedRef.current;
 
-      // Calculate FPS
+      // Calculate delta time for frame-rate independent movement
       const currentTime = performance.now();
+      let deltaTime = 1; // Default to 1 for first frame (normalized to 60fps)
       if (lastFrameTimeRef.current > 0) {
         const frameDelta = currentTime - lastFrameTimeRef.current;
+        // Normalize delta time to 60fps (16.67ms per frame)
+        // This means all movement values work as if running at 60fps
+        deltaTime = Math.min(frameDelta / 16.67, 3); // Cap at 3x to prevent huge jumps
         frameTimesRef.current.push(frameDelta);
         if (frameTimesRef.current.length > 60) frameTimesRef.current.shift();
         if (frameTimesRef.current.length > 0) {
@@ -723,13 +727,16 @@ export default function FishEditorCanvas({
           player.vx = joystickVelocityRef.current.x * MAX_SPEED;
           player.vy = joystickVelocityRef.current.y * MAX_SPEED;
         } else {
-          // Keyboard control with acceleration and friction
-          if (hasKey('w') || hasKey('arrowup')) player.vy -= ACCELERATION;
-          if (hasKey('s') || hasKey('arrowdown')) player.vy += ACCELERATION;
-          if (hasKey('a') || hasKey('arrowleft')) player.vx -= ACCELERATION;
-          if (hasKey('d') || hasKey('arrowright')) player.vx += ACCELERATION;
-          player.vx *= FRICTION;
-          player.vy *= FRICTION;
+          // Keyboard control with acceleration and friction (delta-time adjusted)
+          const accel = ACCELERATION * deltaTime;
+          const friction = Math.pow(FRICTION, deltaTime); // Correct friction for variable framerate
+
+          if (hasKey('w') || hasKey('arrowup')) player.vy -= accel;
+          if (hasKey('s') || hasKey('arrowdown')) player.vy += accel;
+          if (hasKey('a') || hasKey('arrowleft')) player.vx -= accel;
+          if (hasKey('d') || hasKey('arrowright')) player.vx += accel;
+          player.vx *= friction;
+          player.vy *= friction;
         }
 
         let speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
@@ -739,8 +746,9 @@ export default function FishEditorCanvas({
           speed = MAX_SPEED;
         }
 
-        player.x += player.vx;
-        player.y += player.vy;
+        // Delta-time adjusted position update
+        player.x += player.vx * deltaTime;
+        player.y += player.vy * deltaTime;
       } else {
         // In edit mode, stop player movement
         player.vx = 0;
@@ -769,9 +777,10 @@ export default function FishEditorCanvas({
         player.chompPhase = 0;
       }
 
-      // Update hunger in game mode
+      // Update hunger in game mode (delta-time adjusted)
       if (gameMode && !isPaused) {
-        player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / HUNGER_FRAME_RATE));
+        // Hunger drain is per-second, so we divide by 60 (base framerate) and multiply by deltaTime
+        player.hunger = Math.max(0, player.hunger - (player.hungerDrainRate / HUNGER_FRAME_RATE) * deltaTime);
 
         // Check starvation death
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
@@ -965,8 +974,9 @@ export default function FishEditorCanvas({
       // Update AI fish (lock movement in edit mode or when paused)
       fishListRef.current.forEach((fish) => {
         if (!currentEditMode && !isPaused) {
-          fish.x += fish.vx;
-          fish.y += fish.vy;
+          // Delta-time adjusted position update
+          fish.x += fish.vx * deltaTime;
+          fish.y += fish.vy * deltaTime;
         } else {
           // Lock fish movement in edit mode
           fish.vx = 0;

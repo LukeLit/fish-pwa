@@ -106,17 +106,14 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
                       src={
                         creature.sprite.startsWith('data:')
                           ? creature.sprite
-                          : `${creature.sprite.split('?')[0]}?t=${Date.now()}`
+                          : creature.sprite.split('?')[0]
                       }
                       alt={creature.name}
                       className="w-full h-full object-contain"
                       onError={(e) => {
-                        // For HTTP(S) sprites, force reload with new cache buster
-                        if (!creature.sprite?.startsWith('data:')) {
-                          const img = e.currentTarget;
-                          const cleanUrl = img.src.split('?')[0];
-                          img.src = `${cleanUrl}?t=${Date.now()}`;
-                        }
+                        // On error, log and hide the broken image
+                        console.warn('Failed to load sprite for:', creature.id);
+                        e.currentTarget.style.display = 'none';
                       }}
                     />
                   )}

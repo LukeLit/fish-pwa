@@ -783,19 +783,13 @@ export default function FishEditOverlay({
                     editedFish.sprite
                       ? editedFish.sprite.startsWith('data:')
                         ? editedFish.sprite
-                        : `${editedFish.sprite.split('?')[0]}?t=${Date.now()}`
+                        : editedFish.sprite.split('?')[0]
                       : ''
                   }
                   alt="Current sprite"
                   className="max-w-full max-h-24 object-contain"
                   onError={(e) => {
                     console.error('[FishEditOverlay] Failed to load sprite:', editedFish.sprite);
-                    // For HTTP(S) sprites, try reloading with fresh cache buster
-                    if (editedFish.sprite && !editedFish.sprite.startsWith('data:')) {
-                      const img = e.currentTarget;
-                      const cleanUrl = img.src.split('?')[0];
-                      img.src = `${cleanUrl}?t=${Date.now()}`;
-                    }
                   }}
                 />
                 <button
