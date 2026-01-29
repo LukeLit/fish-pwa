@@ -14,6 +14,9 @@ import type { RunState } from './types';
 import { getCreature } from './data';
 import { computeEncounterSize } from './spawn-fish';
 
+/** Player starts smaller than their tier would suggest so more fish are eatable. */
+export const PLAYER_START_SIZE_MULT = 0.7;
+
 /**
  * Create a new run state with default values
  * 
@@ -40,12 +43,15 @@ export function createNewRunState(fishId: string): RunState | null {
     return null;
   }
 
+  const baseSize = computeEncounterSize({ creature, biomeId: creature.biomeId, levelNumber: 1 });
+  const startSize = Math.max(40, baseSize * PLAYER_START_SIZE_MULT);
+
   return {
     runId: `run_${Date.now()}_${crypto.randomUUID ? crypto.randomUUID().slice(0, 9) : Math.random().toString(36).substr(2, 9)}`,
     currentLevel: '1-1',
     selectedFishId: fishId,
     fishState: {
-      size: computeEncounterSize({ creature, biomeId: creature.biomeId, levelNumber: 1 }),
+      size: startSize,
       speed: creature.stats.speed,
       health: creature.stats.health,
       damage: creature.stats.damage,
@@ -59,7 +65,7 @@ export function createNewRunState(fishId: string): RunState | null {
     stats: {
       fishEaten: 0,
       timeSurvived: 0,
-      maxSize: computeEncounterSize({ creature, biomeId: creature.biomeId, levelNumber: 1 }),
+      maxSize: startSize,
     },
   };
 }

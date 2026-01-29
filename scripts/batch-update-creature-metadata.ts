@@ -74,9 +74,12 @@ async function main() {
     const sizeTier = parsed
       ? (parsed.sizeTier as 'prey' | 'mid' | 'predator' | 'boss')
       : inferSizeTierFromStats(creature);
+    const canAppearIn: string[] = parsed
+      ? [parsed.biome]
+      : (creature.spawnRules?.canAppearIn ?? [creature.biomeId].filter((b): b is string => Boolean(b)));
     const spawnRules = {
       ...creature.spawnRules,
-      canAppearIn: parsed ? [parsed.biome] : creature.spawnRules?.canAppearIn ?? [creature.biomeId].filter(Boolean),
+      canAppearIn,
       spawnWeight: creature.spawnRules?.spawnWeight ?? 10,
     };
 

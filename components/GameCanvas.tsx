@@ -11,7 +11,8 @@ import {
   loadRunState,
   saveRunState,
   createNewRunState,
-  clearRunState
+  clearRunState,
+  PLAYER_START_SIZE_MULT,
 } from '@/lib/game/run-state';
 import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { getCreaturesByBiome, getBlobCreaturesByBiome, getCreatureById } from '@/lib/game/data/creatures';
@@ -64,7 +65,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
         // Calculate level-based difficulty
         const duration = 60000 + (level.levelNum - 1) * 15000; // 60s, 75s, 90s
-        const fishCount = 10 + (level.levelNum - 1) * 5; // 10, 15, 20
+        const fishCount = 18 + (level.levelNum - 1) * 4; // 18, 22, 26 to avoid running out
         setLevelDuration(duration);
 
         // Load background
@@ -93,12 +94,19 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           if (blobCreature?.sprite) {
             playerSprite = blobCreature.sprite;
 
-            // Sync run state with this creature (stats + sprite)
+            // Sync run state: use tier-scaled size * player start mult so player starts smaller
+            const baseSize = computeEncounterSize({
+              creature: blobCreature,
+              biomeId: blobCreature.biomeId,
+              levelNumber: 1,
+            });
+            const startSize = Math.max(40, baseSize * PLAYER_START_SIZE_MULT);
+
             const updatedRunState: RunState = {
               ...currentRunState,
               selectedFishId,
               fishState: {
-                size: blobCreature.stats.size,
+                size: startSize,
                 speed: blobCreature.stats.speed,
                 health: blobCreature.stats.health,
                 damage: blobCreature.stats.damage,

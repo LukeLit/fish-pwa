@@ -402,6 +402,14 @@ export default function FishEditorCanvas({
     creatureData?: Creature;
   }>>([]);
 
+  /** Cache processed sprites by creature id for respawn (game mode). */
+  const spriteCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
+  const spawnPoolRef = useRef<Creature[]>([]);
+  const lastRespawnTimeRef = useRef(0);
+  const MAX_FISH_IN_WORLD = 28;
+  const RESPAWN_INTERVAL_MS = 3500;
+
   const keyKeysRef = useRef<Set<string>>(new Set());
   const joystickVelocityRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const joystickActiveRef = useRef<boolean>(false);
@@ -523,10 +531,14 @@ export default function FishEditorCanvas({
     });
   }, [fishData]);
 
-  // Spawn new fish using full Creature data when available, or legacy format
+  // Spawn new fish using full Creature data when available, or legacy format.
+  // Also sync spawn pool and sprite cache for continuous respawn in game mode.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Keep spawn pool in sync for respawn (use full list so weighting matches initial spawn)
+    spawnPoolRef.current = spawnedFish.length ? [...spawnedFish] : [];
 
     spawnedFish.forEach((fishItem) => {
       if (eatenIdsRef.current.has(fishItem.id)) return;
@@ -535,6 +547,8 @@ export default function FishEditorCanvas({
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           const processedSprite = removeBackground(img, chromaToleranceRef.current);
+          // Cache by creature id for respawn in game mode
+          spriteCacheRef.current.set(fishItem.id, processedSprite);
 
           // Check if this is a full Creature object or legacy format
           let fishSize: number;
@@ -593,7 +607,7 @@ export default function FishEditorCanvas({
     });
 
     fishListRef.current = fishListRef.current.filter((fish) =>
-      spawnedFish.find((f) => f.id === fish.id)
+      spawnedFish.find((f) => f.id === fish.id) || fish.id.includes('-r-')
     );
     // Clear eaten set when user clears all fish
     if (spawnedFish.length === 0) eatenIdsRef.current.clear();
@@ -889,6 +903,43 @@ export default function FishEditorCanvas({
         b.life -= 0.007;
         return b.life > 0;
       });
+
+      // Game mode: continuous respawn so player doesn't run out of prey
+      if (gameMode && spawnPoolRef.current.length > 0) {
+        const pool = spawnPoolRef.current;
+        const now = performance.now();
+        if (
+          now - lastRespawnTimeRef.current >= RESPAWN_INTERVAL_MS &&
+          fishListRef.current.length < MAX_FISH_IN_WORLD
+        ) {
+          const creature = pool[Math.floor(Math.random() * pool.length)];
+          const sprite = spriteCacheRef.current.get(creature.id);
+          if (sprite && canvas) {
+            const fishSize = isCreature(creature) ? creature.stats.size : 60;
+            const baseSpeed = isCreature(creature) ? (creature.stats.speed ?? 2) : 2;
+            const speedScale = 0.1;
+            const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
+            const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
+            const bounds = worldBoundsRef.current;
+            const newFish = {
+              id: `${creature.id}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              x: bounds.minX + Math.random() * (bounds.maxX - bounds.minX),
+              y: bounds.minY + Math.random() * (bounds.maxY - bounds.minY),
+              vx,
+              vy,
+              size: fishSize,
+              sprite,
+              type: isCreature(creature) ? creature.type : 'prey',
+              facingRight: vx >= 0,
+              verticalTilt: 0,
+              animTime: Math.random() * Math.PI * 2,
+              creatureData: isCreature(creature) ? creature : undefined,
+            };
+            fishListRef.current.push(newFish);
+          }
+          lastRespawnTimeRef.current = now;
+        }
+      }
 
       // Game mode: constrain to world bounds, else wrap around screen
       if (gameMode) {
