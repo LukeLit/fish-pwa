@@ -255,8 +255,10 @@ export default function FishEditorCanvas({
     img.onload = () => {
       const processedSprite = removeBackground(img, chromaToleranceRef.current);
       const spawned = spawnFishFromData(fish, { isPlayer: true });
+      // Preserve baseSize for scoring while using spawned size as baseline
       playerRef.current = {
         ...spawned,
+        baseSize: spawned.size,
         sprite: processedSprite,
       };
     };
