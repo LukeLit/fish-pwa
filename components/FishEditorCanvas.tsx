@@ -405,7 +405,7 @@ export default function FishEditorCanvas({
   /** Cache processed sprites by creature id for respawn (game mode). */
   const spriteCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
-  const spawnPoolRef = useRef<Creature[]>([]);
+  const spawnPoolRef = useRef<(Creature | { id: string; sprite: string; type: string })[]>([]);
   const lastRespawnTimeRef = useRef(0);
   const MAX_FISH_IN_WORLD = 28;
   const RESPAWN_INTERVAL_MS = 3500;
