@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { hasActiveRun } from '@/lib/game/run-state';
+import FeedbackButton from './FeedbackButton';
 
 export default function MetaHub() {
   const [hasRun, setHasRun] = useState(false);
@@ -176,6 +177,11 @@ export default function MetaHub() {
             </div>
           </div>
         )}
+
+        {/* Feedback Button */}
+        <div className="flex justify-center mt-6">
+          <FeedbackButton variant="icon" />
+        </div>
       </div>
     </div>
   );

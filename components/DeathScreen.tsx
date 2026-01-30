@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadPlayerState, savePlayerState, addEvoPoints, updateHighScore } from '@/lib/game/player-state';
+import FeedbackButton from './FeedbackButton';
 
 export interface DeathStats {
   cause: 'starved' | 'eaten';
@@ -161,6 +162,11 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
         >
           Return to Main Menu
         </button>
+
+        {/* Feedback Button */}
+        <div className="flex justify-center">
+          <FeedbackButton variant="icon" />
+        </div>
       </div>
     </div>
   );
