@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import FeedbackButton from './FeedbackButton';
+import { UIButton, UIPanel, UICard } from './ui';
 
 interface DigestionScreenProps {
   collectedEssence: Record<string, number>;
@@ -97,7 +98,7 @@ export default function DigestionScreen({
 
   return (
     <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
-      <div className="dv-card dv-card-cyan p-6 sm:p-8 max-w-3xl w-full animate-scale-in">
+      <UIPanel variant="cyan" size="lg" className="max-w-3xl w-full animate-scale-in">
         {/* Header */}
         <h1 className="text-3xl sm:text-4xl md:text-5xl dv-title mb-6 sm:mb-8 text-center animate-glow-pulse">
           DIGESTION SEQUENCE
@@ -107,9 +108,10 @@ export default function DigestionScreen({
         <div className="mb-6 sm:mb-8 space-y-3 animate-slide-in">
           <h2 className="text-xl sm:text-2xl dv-subtitle mb-3 sm:mb-4">Essence Collected:</h2>
           {Object.entries(collectedEssence).map(([type, amount], index) => (
-            <div
+            <UICard
               key={type}
-              className="flex justify-between items-center bg-black/80 rounded-lg px-4 sm:px-6 py-3 sm:py-4 border-4 border-cyan-600 dv-glow-cyan animate-slide-in"
+              variant="cyan"
+              className="flex justify-between items-center animate-slide-in"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               <span 
@@ -119,7 +121,7 @@ export default function DigestionScreen({
                 {getEssenceName(type)}
               </span>
               <span className="text-white font-bold text-xl sm:text-2xl">{amount}</span>
-            </div>
+            </UICard>
           ))}
         </div>
 
@@ -130,13 +132,11 @@ export default function DigestionScreen({
               Level-Ups Available:
             </h2>
             {levelUps.map((levelUp, index) => (
-              <div 
+              <UICard 
                 key={levelUp.essenceType}
-                className="dv-card-black rounded-lg p-4 sm:p-6 border-4 border-yellow-500 animate-slide-in"
-                style={{ 
-                  animationDelay: `${(index + 0.4) * 0.1}s`,
-                  boxShadow: '0 0 25px rgba(234, 179, 8, 0.5)'
-                }}
+                variant="yellow"
+                className="animate-slide-in p-4 sm:p-6"
+                style={{ animationDelay: `${(index + 0.4) * 0.1}s` }}
               >
                 <div className="mb-4">
                   <p className="text-white text-sm sm:text-base font-semibold">
@@ -156,50 +156,48 @@ export default function DigestionScreen({
                     const key = `${levelUp.essenceType}_${i}`;
                     const collected = collectedLevelUps.has(key);
                     return (
-                      <button
+                      <UIButton
                         key={key}
+                        variant={collected ? "disabled" : "warning"}
+                        size="sm"
                         onClick={() => handleCollectLevelUp(levelUp.essenceType, i)}
                         disabled={collected}
-                        className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-bold text-sm sm:text-base transition-all transform border-4 ${
-                          collected
-                            ? 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black border-yellow-300 hover:scale-110 animate-pulse'
-                        }`}
+                        className={collected ? '' : 'animate-pulse'}
                       >
                         {collected ? '✓ Collected' : `🎁 Level-Up +1`}
-                      </button>
+                      </UIButton>
                     );
                   })}
                 </div>
-              </div>
+              </UICard>
             ))}
           </div>
         )}
 
         {/* No level-ups message */}
         {levelUps.length === 0 && (
-          <div className="mb-6 sm:mb-8 dv-card-black rounded-lg p-6 sm:p-8 border-4 border-gray-600 text-center animate-scale-in">
+          <UICard variant="default" className="mb-6 sm:mb-8 text-center animate-scale-in">
             <p className="text-gray-300 text-lg sm:text-xl font-semibold">
               Not enough essence for any level-ups.
             </p>
             <p className="text-cyan-400 text-sm sm:text-base mt-3 font-semibold">
               Collect {LEVEL_UP_THRESHOLD} essence to earn a level-up!
             </p>
-          </div>
+          </UICard>
         )}
 
         {/* Continue Button */}
         {showContinue && (
-          <button
+          <UIButton
+            variant="secondary"
+            size="lg"
+            fullWidth
             onClick={onComplete}
-            className="w-full dv-button bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white border-cyan-300 text-lg sm:text-xl py-4 sm:py-5 animate-scale-in"
-            style={{ 
-              animationDelay: '0.5s',
-              boxShadow: '0 0 30px rgba(34, 211, 238, 0.6)'
-            }}
+            className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 border-cyan-300 animate-scale-in"
+            style={{ animationDelay: '0.5s' }}
           >
             CONTINUE
-          </button>
+          </UIButton>
         )}
 
         {/* Instructions */}
@@ -213,7 +211,7 @@ export default function DigestionScreen({
         <div className="flex justify-center mt-4">
           <FeedbackButton variant="icon" />
         </div>
-      </div>
+      </UIPanel>
     </div>
   );
 }
