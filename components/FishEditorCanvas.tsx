@@ -187,11 +187,17 @@ export default function FishEditorCanvas({
         fishListRef.current[existingIndex] = {
           ...aiFish,
           sprite: processedSprite,
+          // Preserve spawn animation state if exists
+          spawnTime: fishListRef.current[existingIndex].spawnTime,
+          opacity: fishListRef.current[existingIndex].opacity,
         };
       } else {
         fishListRef.current.push({
           ...aiFish,
           sprite: processedSprite,
+          // Spawn animation
+          spawnTime: performance.now(),
+          opacity: 0,
         });
       }
     };
@@ -242,10 +248,10 @@ export default function FishEditorCanvas({
   const frameTimesRef = useRef<number[]>([]);
   const cameraRef = useRef({ x: 0, y: 0 });
   const worldBoundsRef = useRef({
-    minX: -3000,
-    maxX: 3000,
-    minY: -2500,
-    maxY: 2500,
+    minX: -1500,
+    maxX: 1500,
+    minY: -1200,
+    maxY: 1200,
   });
 
   // Game state
@@ -294,15 +300,21 @@ export default function FishEditorCanvas({
     verticalTilt: number;
     animTime: number;
     creatureData?: Creature;
+    // Spawn animation properties
+    spawnTime?: number; // When fish spawned (for fade-in)
+    opacity?: number;   // Current opacity (0-1)
   }>>([]);
+
+  // Spawn animation constants
+  const SPAWN_FADE_DURATION = 1500; // ms to fully fade in (collision enables when fully opaque)
 
   /** Cache processed sprites by creature id for respawn (game mode). */
   const spriteCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
   const spawnPoolRef = useRef<(Creature | { id: string; sprite: string; type: string })[]>([]);
   const lastRespawnTimeRef = useRef(0);
-  const MAX_FISH_IN_WORLD = 40;
-  const RESPAWN_INTERVAL_MS = 3500;
+  const MAX_FISH_IN_WORLD = 45;
+  const RESPAWN_INTERVAL_MS = 2000; // Faster respawn to populate world
 
   const keyKeysRef = useRef<Set<string>>(new Set());
   const joystickVelocityRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -677,21 +689,25 @@ export default function FishEditorCanvas({
           const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
           const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
 
-          // Spawn fish at least MIN_SPAWN_DISTANCE away from player
-          const MIN_SPAWN_DISTANCE = 350;
-          let spawnX, spawnY;
-          let attempts = 0;
+          // Spawn fish at a safe distance from player, swimming inward
           const playerPos = playerRef.current;
+          const bounds = worldBoundsRef.current;
+          const MIN_SPAWN_DIST = 400; // Spawn off-screen
 
-          do {
-            spawnX = Math.random() * canvas.width;
-            spawnY = Math.random() * canvas.height;
-            const distToPlayer = Math.sqrt(
-              Math.pow(spawnX - playerPos.x, 2) + Math.pow(spawnY - playerPos.y, 2)
-            );
-            attempts++;
-            if (distToPlayer >= MIN_SPAWN_DISTANCE || attempts > 10) break;
-          } while (true);
+          // Random angle and spawn at edge of play area
+          const angle = Math.random() * Math.PI * 2;
+          const distance = MIN_SPAWN_DIST + Math.random() * 300;
+          let spawnX = playerPos.x + Math.cos(angle) * distance;
+          let spawnY = playerPos.y + Math.sin(angle) * distance;
+
+          // Clamp to world bounds
+          spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
+          spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
+
+          // Stagger spawn times to avoid performance spike
+          // Each fish spawns 100-200ms after the previous one
+          const spawnIndex = fishListRef.current.length;
+          const staggerDelay = spawnIndex * (100 + Math.random() * 100);
 
           const newFish = {
             id: fishItem.id,
@@ -707,6 +723,9 @@ export default function FishEditorCanvas({
             animTime: Math.random() * Math.PI * 2,
             // Store creature metadata if available
             creatureData,
+            // Spawn animation - staggered to reduce initial load
+            spawnTime: performance.now() + staggerDelay,
+            opacity: 0,
           };
           fishListRef.current.push(newFish);
         });
@@ -981,6 +1000,12 @@ export default function FishEditorCanvas({
 
       for (let idx = fishListRef.current.length - 1; idx >= 0; idx--) {
         const fish = fishListRef.current[idx];
+
+        // Skip collision for fish still fading in (not fully opaque yet)
+        if ((fish.opacity ?? 1) < 1) {
+          continue;
+        }
+
         const fishHead = getHeadPosition(fish);
         const fishHeadR = fish.size * 0.25; // Smaller head hitbox
 
@@ -1121,20 +1146,16 @@ export default function FishEditorCanvas({
             const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
             const bounds = worldBoundsRef.current;
 
-            // Spawn fish at least MIN_SPAWN_DISTANCE away from player
-            const MIN_SPAWN_DISTANCE = 400;
-            let spawnX, spawnY;
-            let attempts = 0;
+            // Respawn at edge of visible area, swimming inward
+            const MIN_SPAWN_DIST = 500; // Off-screen
+            const angle = Math.random() * Math.PI * 2;
+            const distance = MIN_SPAWN_DIST + Math.random() * 200;
+            let spawnX = player.x + Math.cos(angle) * distance;
+            let spawnY = player.y + Math.sin(angle) * distance;
 
-            do {
-              spawnX = bounds.minX + Math.random() * (bounds.maxX - bounds.minX);
-              spawnY = bounds.minY + Math.random() * (bounds.maxY - bounds.minY);
-              const distToPlayer = Math.sqrt(
-                Math.pow(spawnX - player.x, 2) + Math.pow(spawnY - player.y, 2)
-              );
-              attempts++;
-              if (distToPlayer >= MIN_SPAWN_DISTANCE || attempts > 10) break;
-            } while (true);
+            // Clamp to bounds
+            spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
+            spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
 
             const newFish = {
               id: `${creature.id}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -1149,6 +1170,9 @@ export default function FishEditorCanvas({
               verticalTilt: 0,
               animTime: Math.random() * Math.PI * 2,
               creatureData: isCreature(creature) ? creature : undefined,
+              // Spawn animation
+              spawnTime: now,
+              opacity: 0,
             };
             fishListRef.current.push(newFish);
           }
@@ -1191,6 +1215,15 @@ export default function FishEditorCanvas({
 
       // Update AI fish (lock movement in edit mode or when paused)
       fishListRef.current.forEach((fish) => {
+        // Update spawn fade-in opacity (handles staggered spawn times)
+        if (fish.spawnTime !== undefined) {
+          const elapsed = now - fish.spawnTime;
+          // Clamp to 0-1 range (negative elapsed = fish hasn't "spawned" yet)
+          fish.opacity = Math.max(0, Math.min(1, elapsed / SPAWN_FADE_DURATION));
+        } else {
+          fish.opacity = 1; // Legacy fish without spawnTime
+        }
+
         if (!currentEditMode && !isPaused) {
           // Delta-time adjusted position update
           fish.x += fish.vx * deltaTime;
@@ -1471,12 +1504,18 @@ export default function FishEditorCanvas({
       // Draw AI fish with LOD based on screen-space size
       const buttonPositions = new Map<string, { x: number; y: number; size: number }>();
       fishListRef.current.forEach((fish) => {
+        const fishOpacity = fish.opacity ?? 1;
+
         if (fish.sprite) {
           const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
 
           // Calculate screen-space size for smooth LOD
           const screenSize = fish.size * currentZoom;
           const segments = getSegmentsSmooth(screenSize);
+
+          // Apply spawn fade-in opacity
+          ctx.save();
+          ctx.globalAlpha = fishOpacity;
 
           drawFishWithDeformation(
             ctx,
@@ -1493,11 +1532,15 @@ export default function FishEditorCanvas({
               segments
             }
           );
+          ctx.restore();
         } else {
+          ctx.save();
+          ctx.globalAlpha = fishOpacity;
           ctx.fillStyle = fish.type === 'prey' ? '#4ade80' : fish.type === 'predator' ? '#f87171' : '#a78bfa';
           ctx.beginPath();
           ctx.arc(fish.x, fish.y, fish.size / 2, 0, Math.PI * 2);
           ctx.fill();
+          ctx.restore();
         }
 
         // Store position for edit button
@@ -1683,19 +1726,22 @@ export default function FishEditorCanvas({
         const timeLeft = Math.max(0, Math.ceil((levelDuration - elapsed) / 1000));
 
         // Stats panel - bottom left corner
-        const statsY = canvas.height - 80;
+        const fishCount = fishListRef.current.length;
+        const statsY = canvas.height - 90;
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(10, statsY, 120, 70);
+        ctx.fillRect(10, statsY, 130, 80);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(10, statsY, 120, 70);
+        ctx.strokeRect(10, statsY, 130, 80);
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.font = 'bold 14px monospace';
-        ctx.fillText(`Score: ${scoreRef.current}`, 20, statsY + 20);
-        ctx.fillText(`Size: ${Math.floor(player.size)}`, 20, statsY + 40);
-        ctx.fillText(`Time: ${timeLeft}s`, 20, statsY + 60);
+        ctx.font = 'bold 13px monospace';
+        ctx.fillText(`Score: ${scoreRef.current}`, 20, statsY + 18);
+        ctx.fillText(`Size: ${Math.floor(player.size)}`, 20, statsY + 36);
+        ctx.fillText(`Time: ${timeLeft}s`, 20, statsY + 54);
+        ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';
+        ctx.fillText(`Fish: ${fishCount}`, 20, statsY + 72);
         ctx.restore();
 
         // Hunger Meter - centered at top, below the React HUD buttons
@@ -1745,6 +1791,20 @@ export default function FishEditorCanvas({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(`HUNGER: ${Math.ceil(player.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
+
+        // Timer display - underneath hunger meter
+        const timerY = hungerBarY + hungerBarHeight + 12;
+        ctx.font = 'bold 20px monospace';
+
+        // Flash yellow when 10 seconds or less
+        if (timeLeft <= 10) {
+          const flash = Math.sin(Date.now() * 0.01) > 0;
+          ctx.fillStyle = flash ? '#fbbf24' : '#ffffff'; // Yellow / White flash
+        } else {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        }
+
+        ctx.fillText(`${timeLeft}s`, canvas.width / 2, timerY);
 
         ctx.restore();
       }
