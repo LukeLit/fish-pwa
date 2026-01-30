@@ -84,8 +84,12 @@ export async function generateCreatureClip(
       await sleep(5000); // Wait 5 seconds between polls
 
       try {
-        // Poll job status and trigger processing
-        const pollResponse = await fetch(`/api/jobs/clip-generation?jobId=${encodeURIComponent(jobId)}`);
+        // Every 3rd poll, trigger processing (every 15 seconds)
+        // Other polls are read-only to avoid race conditions
+        const shouldProcess = attempts % 3 === 0;
+        const url = `/api/jobs/clip-generation?jobId=${encodeURIComponent(jobId)}${shouldProcess ? '&process=true' : ''}`;
+        
+        const pollResponse = await fetch(url);
 
         if (!pollResponse.ok) {
           console.error('[ClipGenerator] Poll HTTP error:', pollResponse.status);

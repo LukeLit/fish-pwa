@@ -12,6 +12,10 @@ import { uploadAsset } from '@/lib/storage/blob-storage';
 import type { ClipGenerationJob } from '@/lib/jobs/types';
 import type { ClipAction } from '@/lib/game/types';
 
+// Simple in-memory lock to prevent concurrent processing of the same job
+// Note: This only works within a single serverless instance, but helps reduce race conditions
+const processingJobs = new Set<string>();
+
 /**
  * Action-specific prompts for different animations
  */
@@ -146,26 +150,21 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET - Process/poll a clip generation job
- * This can be called by client polling or cron job
+ * GET - Poll job status or process jobs
+ * 
+ * Query params:
+ * - jobId: Get status of a specific job (read-only by default)
+ * - process=true: Also process the job (poll Google API, download video, etc.)
+ * - processAll=true: Process all pending jobs (for cron)
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const jobId = searchParams.get('jobId');
+    const shouldProcess = searchParams.get('process') === 'true';
     const processAll = searchParams.get('processAll') === 'true';
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-
-    // Process a specific job
+    // Poll a specific job's status (read-only unless process=true)
     if (jobId) {
       const job = await getJob(jobId);
       if (!job || job.type !== 'clip_generation') {
@@ -175,12 +174,35 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const result = await processClipJob(ai, job as ClipGenerationJob);
-      return NextResponse.json({ success: true, job: result });
+      // If process=true, also process the job
+      if (shouldProcess) {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+          return NextResponse.json(
+            { error: 'GEMINI_API_KEY not configured' },
+            { status: 500 }
+          );
+        }
+        const ai = new GoogleGenAI({ apiKey });
+        const result = await processClipJob(ai, job as ClipGenerationJob);
+        return NextResponse.json({ success: true, job: result });
+      }
+
+      // Read-only: just return current status
+      return NextResponse.json({ success: true, job });
     }
 
     // Process all pending/processing jobs (for cron)
     if (processAll) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json(
+          { error: 'GEMINI_API_KEY not configured' },
+          { status: 500 }
+        );
+      }
+      const ai = new GoogleGenAI({ apiKey });
+
       const { getJobsByStatus } = await import('@/lib/jobs/job-store');
       const processingJobs = await getJobsByStatus('processing');
       const clipJobs = processingJobs.filter(j => j.type === 'clip_generation') as ClipGenerationJob[];
@@ -225,6 +247,31 @@ async function processClipJob(
   if (job.status === 'completed' || job.status === 'failed') {
     return job;
   }
+
+  // Check if this job is already being processed (in-memory lock)
+  if (processingJobs.has(job.id)) {
+    console.log(`[ClipJob] Job ${job.id} is already being processed, skipping`);
+    return job;
+  }
+
+  // Acquire lock
+  processingJobs.add(job.id);
+  
+  try {
+    return await doProcessClipJob(ai, job);
+  } finally {
+    // Release lock
+    processingJobs.delete(job.id);
+  }
+}
+
+/**
+ * Internal processing logic (called with lock held)
+ */
+async function doProcessClipJob(
+  ai: GoogleGenAI,
+  job: ClipGenerationJob
+): Promise<ClipGenerationJob> {
 
   // Need operation ID to poll
   if (!job.operationId) {

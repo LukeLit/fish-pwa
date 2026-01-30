@@ -55,35 +55,60 @@ export async function createJob<T extends AnyJob>(job: Omit<T, 'createdAt' | 'up
 }
 
 /**
- * Update a job
+ * Update a job with retry logic
  */
 export async function updateJob<T extends AnyJob>(
   jobId: string,
-  updates: Partial<T>
+  updates: Partial<T>,
+  maxRetries: number = 3
 ): Promise<T | null> {
-  const jobs = await downloadGameData<Record<string, AnyJob>>(JOBS_KEY, {});
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const jobs = await downloadGameData<Record<string, AnyJob>>(JOBS_KEY, {});
 
-  if (!jobs[jobId]) {
-    console.error(`[JobStore] Job ${jobId} not found`);
-    return null;
+      if (!jobs[jobId]) {
+        console.error(`[JobStore] Job ${jobId} not found (attempt ${attempt + 1})`);
+        // If job not found, might be a stale read - retry
+        if (attempt < maxRetries - 1) {
+          await sleep(100 * (attempt + 1)); // Exponential backoff
+          continue;
+        }
+        return null;
+      }
+
+      const updatedJob = {
+        ...jobs[jobId],
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      } as T;
+
+      // Set completedAt if status is changing to completed or failed
+      if ((updates.status === 'completed' || updates.status === 'failed') && !updatedJob.completedAt) {
+        updatedJob.completedAt = new Date().toISOString();
+      }
+
+      jobs[jobId] = updatedJob;
+      await uploadGameData(JOBS_KEY, jobs);
+
+      console.log(`[JobStore] Updated job ${jobId}: status=${updatedJob.status}`);
+      return updatedJob;
+    } catch (error: any) {
+      lastError = error;
+      console.error(`[JobStore] Update error for ${jobId} (attempt ${attempt + 1}):`, error.message);
+      if (attempt < maxRetries - 1) {
+        await sleep(100 * (attempt + 1));
+      }
+    }
   }
 
-  const updatedJob = {
-    ...jobs[jobId],
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  } as T;
+  console.error(`[JobStore] Failed to update job ${jobId} after ${maxRetries} attempts:`, lastError?.message);
+  return null;
+}
 
-  // Set completedAt if status is changing to completed or failed
-  if ((updates.status === 'completed' || updates.status === 'failed') && !updatedJob.completedAt) {
-    updatedJob.completedAt = new Date().toISOString();
-  }
-
-  jobs[jobId] = updatedJob;
-  await uploadGameData(JOBS_KEY, jobs);
-
-  console.log(`[JobStore] Updated job ${jobId}: status=${updatedJob.status}`);
-  return updatedJob;
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
