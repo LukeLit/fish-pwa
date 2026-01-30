@@ -90,19 +90,35 @@ export async function POST(request: NextRequest) {
     console.log(`[ClipJob] Prompt: ${prompt.substring(0, 100)}...`);
     console.log(`[ClipJob] Sprite URL: ${spriteUrl.substring(0, 100)}...`);
 
-    // Validate sprite URL is accessible
+    // Download the sprite image and convert to bytes for the API
+    let imageBytes: string;
+    let imageMimeType: string = 'image/png';
+
     try {
-      const spriteCheck = await fetch(spriteUrl, { method: 'HEAD' });
-      if (!spriteCheck.ok) {
-        throw new Error(`Sprite URL not accessible: ${spriteCheck.status}`);
+      console.log(`[ClipJob] Downloading sprite from: ${spriteUrl.substring(0, 100)}...`);
+      const spriteResponse = await fetch(spriteUrl);
+      if (!spriteResponse.ok) {
+        throw new Error(`Sprite URL not accessible: ${spriteResponse.status}`);
       }
-      console.log(`[ClipJob] Sprite URL validated`);
+
+      // Get the content type
+      const contentType = spriteResponse.headers.get('content-type');
+      if (contentType) {
+        imageMimeType = contentType.split(';')[0].trim();
+      }
+
+      // Convert to base64
+      const arrayBuffer = await spriteResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      imageBytes = buffer.toString('base64');
+
+      console.log(`[ClipJob] Sprite downloaded: ${buffer.length} bytes, type: ${imageMimeType}`);
     } catch (spriteError: any) {
-      console.error(`[ClipJob] Sprite validation failed:`, spriteError.message);
+      console.error(`[ClipJob] Sprite download failed:`, spriteError.message);
       return NextResponse.json({
         success: false,
         jobId,
-        error: `Sprite URL not accessible: ${spriteError.message}`,
+        error: `Failed to download sprite: ${spriteError.message}`,
       }, { status: 400 });
     }
 
@@ -110,13 +126,19 @@ export async function POST(request: NextRequest) {
     const ai = new GoogleGenAI({ apiKey });
 
     try {
-      // Use any type to bypass SDK type limitations
+      // Use image-to-video: pass the sprite as the starting frame
+      // This ensures the generated video animates FROM the actual sprite
       const requestConfig: any = {
         model: 'veo-3.1-generate-preview',
         prompt,
-        referenceImages: [spriteUrl],
+        // Use 'image' parameter for image-to-video generation
+        // This makes the sprite the first frame that gets animated
+        image: {
+          imageBytes: imageBytes,
+          mimeType: imageMimeType,
+        },
       };
-      console.log(`[ClipJob] Calling Gemini video API...`);
+      console.log(`[ClipJob] Calling Gemini video API with image-to-video...`);
       const operation = await ai.models.generateVideos(requestConfig);
       console.log(`[ClipJob] Gemini response: operation name=${operation?.name}`);
 
@@ -378,7 +400,7 @@ async function doProcessClipJob(
           const separator = videoUri.includes('?') ? '&' : '?';
           downloadUrl = `${videoUri}${separator}key=${apiKey}`;
         }
-        
+
         console.log(`[ClipJob] Downloading video from: ${downloadUrl.substring(0, 100)}...`);
         const videoResponse = await fetch(downloadUrl);
         if (!videoResponse.ok) {

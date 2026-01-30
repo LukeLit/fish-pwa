@@ -41,7 +41,7 @@ function sleep(ms: number): Promise<void> {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   console.log('[DirectClip] Starting direct clip generation...');
-  
+
   try {
     const body = await request.json();
     const { creatureId, action, spriteUrl, description } = body;
@@ -81,19 +81,35 @@ export async function POST(request: NextRequest) {
     console.log(`[DirectClip] Prompt: ${prompt.substring(0, 100)}...`);
     console.log(`[DirectClip] Sprite URL: ${spriteUrl.substring(0, 80)}...`);
 
-    // Validate sprite URL
+    // Download the sprite image and convert to bytes for the API
+    let imageBytes: string;
+    let imageMimeType: string = 'image/png';
+
     try {
-      const spriteCheck = await fetch(spriteUrl, { method: 'HEAD' });
-      if (!spriteCheck.ok) {
+      console.log(`[DirectClip] Downloading sprite from: ${spriteUrl.substring(0, 80)}...`);
+      const spriteResponse = await fetch(spriteUrl);
+      if (!spriteResponse.ok) {
         return NextResponse.json(
-          { error: `Sprite URL not accessible: ${spriteCheck.status}` },
+          { error: `Sprite URL not accessible: ${spriteResponse.status}` },
           { status: 400 }
         );
       }
-      console.log('[DirectClip] Sprite URL validated');
+
+      // Get the content type
+      const contentType = spriteResponse.headers.get('content-type');
+      if (contentType) {
+        imageMimeType = contentType.split(';')[0].trim();
+      }
+
+      // Convert to base64
+      const arrayBuffer = await spriteResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      imageBytes = buffer.toString('base64');
+
+      console.log(`[DirectClip] Sprite downloaded: ${buffer.length} bytes, type: ${imageMimeType}`);
     } catch (spriteError: any) {
       return NextResponse.json(
-        { error: `Sprite validation failed: ${spriteError.message}` },
+        { error: `Failed to download sprite: ${spriteError.message}` },
         { status: 400 }
       );
     }
@@ -101,14 +117,20 @@ export async function POST(request: NextRequest) {
     // Initialize Gemini
     const ai = new GoogleGenAI({ apiKey });
 
-    // Start video generation
-    console.log('[DirectClip] Starting Gemini video generation...');
+    // Start video generation with image-to-video
+    // Using the 'image' parameter makes the sprite the first frame
+    console.log('[DirectClip] Starting Gemini video generation with image-to-video...');
     const requestConfig: any = {
       model: 'veo-3.1-generate-preview',
       prompt,
-      referenceImages: [spriteUrl],
+      // Use 'image' parameter for image-to-video generation
+      // This animates FROM the actual sprite as the first frame
+      image: {
+        imageBytes: imageBytes,
+        mimeType: imageMimeType,
+      },
     };
-    
+
     const operation = await ai.models.generateVideos(requestConfig);
     console.log(`[DirectClip] Operation started: ${operation?.name}`);
 
@@ -125,7 +147,7 @@ export async function POST(request: NextRequest) {
     let pollAttempt = 0;
 
     console.log('[DirectClip] Polling for completion...');
-    
+
     while (pollAttempt < maxPollAttempts) {
       await sleep(5000); // Wait 5 seconds between polls
       pollAttempt++;
@@ -133,7 +155,7 @@ export async function POST(request: NextRequest) {
       // Direct REST API call to check operation status
       const pollUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`;
       const pollResponse = await fetch(pollUrl);
-      
+
       if (!pollResponse.ok) {
         console.error(`[DirectClip] Poll failed: ${pollResponse.status}`);
         continue;
@@ -152,7 +174,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Extract video URL
-        const videoUri = 
+        const videoUri =
           pollData.response?.generatedVideos?.[0]?.video?.uri ||
           pollData.result?.videos?.[0]?.uri ||
           pollData.response?.videos?.[0]?.uri;
@@ -174,7 +196,7 @@ export async function POST(request: NextRequest) {
           const separator = videoUri.includes('?') ? '&' : '?';
           downloadUrl = `${videoUri}${separator}key=${apiKey}`;
         }
-        
+
         const videoResponse = await fetch(downloadUrl);
         if (!videoResponse.ok) {
           const errorText = await videoResponse.text().catch(() => '');
@@ -192,7 +214,7 @@ export async function POST(request: NextRequest) {
         console.log('[DirectClip] Uploading to Vercel Blob...');
         const timestamp = Date.now();
         const blobPath = `assets/clips/${creatureId}/${action}_${timestamp}.mp4`;
-        
+
         const blobResult = await put(blobPath, videoBlob, {
           access: 'public',
           contentType: 'video/mp4',
@@ -205,7 +227,7 @@ export async function POST(request: NextRequest) {
         // Determine if this action should loop
         const loopingActions = ['swimIdle', 'swimFast'];
         const shouldLoop = loopingActions.includes(action);
-        
+
         const clip: CreatureClip = {
           videoUrl: blobResult.url,
           frames: [], // Frames can be extracted later
