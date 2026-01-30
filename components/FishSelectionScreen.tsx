@@ -225,14 +225,16 @@ export default function FishSelectionScreen() {
 
   if (loading || !selectedFish) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-cyan-300 text-2xl">Loading...</div>
+      <div className="min-h-screen dv-bg-cosmic flex items-center justify-center">
+        <div className="dv-card dv-card-cyan p-8">
+          <div className="text-cyan-300 text-2xl dv-title animate-pulse">Loading...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-gray-900">
+    <div className="h-screen w-screen overflow-hidden dv-bg-cosmic-alt">
       {/* Full-screen background canvas */}
       <canvas
         ref={canvasRef}
@@ -242,8 +244,8 @@ export default function FishSelectionScreen() {
       {/* UI Layer - positioned on top of canvas */}
       <div className="relative z-10 h-full flex flex-col">
         {/* Header */}
-        <div className="text-center py-4">
-          <h1 className="text-2xl md:text-4xl font-bold text-white tracking-wider drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+        <div className="text-center py-4 sm:py-6 animate-scale-in">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl dv-title animate-glow-pulse">
             SELECT YOUR FISH
           </h1>
         </div>
@@ -251,48 +253,48 @@ export default function FishSelectionScreen() {
         {/* Main Preview Area - Fish Name and Stats overlays */}
         <div className="flex-1 relative pointer-events-none">
           {/* Fish Name Overlay */}
-          <div className="absolute top-4 left-0 right-0 text-center">
-            <h2 className="text-3xl md:text-5xl font-bold text-white uppercase tracking-wider drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+          <div className="absolute top-4 left-0 right-0 text-center animate-slide-in">
+            <h2 className="text-4xl sm:text-5xl md:text-6xl dv-title">
               {selectedFish.name}
             </h2>
-            <p className="text-lg md:text-xl text-cyan-300 mt-1 font-semibold drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+            <p className="text-xl sm:text-2xl dv-subtitle mt-2">
               LV 1
             </p>
           </div>
 
           {/* Stats Overlay - Bottom of preview */}
-          <div className="absolute bottom-4 left-4 right-4">
-            <div className="flex justify-center gap-2 md:gap-4 flex-wrap">
-              <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-cyan-500/50">
-                <span className="text-xs text-cyan-300">SIZE</span>
-                <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.size}</span>
+          <div className="absolute bottom-4 left-4 right-4 animate-slide-in" style={{ animationDelay: '0.1s' }}>
+            <div className="flex justify-center gap-2 sm:gap-3 md:gap-4 flex-wrap">
+              <div className="dv-card-cyan px-3 sm:px-4 py-2 border-2 backdrop-blur-md bg-black/80">
+                <span className="text-xs sm:text-sm text-cyan-300 font-bold">SIZE</span>
+                <span className="text-xl sm:text-2xl font-bold text-white ml-2">{selectedFish.stats.size}</span>
               </div>
-              <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-green-500/50">
-                <span className="text-xs text-green-300">SPD</span>
-                <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.speed}</span>
+              <div className="px-3 sm:px-4 py-2 border-2 border-green-400 rounded-lg backdrop-blur-md bg-black/80 dv-glow-cyan">
+                <span className="text-xs sm:text-sm text-green-300 font-bold">SPD</span>
+                <span className="text-xl sm:text-2xl font-bold text-white ml-2">{selectedFish.stats.speed}</span>
               </div>
-              <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-red-500/50">
-                <span className="text-xs text-red-300">HP</span>
-                <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.health}</span>
+              <div className="px-3 sm:px-4 py-2 border-2 border-red-400 rounded-lg backdrop-blur-md bg-black/80 dv-glow-cyan">
+                <span className="text-xs sm:text-sm text-red-300 font-bold">HP</span>
+                <span className="text-xl sm:text-2xl font-bold text-white ml-2">{selectedFish.stats.health}</span>
               </div>
-              <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-yellow-500/50">
-                <span className="text-xs text-yellow-300">DMG</span>
-                <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.damage}</span>
+              <div className="px-3 sm:px-4 py-2 border-2 border-yellow-400 rounded-lg backdrop-blur-md bg-black/80 dv-glow-cyan">
+                <span className="text-xs sm:text-sm text-yellow-300 font-bold">DMG</span>
+                <span className="text-xl sm:text-2xl font-bold text-white ml-2">{selectedFish.stats.damage}</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Fish Carousel - Compact */}
-        <div className="p-3">
-          <div className="flex gap-2 justify-center items-center overflow-x-auto pb-1">
+        <div className="p-3 sm:p-4 animate-slide-in" style={{ animationDelay: '0.2s' }}>
+          <div className="flex gap-2 sm:gap-3 justify-center items-center overflow-x-auto pb-1">
             {playableFish.map((fish) => (
               <button
                 key={fish.id}
                 onClick={() => setSelectedFishId(fish.id)}
-                className={`relative w-16 h-16 md:w-20 md:h-20 rounded-lg border-2 transition-all flex-shrink-0 ${selectedFishId === fish.id
-                  ? 'border-cyan-400 bg-cyan-900/60 shadow-[0_0_15px_rgba(34,211,238,0.6)] scale-110'
-                  : 'border-gray-600 bg-gray-800/50 hover:border-cyan-500'
+                className={`relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-lg border-4 transition-all flex-shrink-0 ${selectedFishId === fish.id
+                  ? 'border-cyan-400 bg-cyan-900/60 shadow-[0_0_20px_rgba(34,211,238,0.8)] scale-110 animate-pulse'
+                  : 'border-purple-600/50 bg-gray-900/80 hover:border-cyan-500 hover:scale-105'
                   }`}
               >
                 {fish.sprite && (
@@ -310,16 +312,17 @@ export default function FishSelectionScreen() {
         </div>
 
         {/* Bottom Buttons */}
-        <div className="flex gap-4 justify-center p-4">
+        <div className="flex gap-3 sm:gap-4 justify-center p-4 pb-6 sm:pb-8 pointer-events-auto animate-scale-in" style={{ animationDelay: '0.3s' }}>
           <button
             onClick={handleBack}
-            className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg text-lg uppercase tracking-wider transition-all border-2 border-gray-500"
+            className="dv-button bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 text-white border-gray-500/50 text-base sm:text-lg md:text-xl py-3 sm:py-4 px-6 sm:px-8"
+            style={{ boxShadow: '0 0 20px rgba(107, 114, 128, 0.4)' }}
           >
             Back
           </button>
           <button
             onClick={handleDive}
-            className="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-8 rounded-lg text-lg uppercase tracking-wider transition-all border-2 border-red-400 shadow-[0_0_20px_rgba(220,38,38,0.5)]"
+            className="dv-button dv-button-primary text-base sm:text-lg md:text-xl py-3 sm:py-4 px-6 sm:px-8 animate-glow-pulse"
           >
             Dive
           </button>
