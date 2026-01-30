@@ -390,65 +390,38 @@ async function doProcessClipJob(
         progressMessage: 'Video generated, downloading...',
       });
 
-      // Download and save the video using the SDK's files.download method
+      // Download and save the video using direct fetch with API key
       try {
         const apiKey = process.env.GEMINI_API_KEY;
-        const ai = new GoogleGenAI({ apiKey });
 
-        console.log(`[ClipJob] Downloading video using SDK...`);
-
-        // Try SDK download first (preferred method)
+        console.log(`[ClipJob] Downloading video...`);
         let videoBuffer: Buffer | null = null;
 
-        try {
-          // The SDK's files.download method handles authentication properly
-          const videoFile = generatedVideo?.video;
-          if (videoFile) {
-            const downloadResult = await ai.files.download({ file: videoFile });
-            // downloadResult should contain the video data
-            if (downloadResult && typeof downloadResult === 'object') {
-              // Handle different response formats
-              if ('arrayBuffer' in downloadResult && typeof downloadResult.arrayBuffer === 'function') {
-                videoBuffer = Buffer.from(await downloadResult.arrayBuffer());
-              } else if (Buffer.isBuffer(downloadResult)) {
-                videoBuffer = downloadResult;
-              }
+        const downloadUrls = [
+          videoUri.includes('?') ? `${videoUri}&key=${apiKey}` : `${videoUri}?key=${apiKey}`,
+          videoUri.includes('?') ? `${videoUri}&alt=media&key=${apiKey}` : `${videoUri}?alt=media&key=${apiKey}`,
+        ];
+
+        for (const downloadUrl of downloadUrls) {
+          console.log(`[ClipJob] Trying download from: ${downloadUrl.substring(0, 100)}...`);
+          try {
+            const videoResponse = await fetch(downloadUrl, {
+              headers: {
+                'x-goog-api-key': apiKey!,
+              },
+            });
+
+            if (videoResponse.ok) {
+              videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+              console.log(`[ClipJob] Download succeeded: ${videoBuffer.length} bytes`);
+              break;
+            } else {
+              const errorText = await videoResponse.text().catch(() => '');
+              console.log(`[ClipJob] Download attempt failed: ${videoResponse.status} - ${errorText.substring(0, 100)}`);
             }
-          }
-        } catch (sdkError: any) {
-          console.log(`[ClipJob] SDK download failed, trying direct fetch: ${sdkError.message}`);
-        }
-
-        // Fallback to direct fetch if SDK didn't work
-        if (!videoBuffer) {
-          // Try multiple download approaches
-          const downloadUrls = [
-            // Try with API key as query param
-            videoUri.includes('?') ? `${videoUri}&key=${apiKey}` : `${videoUri}?key=${apiKey}`,
-            // Try with alt=media for Google URLs
-            videoUri.includes('?') ? `${videoUri}&alt=media&key=${apiKey}` : `${videoUri}?alt=media&key=${apiKey}`,
-          ];
-
-          for (const downloadUrl of downloadUrls) {
-            console.log(`[ClipJob] Trying download from: ${downloadUrl.substring(0, 100)}...`);
-            try {
-              const videoResponse = await fetch(downloadUrl, {
-                headers: {
-                  'x-goog-api-key': apiKey!,
-                },
-              });
-
-              if (videoResponse.ok) {
-                videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
-                console.log(`[ClipJob] Download succeeded: ${videoBuffer.length} bytes`);
-                break;
-              } else {
-                const errorText = await videoResponse.text().catch(() => '');
-                console.log(`[ClipJob] Download attempt failed: ${videoResponse.status} - ${errorText.substring(0, 100)}`);
-              }
-            } catch (fetchError: any) {
-              console.log(`[ClipJob] Fetch error: ${fetchError.message}`);
-            }
+          } catch (fetchError: unknown) {
+            const errMsg = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+            console.log(`[ClipJob] Fetch error: ${errMsg}`);
           }
         }
 

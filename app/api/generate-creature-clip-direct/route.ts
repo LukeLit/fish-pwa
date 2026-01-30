@@ -189,51 +189,33 @@ export async function POST(request: NextRequest) {
 
         console.log(`[DirectClip] Video ready: ${videoUri.substring(0, 80)}...`);
 
-        // Download video using multiple approaches
+        // Download video using direct fetch with API key
         console.log('[DirectClip] Downloading video...');
         let videoBuffer: Buffer | null = null;
 
-        // Try SDK download first
-        try {
-          const downloadResult = await ai.files.download({
-            file: pollData.response?.generatedVideos?.[0]?.video
-          });
-          if (downloadResult && typeof downloadResult === 'object') {
-            if ('arrayBuffer' in downloadResult && typeof downloadResult.arrayBuffer === 'function') {
-              videoBuffer = Buffer.from(await downloadResult.arrayBuffer());
-            } else if (Buffer.isBuffer(downloadResult)) {
-              videoBuffer = downloadResult;
+        const downloadUrls = [
+          videoUri.includes('?') ? `${videoUri}&key=${apiKey}` : `${videoUri}?key=${apiKey}`,
+          videoUri.includes('?') ? `${videoUri}&alt=media&key=${apiKey}` : `${videoUri}?alt=media&key=${apiKey}`,
+        ];
+
+        for (const downloadUrl of downloadUrls) {
+          console.log(`[DirectClip] Trying: ${downloadUrl.substring(0, 80)}...`);
+          try {
+            const videoResponse = await fetch(downloadUrl, {
+              headers: { 'x-goog-api-key': apiKey! },
+            });
+
+            if (videoResponse.ok) {
+              videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+              console.log(`[DirectClip] Download succeeded: ${videoBuffer.length} bytes`);
+              break;
+            } else {
+              const errorText = await videoResponse.text().catch(() => '');
+              console.log(`[DirectClip] Attempt failed: ${videoResponse.status} - ${errorText.substring(0, 100)}`);
             }
-          }
-        } catch (sdkError: any) {
-          console.log(`[DirectClip] SDK download failed, trying direct fetch: ${sdkError.message}`);
-        }
-
-        // Fallback to direct fetch
-        if (!videoBuffer) {
-          const downloadUrls = [
-            videoUri.includes('?') ? `${videoUri}&key=${apiKey}` : `${videoUri}?key=${apiKey}`,
-            videoUri.includes('?') ? `${videoUri}&alt=media&key=${apiKey}` : `${videoUri}?alt=media&key=${apiKey}`,
-          ];
-
-          for (const downloadUrl of downloadUrls) {
-            console.log(`[DirectClip] Trying: ${downloadUrl.substring(0, 80)}...`);
-            try {
-              const videoResponse = await fetch(downloadUrl, {
-                headers: { 'x-goog-api-key': apiKey! },
-              });
-
-              if (videoResponse.ok) {
-                videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
-                console.log(`[DirectClip] Download succeeded: ${videoBuffer.length} bytes`);
-                break;
-              } else {
-                const errorText = await videoResponse.text().catch(() => '');
-                console.log(`[DirectClip] Attempt failed: ${videoResponse.status} - ${errorText.substring(0, 100)}`);
-              }
-            } catch (fetchErr: any) {
-              console.log(`[DirectClip] Fetch error: ${fetchErr.message}`);
-            }
+          } catch (fetchErr: unknown) {
+            const errMsg = fetchErr instanceof Error ? fetchErr.message : 'Unknown error';
+            console.log(`[DirectClip] Fetch error: ${errMsg}`);
           }
         }
 
