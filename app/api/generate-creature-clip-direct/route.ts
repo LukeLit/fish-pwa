@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const videoBlob = new Blob([videoBuffer], { type: 'video/mp4' });
+        const videoBlob = new Blob([new Uint8Array(videoBuffer)], { type: 'video/mp4' });
         console.log(`[DirectClip] Video downloaded: ${videoBlob.size} bytes`);
 
         // Upload to Vercel Blob
