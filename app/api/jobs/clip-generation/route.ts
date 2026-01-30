@@ -390,26 +390,72 @@ async function doProcessClipJob(
         progressMessage: 'Video generated, downloading...',
       });
 
-      // Download and save the video
-      // Google video URIs require API key authentication
+      // Download and save the video using the SDK's files.download method
       try {
         const apiKey = process.env.GEMINI_API_KEY;
-        // Append API key to video URI if it's a Google URL
-        let downloadUrl = videoUri;
-        if (videoUri.includes('generativelanguage.googleapis.com') || videoUri.includes('googleapis.com')) {
-          const separator = videoUri.includes('?') ? '&' : '?';
-          downloadUrl = `${videoUri}${separator}key=${apiKey}`;
+        const ai = new GoogleGenAI({ apiKey });
+
+        console.log(`[ClipJob] Downloading video using SDK...`);
+
+        // Try SDK download first (preferred method)
+        let videoBuffer: Buffer | null = null;
+
+        try {
+          // The SDK's files.download method handles authentication properly
+          const videoFile = generatedVideo?.video;
+          if (videoFile) {
+            const downloadResult = await ai.files.download({ file: videoFile });
+            // downloadResult should contain the video data
+            if (downloadResult && typeof downloadResult === 'object') {
+              // Handle different response formats
+              if ('arrayBuffer' in downloadResult && typeof downloadResult.arrayBuffer === 'function') {
+                videoBuffer = Buffer.from(await downloadResult.arrayBuffer());
+              } else if (Buffer.isBuffer(downloadResult)) {
+                videoBuffer = downloadResult;
+              }
+            }
+          }
+        } catch (sdkError: any) {
+          console.log(`[ClipJob] SDK download failed, trying direct fetch: ${sdkError.message}`);
         }
 
-        console.log(`[ClipJob] Downloading video from: ${downloadUrl.substring(0, 100)}...`);
-        const videoResponse = await fetch(downloadUrl);
-        if (!videoResponse.ok) {
-          const errorText = await videoResponse.text().catch(() => '');
-          console.error(`[ClipJob] Video download failed: ${videoResponse.status} - ${errorText.substring(0, 200)}`);
-          throw new Error(`Failed to download video: ${videoResponse.status}`);
+        // Fallback to direct fetch if SDK didn't work
+        if (!videoBuffer) {
+          // Try multiple download approaches
+          const downloadUrls = [
+            // Try with API key as query param
+            videoUri.includes('?') ? `${videoUri}&key=${apiKey}` : `${videoUri}?key=${apiKey}`,
+            // Try with alt=media for Google URLs
+            videoUri.includes('?') ? `${videoUri}&alt=media&key=${apiKey}` : `${videoUri}?alt=media&key=${apiKey}`,
+          ];
+
+          for (const downloadUrl of downloadUrls) {
+            console.log(`[ClipJob] Trying download from: ${downloadUrl.substring(0, 100)}...`);
+            try {
+              const videoResponse = await fetch(downloadUrl, {
+                headers: {
+                  'x-goog-api-key': apiKey!,
+                },
+              });
+
+              if (videoResponse.ok) {
+                videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+                console.log(`[ClipJob] Download succeeded: ${videoBuffer.length} bytes`);
+                break;
+              } else {
+                const errorText = await videoResponse.text().catch(() => '');
+                console.log(`[ClipJob] Download attempt failed: ${videoResponse.status} - ${errorText.substring(0, 100)}`);
+              }
+            } catch (fetchError: any) {
+              console.log(`[ClipJob] Fetch error: ${fetchError.message}`);
+            }
+          }
         }
 
-        const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+        if (!videoBuffer || videoBuffer.length === 0) {
+          throw new Error('Failed to download video after all attempts');
+        }
+
         const videoPath = `creatures/${job.input.creatureId}/clips/${job.input.action}.mp4`;
         const videoResult = await uploadAsset(videoPath, videoBuffer, 'video/mp4');
 
