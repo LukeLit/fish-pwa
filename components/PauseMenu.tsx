@@ -8,7 +8,8 @@ import { useState, useEffect, useCallback } from 'react';
 import FishEditOverlay, { type FishData } from './FishEditOverlay';
 import FishLibraryPanel from './FishLibraryPanel';
 import BackgroundLibraryPanel from './BackgroundLibraryPanel';
-import BackgroundEditor from './BackgroundEditor';
+import BackgroundEditOverlay from './BackgroundEditOverlay';
+import type { BackgroundAsset } from '@/lib/game/types';
 
 interface PlayerStats {
   size: number;
@@ -108,7 +109,7 @@ export default function PauseMenu({
   const [editingFish, setEditingFish] = useState(false);
   // Background editing state
   const [editingBackground, setEditingBackground] = useState(false);
-  const [selectedBackgroundData, setSelectedBackgroundData] = useState<{ url: string } | null>(null);
+  const [selectedBackgroundData, setSelectedBackgroundData] = useState<BackgroundAsset | null>(null);
 
   // Reset editing states when menu closes
   useEffect(() => {
@@ -157,12 +158,29 @@ export default function PauseMenu({
     }
   }, [onExitFishEdit]);
 
-  // Handle background selection
-  const handleSelectBackgroundFromLibrary = useCallback((background: { url: string }) => {
-    setSelectedBackgroundData(background);
+  // Handle background selection - supports both legacy and BackgroundAsset formats
+  const handleSelectBackgroundFromLibrary = useCallback((background: BackgroundAsset | { url: string; filename?: string; timestamp?: string }) => {
+    // Convert to BackgroundAsset if needed
+    let bgAsset: BackgroundAsset;
+    if ('biomeId' in background) {
+      bgAsset = background;
+    } else {
+      // Legacy format - create a minimal BackgroundAsset
+      const filename = 'filename' in background ? background.filename : 'Unknown';
+      const id = filename?.replace(/\.(png|jpg|jpeg|mp4|webm)$/i, '') || `bg_${Date.now()}`;
+      bgAsset = {
+        id,
+        name: filename || 'Background',
+        biomeId: 'shallow', // Default biome
+        type: filename?.toLowerCase().endsWith('.mp4') ? 'video' : 'image',
+        url: background.url,
+        createdAt: 'timestamp' in background ? new Date(parseInt(background.timestamp || '0')).toISOString() : new Date().toISOString(),
+      };
+    }
+    setSelectedBackgroundData(bgAsset);
     setEditingBackground(true);
     if (onSelectBackground) {
-      onSelectBackground(background);
+      onSelectBackground(bgAsset);
     }
   }, [onSelectBackground]);
 
@@ -171,9 +189,29 @@ export default function PauseMenu({
     setSelectedBackgroundData(null);
   }, []);
 
+  // Handle saving background from edit overlay
+  const handleSaveBackground = useCallback((background: BackgroundAsset) => {
+    setSelectedBackgroundData(background);
+    // Update the canvas background if callback provided
+    if (onBackgroundChange) {
+      onBackgroundChange(background.url);
+    }
+  }, [onBackgroundChange]);
+
   const handleAddNewBackgroundClick = useCallback(() => {
+    // Create a new empty BackgroundAsset
+    const newBackground: BackgroundAsset = {
+      id: `bg_${Date.now()}`,
+      name: 'New Background',
+      biomeId: 'shallow',
+      type: 'image',
+      url: '',
+      createdAt: new Date().toISOString(),
+      descriptionChunks: [],
+      visualMotif: '',
+    };
+    setSelectedBackgroundData(newBackground);
     setEditingBackground(true);
-    setSelectedBackgroundData(null);
     if (onAddNewBackground) {
       onAddNewBackground();
     }
@@ -268,6 +306,77 @@ export default function PauseMenu({
               onClick={() => window.dispatchEvent(new CustomEvent('fishEditAction', { detail: { action: 'delete' } }))}
               className="p-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
               title="Delete Creature"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Action Bar - Only shown when editing a background (TOP position) */}
+      {editingBackground && selectedBackgroundData && (
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-800/90 border-b border-gray-700 flex-shrink-0">
+          {/* Left side: Actions */}
+          <div className="flex items-center gap-2">
+            {/* Back button */}
+            <button
+              onClick={handleBackFromBackgroundEdit}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors text-sm"
+              title="Back to Library"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              </svg>
+              Back
+            </button>
+
+            <div className="w-px h-6 bg-gray-600" />
+
+            {/* Upload */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('backgroundEditAction', { detail: { action: 'upload' } }))}
+              className="p-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+              title="Upload Image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+            </button>
+
+            {/* Regenerate - with text */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('backgroundEditAction', { detail: { action: 'regenerate' } }))}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors text-sm"
+              title="Generate Background with AI"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+              </svg>
+              Generate
+            </button>
+          </div>
+
+          {/* Right side: Save and Delete */}
+          <div className="flex items-center gap-2">
+            {/* Save */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('backgroundEditAction', { detail: { action: 'save' } }))}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors text-sm"
+              title="Save Background"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+              </svg>
+              Save
+            </button>
+
+            {/* Delete */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('backgroundEditAction', { detail: { action: 'delete' } }))}
+              className="p-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
+              title="Delete Background"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -401,23 +510,12 @@ export default function PauseMenu({
                 onSetAsActive={onBackgroundChange ? (bg) => onBackgroundChange(bg.url) : undefined}
               />
             ) : (
-              <div className="p-4">
-                <div className="mb-4">
-                  <button
-                    onClick={handleBackFromBackgroundEdit}
-                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-                  >
-                    ← Back to Library
-                  </button>
-                </div>
-                <BackgroundEditor
-                  currentBackground={selectedBackgroundData?.url || currentBackground || null}
-                  onBackgroundChange={(url) => {
-                    if (onBackgroundChange) {
-                      onBackgroundChange(url);
-                    }
-                  }}
-                  onOpenArtSelector={onOpenArtSelector}
+              <div className="h-full flex flex-col">
+                <BackgroundEditOverlay
+                  background={selectedBackgroundData}
+                  onSave={handleSaveBackground}
+                  onBack={handleBackFromBackgroundEdit}
+                  embedded={true}
                 />
               </div>
             )}

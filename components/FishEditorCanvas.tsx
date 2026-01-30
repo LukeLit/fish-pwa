@@ -21,7 +21,9 @@ import {
 import { loadRunState } from '@/lib/game/run-state';
 import {
   removeBackground,
-  drawFishWithDeformation
+  drawFishWithDeformation,
+  getSegmentsSmooth,
+  PLAYER_SEGMENT_MULTIPLIER
 } from '@/lib/rendering/fish-renderer';
 
 export interface PlayerGameStats {
@@ -95,6 +97,7 @@ export default function FishEditorCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isClient, setIsClient] = useState(false);
+  const [zoomSliderValue, setZoomSliderValue] = useState(zoom);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const chromaToleranceRef = useRef<number>(chromaTolerance);
   const zoomRef = useRef<number>(zoom);
@@ -111,10 +114,19 @@ export default function FishEditorCanvas({
   const targetZoomRef = useRef<number>(zoom);
   const targetCameraRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Zoom control constants and refs
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 3.0;
+  const pinchRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+
 
   // Update refs when props change
   useEffect(() => { chromaToleranceRef.current = chromaTolerance }, [chromaTolerance])
-  useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => {
+    zoomRef.current = zoom;
+    targetZoomRef.current = zoom;
+    setZoomSliderValue(zoom);
+  }, [zoom])
   useEffect(() => { deformationRef.current = deformationIntensity }, [deformationIntensity])
   useEffect(() => { editModeRef.current = editMode }, [editMode])
   useEffect(() => { selectedFishIdRef.current = selectedFishId }, [selectedFishId])
@@ -302,6 +314,13 @@ export default function FishEditorCanvas({
   const handleJoystickChange = useCallback((output: AnalogJoystickOutput) => {
     joystickVelocityRef.current = output.velocity;
     joystickActiveRef.current = output.isActive;
+  }, []);
+
+  // Zoom slider handler
+  const handleZoomSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newZoom = parseFloat(e.target.value);
+    targetZoomRef.current = newZoom;
+    setZoomSliderValue(newZoom);
   }, []);
 
   // Handle canvas clicks/touches for edit buttons
@@ -718,10 +737,62 @@ export default function FishEditorCanvas({
       keyKeysRef.current.delete(key);
     };
 
+    // Wheel zoom handler (desktop) - works in all modes
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1; // 10% per scroll tick
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current * zoomDelta));
+      targetZoomRef.current = newZoom;
+      setZoomSliderValue(newZoom); // Sync slider
+    };
+
+    // Helper to calculate distance between two touches
+    const getTouchDistance = (t1: Touch, t2: Touch): number => {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    // Pinch-to-zoom handlers (mobile) - works in all modes
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        // Start pinch gesture
+        const dist = getTouchDistance(e.touches[0], e.touches[1]);
+        pinchRef.current = { startDistance: dist, startZoom: targetZoomRef.current };
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchRef.current) {
+        e.preventDefault(); // Prevent page zoom
+        const dist = getTouchDistance(e.touches[0], e.touches[1]);
+        const scale = dist / pinchRef.current.startDistance;
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchRef.current.startZoom * scale));
+        targetZoomRef.current = newZoom;
+        setZoomSliderValue(newZoom); // Sync slider
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        // End pinch gesture
+        pinchRef.current = null;
+      }
+    };
+
     const hasKey = (k: string) => keyKeysRef.current.has(k);
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+
+    // Attach zoom controls to container (not canvas, since joystick overlay blocks canvas events)
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWheel, { passive: false });
+      container.addEventListener('touchstart', handleTouchStart, { passive: true });
+      container.addEventListener('touchmove', handleTouchMove, { passive: false });
+      container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    }
 
     // Game physics constants
     const MAX_SPEED = 1.5;
@@ -1131,7 +1202,7 @@ export default function FishEditorCanvas({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Calculate target zoom and camera for edit mode
-      let targetZoom = zoomRef.current;
+      // Use current targetZoomRef as base (preserves wheel/slider changes)
       let targetCameraX = 0;
       let targetCameraY = 0;
       let useEditModeCamera = false;
@@ -1157,24 +1228,13 @@ export default function FishEditorCanvas({
 
         if (selectedSize > 0) {
           useEditModeCamera = true;
-          // In edit mode, we want to show fish in top area (50% of screen height)
-          // Calculate zoom to fit fish in top half horizontally with padding
-          const padding = 40;
-          const targetWidth = canvas.width - padding * 2;
-          const baseZoomToFit = targetWidth / selectedSize;
-          const baseZoom = Math.max(1, baseZoomToFit);
-
-          // Apply manual zoom multiplier (allows zooming in/out from base)
-          targetZoom = baseZoom * zoomRef.current;
-
           // Position camera to show fish in top area (center horizontally, top 25% vertically)
           targetCameraX = selectedX;
           targetCameraY = selectedY;
         }
       }
 
-      // Update target refs
-      targetZoomRef.current = targetZoom;
+      // Only update camera target, NOT zoom (preserve user zoom from wheel/slider)
       targetCameraRef.current = { x: targetCameraX, y: targetCameraY };
 
       // Smooth interpolation (lerp) for zoom and camera
@@ -1213,26 +1273,34 @@ export default function FishEditorCanvas({
           // Parallax background - moves opposite to camera but slower
           // parallaxFactor 0 = fixed to screen, 1 = moves with world
           const camera = cameraRef.current;
-          const parallaxFactor = 0.3;
+          const parallaxFactor = 0.15; // Reduced from 0.3 to prevent edge showing
+          const bgScale = 1.3; // Scale up to provide buffer for parallax
 
-          // Calculate scaling to maintain aspect ratio
+          // Calculate scaling to maintain aspect ratio (cover mode)
           const img = backgroundImageRef.current;
           const imgAspect = img.width / img.height;
           const screenAspect = scaledWidth / scaledHeight;
 
           let drawWidth, drawHeight;
           if (imgAspect > screenAspect) {
-            drawHeight = scaledHeight * 1.5;
+            drawHeight = scaledHeight * bgScale;
             drawWidth = drawHeight * imgAspect;
           } else {
-            drawWidth = scaledWidth * 1.5;
+            drawWidth = scaledWidth * bgScale;
             drawHeight = drawWidth / imgAspect;
           }
 
           // Center background, then offset by camera * parallaxFactor
-          // Negative because background moves opposite to camera direction
-          const bgX = (scaledWidth - drawWidth) / 2 - camera.x * parallaxFactor;
-          const bgY = (scaledHeight - drawHeight) / 2 - camera.y * parallaxFactor;
+          // Clamp the offset to prevent showing edges
+          const maxOffsetX = (drawWidth - scaledWidth) / 2;
+          const maxOffsetY = (drawHeight - scaledHeight) / 2;
+          const rawOffsetX = camera.x * parallaxFactor;
+          const rawOffsetY = camera.y * parallaxFactor;
+          const clampedOffsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, rawOffsetX));
+          const clampedOffsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, rawOffsetY));
+
+          const bgX = (scaledWidth - drawWidth) / 2 - clampedOffsetX;
+          const bgY = (scaledHeight - drawHeight) / 2 - clampedOffsetY;
 
           ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         } else if (usingEditCamera) {
@@ -1262,6 +1330,21 @@ export default function FishEditorCanvas({
           ctx.drawImage(backgroundImageRef.current, 0, 0, scaledWidth, scaledHeight);
         }
         ctx.restore();
+
+        // Add subtle vignette effect for polished look (game mode only)
+        if (gameMode) {
+          ctx.save();
+          const vignetteGradient = ctx.createRadialGradient(
+            scaledWidth / 2, scaledHeight / 2, scaledHeight * 0.3,
+            scaledWidth / 2, scaledHeight / 2, scaledHeight * 0.8
+          );
+          vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+          vignetteGradient.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
+          vignetteGradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+          ctx.fillStyle = vignetteGradient;
+          ctx.fillRect(0, 0, scaledWidth, scaledHeight);
+          ctx.restore();
+        }
 
         // Optional: Simple water shimmer overlay (much faster than pixel distortion)
         if (enableWaterDistortion) {
@@ -1308,21 +1391,26 @@ export default function FishEditorCanvas({
       }
 
       // Apply camera transform AFTER background is drawn
-      if (usingEditCamera) {
-        // Position fish in top area: center horizontally, top 25% vertically
-        const topAreaCenterY = scaledHeight * 0.25;
-        ctx.translate(scaledWidth / 2 - cameraX, topAreaCenterY - cameraY);
-      } else if (gameMode) {
-        // In game mode, translate for camera following
+      if (gameMode) {
+        // In game mode, always center on player (don't use edit mode camera)
         const camera = cameraRef.current;
         ctx.translate(scaledWidth / 2 - camera.x, scaledHeight / 2 - camera.y);
+      } else if (usingEditCamera) {
+        // Edit mode: Position fish in top area (center horizontally, top 25% vertically)
+        const topAreaCenterY = scaledHeight * 0.25;
+        ctx.translate(scaledWidth / 2 - cameraX, topAreaCenterY - cameraY);
       }
 
-      // Draw AI fish
+      // Draw AI fish with LOD based on screen-space size
       const buttonPositions = new Map<string, { x: number; y: number; size: number }>();
       fishListRef.current.forEach((fish) => {
         if (fish.sprite) {
           const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
+
+          // Calculate screen-space size for smooth LOD
+          const screenSize = fish.size * currentZoom;
+          const segments = getSegmentsSmooth(screenSize);
+
           drawFishWithDeformation(
             ctx,
             fish.sprite,
@@ -1334,7 +1422,8 @@ export default function FishEditorCanvas({
             {
               speed: fishSpeed,
               intensity: deformationRef.current,
-              verticalTilt: fish.verticalTilt
+              verticalTilt: fish.verticalTilt,
+              segments
             }
           );
         } else {
@@ -1348,9 +1437,13 @@ export default function FishEditorCanvas({
         buttonPositions.set(fish.id, { x: fish.x, y: fish.y, size: fish.size });
       });
 
-      // Draw player
+      // Draw player with LOD based on screen-space size
       const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / MAX_SPEED);
       if (player.sprite) {
+        // Calculate screen-space size for smooth LOD (player gets extra segments)
+        const playerScreenSize = player.size * currentZoom;
+        const playerSegments = Math.round(getSegmentsSmooth(playerScreenSize) * PLAYER_SEGMENT_MULTIPLIER);
+
         drawFishWithDeformation(
           ctx,
           player.sprite,
@@ -1363,7 +1456,8 @@ export default function FishEditorCanvas({
             speed: playerSpeed,
             chompPhase: player.chompPhase,
             intensity: deformationRef.current,
-            verticalTilt: player.verticalTilt
+            verticalTilt: player.verticalTilt,
+            segments: playerSegments
           }
         );
       } else {
@@ -1455,7 +1549,10 @@ export default function FishEditorCanvas({
 
       ctx.restore();
 
-      // Low hunger visual warning (red tint and vignette)
+      // Restore zoom transform (now we're in screen space)
+      ctx.restore();
+
+      // Low hunger visual warning (red tint and vignette) - drawn in screen space
       if (gameMode && player.hunger <= HUNGER_LOW_THRESHOLD) {
         ctx.save();
         const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
@@ -1477,9 +1574,6 @@ export default function FishEditorCanvas({
 
         ctx.restore();
       }
-
-      // Restore zoom transform (now we're in screen space)
-      ctx.restore();
 
       // Draw edit buttons on fish (in screen space)
       if (showEditButtonsRef.current && !currentEditMode && onEditFish) {
@@ -1511,31 +1605,44 @@ export default function FishEditorCanvas({
         });
       }
 
-      // UI text overlay
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.font = '14px monospace';
+      // UI text overlay - positioned to not overlap with React HUD elements
+      // React Level label is at top-4 left-4 (~16px, ~16px) with ~44px height
+      // React Pause button is at top-4 right-4
 
       if (gameMode) {
         // Game mode UI - account for paused time
         const currentPausedTime = isPaused ? (Date.now() - pauseStartTimeRef.current) : 0;
         const elapsed = Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current - currentPausedTime;
         const timeLeft = Math.max(0, Math.ceil((levelDuration - elapsed) / 1000));
-        ctx.fillText(`Score: ${scoreRef.current}`, 10, 20);
-        ctx.fillText(`Size: ${Math.floor(player.size)}`, 10, 40);
-        ctx.fillText(`Time: ${timeLeft}s`, 10, 60);
 
-        // Hunger Meter - centered at top
-        const hungerBarWidth = 300;
-        const hungerBarHeight = 30;
+        // Stats panel - bottom left corner
+        const statsY = canvas.height - 80;
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(10, statsY, 120, 70);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(10, statsY, 120, 70);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText(`Score: ${scoreRef.current}`, 20, statsY + 20);
+        ctx.fillText(`Size: ${Math.floor(player.size)}`, 20, statsY + 40);
+        ctx.fillText(`Time: ${timeLeft}s`, 20, statsY + 60);
+        ctx.restore();
+
+        // Hunger Meter - centered at top, below the React HUD buttons
+        const hungerBarWidth = Math.min(300, canvas.width - 200); // Responsive width
+        const hungerBarHeight = 24;
         const hungerBarX = (canvas.width - hungerBarWidth) / 2;
-        const hungerBarY = 20;
+        const hungerBarY = 16; // Positioned at top
         const hungerPercent = player.hunger / 100;
 
         // Background with chunky border (DICE VADERS style)
         ctx.save();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.lineWidth = 4;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.fillRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
         ctx.strokeRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
 
@@ -1550,16 +1657,16 @@ export default function FishEditorCanvas({
         }
 
         ctx.fillStyle = hungerColor;
-        const fillWidth = (hungerBarWidth - 8) * hungerPercent;
-        ctx.fillRect(hungerBarX + 4, hungerBarY + 4, fillWidth, hungerBarHeight - 8);
+        const fillWidth = (hungerBarWidth - 6) * hungerPercent;
+        ctx.fillRect(hungerBarX + 3, hungerBarY + 3, fillWidth, hungerBarHeight - 6);
 
         // Glow effect for low hunger
         if (hungerPercent <= 0.25) {
           const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
           ctx.shadowColor = hungerColor;
-          ctx.shadowBlur = 20 * pulse;
+          ctx.shadowBlur = 15 * pulse;
           ctx.strokeStyle = hungerColor;
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 2;
           ctx.strokeRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
           ctx.shadowBlur = 0;
           ctx.shadowColor = 'transparent';
@@ -1567,7 +1674,7 @@ export default function FishEditorCanvas({
 
         // Text label
         ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.font = 'bold 16px monospace';
+        ctx.font = 'bold 12px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(`HUNGER: ${Math.ceil(player.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
@@ -1576,16 +1683,20 @@ export default function FishEditorCanvas({
       }
       // Note: Editor mode UI removed - will be added to proper HUD later
 
-      // Draw paused indicator (small, non-blocking) if paused
+      // Draw paused indicator (centered, semi-transparent)
       if (isPaused) {
-        // Small pause indicator in top-left corner instead of full overlay
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(10, 10, 120, 40);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.font = 'bold 20px monospace';
-        ctx.textAlign = 'left';
+        ctx.save();
+        // Dim overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Centered pause text
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.font = 'bold 32px monospace';
+        ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('⏸ PAUSED', 20, 30);
+        ctx.fillText('⏸ PAUSED', canvas.width / 2, canvas.height / 2);
+        ctx.restore();
       }
 
       animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -1597,6 +1708,13 @@ export default function FishEditorCanvas({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', updateCanvasSize);
+      // Clean up zoom controls
+      if (container) {
+        container.removeEventListener('wheel', handleWheel);
+        container.removeEventListener('touchstart', handleTouchStart);
+        container.removeEventListener('touchmove', handleTouchMove);
+        container.removeEventListener('touchend', handleTouchEnd);
+      }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -1622,6 +1740,25 @@ export default function FishEditorCanvas({
       />
       <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
         <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
+      </div>
+
+      {/* Zoom Slider - bottom right */}
+      <div
+        className="absolute bottom-4 right-4 flex items-center gap-2 bg-black/60 rounded-lg px-3 py-2"
+        style={{ zIndex: 30 }}
+      >
+        <span className="text-white text-xs font-mono">🔍</span>
+        <input
+          type="range"
+          min={MIN_ZOOM}
+          max={MAX_ZOOM}
+          step={0.1}
+          value={zoomSliderValue}
+          onChange={handleZoomSliderChange}
+          className="w-24 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+          style={{ pointerEvents: 'auto' }}
+        />
+        <span className="text-white text-xs font-mono w-10">{zoomSliderValue.toFixed(1)}x</span>
       </div>
     </div>
   );

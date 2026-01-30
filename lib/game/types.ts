@@ -202,6 +202,30 @@ export interface Creature extends BaseFishData {
 }
 
 /**
+ * Background Asset - Complete background data structure with modular prompt support
+ * Mirrors the Creature pattern for consistent art generation
+ */
+export interface BackgroundAsset {
+  id: string;                    // e.g., "shallow_coral_reef"
+  name: string;                  // Display name
+  biomeId: string;               // Associated biome
+  type: 'image' | 'video';
+  url: string;                   // Blob storage URL
+
+  // Modular prompt data (matches creature pattern)
+  descriptionChunks?: string[];  // e.g., ["coral reef formations", "sunlit waters"]
+  visualMotif?: string;          // e.g., "tropical paradise with vibrant corals"
+
+  // Background-specific
+  resolution?: { width: number; height: number };
+  depthLayer?: 'far' | 'mid' | 'near';  // For parallax support
+
+  // Metadata
+  createdAt: string;
+  generatedWith?: string;        // Model used for generation
+}
+
+/**
  * Run State - Current run's state (temporary, reset on new run)
  */
 export interface RunState {

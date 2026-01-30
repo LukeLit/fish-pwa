@@ -12,17 +12,14 @@ import { loadPlayerState } from '@/lib/game/player-state';
 import { getPlayableCreaturesFromLocal } from '@/lib/storage/local-fish-storage';
 import { clearRunState } from '@/lib/game/run-state';
 import { loadFishSprite, drawFishWithDeformation } from '@/lib/rendering/fish-renderer';
+import {
+  loadBackground,
+  drawBackground,
+  drawBiomeFallback,
+  drawCaustics,
+  type LoadedBackground,
+} from '@/lib/rendering/background-renderer';
 import type { Creature } from '@/lib/game/types';
-
-// Biome to background color mapping (fallback gradients)
-const BIOME_COLORS: Record<string, { top: string; bottom: string }> = {
-  shallow: { top: '#1e90ff', bottom: '#006994' },
-  deep: { top: '#1a365d', bottom: '#0d1b2a' },
-  deep_sea: { top: '#0f172a', bottom: '#020617' },
-  abyssal: { top: '#0c0a1d', bottom: '#000000' },
-  tropical: { top: '#06b6d4', bottom: '#0e7490' },
-  polluted: { top: '#4a5568', bottom: '#1a202c' },
-};
 
 export default function FishSelectionScreen() {
   const router = useRouter();
@@ -37,7 +34,7 @@ export default function FishSelectionScreen() {
   const spriteRef = useRef<HTMLCanvasElement | null>(null);
   const animTimeRef = useRef(0);
   const animFrameRef = useRef<number>(0);
-  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const backgroundRef = useRef<LoadedBackground | null>(null);
 
   // Load fish data
   useEffect(() => {
@@ -97,7 +94,7 @@ export default function FishSelectionScreen() {
       console.error('Failed to load fish sprite:', err);
     });
 
-    // Load biome background
+    // Load biome background using shared renderer
     const loadBiomeBackground = async () => {
       try {
         const biome = selectedFish.biomeId || 'shallow';
@@ -108,20 +105,16 @@ export default function FishSelectionScreen() {
           const bgUrl = data.assets[0].url;
           setBiomeBackground(bgUrl);
 
-          // Preload background image
-          const bgImg = new window.Image();
-          bgImg.crossOrigin = 'anonymous';
-          bgImg.onload = () => {
-            backgroundImageRef.current = bgImg;
-          };
-          bgImg.src = bgUrl;
+          // Load using shared background renderer (handles caching)
+          const loaded = await loadBackground(bgUrl);
+          backgroundRef.current = loaded;
         } else {
           setBiomeBackground(null);
-          backgroundImageRef.current = null;
+          backgroundRef.current = null;
         }
       } catch {
         setBiomeBackground(null);
-        backgroundImageRef.current = null;
+        backgroundRef.current = null;
       }
     };
 
@@ -147,44 +140,26 @@ export default function FishSelectionScreen() {
     const width = rect.width;
     const height = rect.height;
 
-    // Clear and draw background
+    // Clear and draw background using shared renderer
     ctx.clearRect(0, 0, width, height);
 
-    if (backgroundImageRef.current) {
-      // Draw biome background with blur
-      ctx.save();
-      ctx.filter = 'blur(3px)';
-      const img = backgroundImageRef.current;
-      const imgAspect = img.width / img.height;
-      const canvasAspect = width / height;
+    const biome = selectedFish?.biomeId || 'shallow';
 
-      let drawW, drawH, drawX, drawY;
-      if (imgAspect > canvasAspect) {
-        drawH = height;
-        drawW = height * imgAspect;
-        drawX = (width - drawW) / 2;
-        drawY = 0;
-      } else {
-        drawW = width;
-        drawH = width / imgAspect;
-        drawX = 0;
-        drawY = (height - drawH) / 2;
+    if (backgroundRef.current) {
+      // Draw biome background with blur and overlay using shared renderer
+      drawBackground(ctx, backgroundRef.current, width, height, {
+        blur: 3,
+        overlay: 'rgba(0, 0, 0, 0.2)',
+        scale: 1.1, // Slight overscale to avoid edge artifacts
+      });
+
+      // Add caustic light rays for shallow biomes
+      if (biome === 'shallow' || biome === 'shallow_tropical' || biome === 'tropical') {
+        drawCaustics(ctx, width, height, animTimeRef.current, 0.15);
       }
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
-      ctx.restore();
-
-      // Slight overlay for contrast
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-      ctx.fillRect(0, 0, width, height);
     } else {
-      // Fallback gradient
-      const biome = selectedFish?.biomeId || 'shallow';
-      const colors = BIOME_COLORS[biome] || BIOME_COLORS.shallow;
-      const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, colors.top);
-      gradient.addColorStop(1, colors.bottom);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
+      // Fallback gradient using shared renderer
+      drawBiomeFallback(ctx, width, height, biome);
     }
 
     // Draw animated fish with same deformation as in-game

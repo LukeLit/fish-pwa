@@ -13,6 +13,127 @@
 // Default chroma key tolerance
 export const DEFAULT_CHROMA_TOLERANCE = 50;
 
+// =============================================================================
+// LOD (Level of Detail) System - Smooth Interpolation
+// =============================================================================
+
+/** LOD level type */
+export type LODLevel = 1 | 2 | 3 | 4;
+
+/** LOD thresholds based on screen-space size in pixels */
+export const LOD_THRESHOLDS = {
+  FULL_DETAIL: 80,    // >= 80px: max segments
+  MEDIUM_DETAIL: 40,  // 40-79px: medium segments  
+  LOW_DETAIL: 20,     // 20-39px: low segments
+  STATIC: 12,         // < 12px: static sprite (no animation)
+};
+
+/** Segment range for smooth interpolation */
+export const SEGMENT_RANGE = {
+  MAX: 12,   // Maximum segments at full detail
+  MIN: 3,    // Minimum segments before going static
+};
+
+/** Player segment multiplier (2x vs 1.5x for AI) */
+export const PLAYER_SEGMENT_MULTIPLIER = 1.34; // 12 * 1.34 ≈ 16 for player
+
+/**
+ * Calculate LOD level based on screen-space size (for compatibility)
+ * 
+ * @param screenSize - Size of fish in screen pixels (fish.size * zoom)
+ * @returns LOD level (1-4, where 1 is highest detail)
+ */
+export function getLODLevel(screenSize: number): LODLevel {
+  if (screenSize >= LOD_THRESHOLDS.FULL_DETAIL) return 1;
+  if (screenSize >= LOD_THRESHOLDS.MEDIUM_DETAIL) return 2;
+  if (screenSize >= LOD_THRESHOLDS.LOW_DETAIL) return 3;
+  return 4;
+}
+
+/**
+ * Get segment count with smooth interpolation based on screen size
+ * This prevents flickering by smoothly transitioning segment counts
+ * 
+ * @param screenSize - Size of fish in screen pixels (fish.size * zoom)
+ * @returns Number of segments to use for animation (smoothly interpolated)
+ */
+export function getSegmentsSmooth(screenSize: number): number {
+  // Below static threshold - use static rendering
+  if (screenSize < LOD_THRESHOLDS.STATIC) {
+    return 0;
+  }
+
+  // Smoothly interpolate segments based on screen size
+  // Map screen size from [STATIC, FULL_DETAIL] to [MIN, MAX] segments
+  const t = Math.min(1, Math.max(0,
+    (screenSize - LOD_THRESHOLDS.STATIC) / (LOD_THRESHOLDS.FULL_DETAIL - LOD_THRESHOLDS.STATIC)
+  ));
+
+  // Use smoothstep for even smoother transitions
+  const smoothT = t * t * (3 - 2 * t);
+
+  // Interpolate and round to nearest integer
+  const segments = Math.round(SEGMENT_RANGE.MIN + smoothT * (SEGMENT_RANGE.MAX - SEGMENT_RANGE.MIN));
+
+  return segments;
+}
+
+/**
+ * Get segment count for a given LOD level (discrete, for compatibility)
+ * @deprecated Use getSegmentsSmooth for smoother transitions
+ */
+export function getSegmentsForLOD(lod: LODLevel): number {
+  switch (lod) {
+    case 1: return 12;
+    case 2: return 6;
+    case 3: return 3;
+    case 4: return 0;
+  }
+}
+
+/**
+ * Draw a static fish sprite (no animation/deformation)
+ * Used for LOD level 4 when fish is very small on screen.
+ * 
+ * @param ctx - Canvas 2D rendering context
+ * @param sprite - Pre-processed sprite canvas
+ * @param x - Center X position
+ * @param y - Center Y position
+ * @param size - Fish size (width)
+ * @param facingRight - Direction fish is facing
+ */
+export function drawStaticFish(
+  ctx: CanvasRenderingContext2D,
+  sprite: HTMLCanvasElement,
+  x: number,
+  y: number,
+  size: number,
+  facingRight: boolean
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(facingRight ? 1 : -1, 1);
+
+  // Draw sprite centered, maintaining aspect ratio
+  const aspectRatio = sprite.width / sprite.height;
+  const drawWidth = size;
+  const drawHeight = size / aspectRatio;
+
+  ctx.drawImage(
+    sprite,
+    -drawWidth / 2,
+    -drawHeight / 2,
+    drawWidth,
+    drawHeight
+  );
+
+  ctx.restore();
+}
+
+// =============================================================================
+// Drawing Options
+// =============================================================================
+
 export interface DrawFishOptions {
   /** Speed 0–1+; boosts tail motion when moving */
   speed?: number;
@@ -22,6 +143,8 @@ export interface DrawFishOptions {
   intensity?: number;
   /** Vertical tilt in radians */
   verticalTilt?: number;
+  /** Override segment count for LOD (default 8, use getSegmentsForLOD) */
+  segments?: number;
 }
 
 /**
@@ -143,8 +266,18 @@ export function drawFishWithDeformation(
     speed = 0,
     chompPhase = 0,
     intensity = 1,
-    verticalTilt = 0
+    verticalTilt = 0,
+    segments: segmentOverride
   } = options;
+
+  // Use LOD-based segment count if provided, otherwise default to 8
+  const segments = segmentOverride ?? 8;
+
+  // If segments is 0 or very low, fall back to static rendering
+  if (segments < 2) {
+    drawStaticFish(ctx, sprite, x, y, size, facingRight);
+    return;
+  }
 
   // Movement-based animation: more tail motion when swimming
   const speedBoost = 1 + Math.min(1, speed) * 0.6;
@@ -155,19 +288,25 @@ export function drawFishWithDeformation(
   ctx.rotate(facingRight ? verticalTilt : -verticalTilt);
   ctx.scale(facingRight ? 1 : -1, 1);
 
-  const segments = 8;
   const segmentWidth = size / segments;
 
+  // Wave phase constant - total phase shift from tail to head
+  // Using normalized position (0-1) ensures consistent wave shape regardless of segment count
+  const WAVE_PHASE_LENGTH = 2.4; // ~0.3 * 8 segments worth of phase
+
   for (let i = 0; i < segments; i++) {
-    const waveStrength = 1 - i / segments; // 1 at tail, 0 at head
-    const wave = Math.sin(animTime + i * 0.3) * 1.5 * waveStrength * effectiveIntensity;
+    // Use normalized position (0-1) for consistent wave regardless of segment count
+    const normalizedPos = i / segments;
+    const waveStrength = 1 - normalizedPos; // 1 at tail, 0 at head
+    const phaseOffset = normalizedPos * WAVE_PHASE_LENGTH;
+    const wave = Math.sin(animTime + phaseOffset) * 1.5 * waveStrength * effectiveIntensity;
 
     ctx.save();
 
     const segX = -size / 2 + i * segmentWidth;
     ctx.translate(segX, wave);
 
-    const rotation = Math.sin(animTime + i * 0.3) * 0.025 * waveStrength * effectiveIntensity;
+    const rotation = Math.sin(animTime + phaseOffset) * 0.025 * waveStrength * effectiveIntensity;
     ctx.rotate(rotation);
 
     // Chomp bulge: stretch front segments (head) horizontally

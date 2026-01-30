@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, model = 'bfl/flux-2-pro' } = await request.json();
+    const { prompt, model = 'bfl/flux-2-pro', aspectRatio = '1:1' } = await request.json();
 
     if (!prompt) {
       return NextResponse.json(
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[FishImage] Generating image with', model, ':', prompt);
+    console.log('[FishImage] Generating image with', model, 'aspect:', aspectRatio, ':', prompt.substring(0, 100) + '...');
 
     const requestBody: any = {
       model: model,
@@ -34,10 +34,11 @@ export async function POST(request: NextRequest) {
     };
 
     // Add provider-specific options for Imagen
+    // Supported aspect ratios: 1:1, 3:4, 4:3, 9:16, 16:9
     if (model.startsWith('google/imagen')) {
       requestBody.providerOptions = {
         googleVertex: {
-          aspectRatio: '1:1',
+          aspectRatio: aspectRatio,
           safetyFilterLevel: 'block_some',
         },
       };
