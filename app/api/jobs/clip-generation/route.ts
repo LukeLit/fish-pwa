@@ -92,6 +92,9 @@ export async function POST(request: NextRequest) {
         description,
       },
     });
+    
+    // Wait a moment for blob storage to sync (prevents race condition)
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Build the prompt
     const actionConfig = ACTION_PROMPTS[action];

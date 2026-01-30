@@ -60,7 +60,7 @@ export async function createJob<T extends AnyJob>(job: Omit<T, 'createdAt' | 'up
 export async function updateJob<T extends AnyJob>(
   jobId: string,
   updates: Partial<T>,
-  maxRetries: number = 3
+  maxRetries: number = 5
 ): Promise<T | null> {
   let lastError: Error | null = null;
   
@@ -70,9 +70,11 @@ export async function updateJob<T extends AnyJob>(
 
       if (!jobs[jobId]) {
         console.error(`[JobStore] Job ${jobId} not found (attempt ${attempt + 1})`);
-        // If job not found, might be a stale read - retry
+        // If job not found, might be a stale read - retry with longer delay
         if (attempt < maxRetries - 1) {
-          await sleep(100 * (attempt + 1)); // Exponential backoff
+          const delay = 500 * (attempt + 1); // 500ms, 1s, 1.5s, 2s
+          console.log(`[JobStore] Retrying in ${delay}ms...`);
+          await sleep(delay);
           continue;
         }
         return null;
@@ -98,7 +100,8 @@ export async function updateJob<T extends AnyJob>(
       lastError = error;
       console.error(`[JobStore] Update error for ${jobId} (attempt ${attempt + 1}):`, error.message);
       if (attempt < maxRetries - 1) {
-        await sleep(100 * (attempt + 1));
+        const delay = 500 * (attempt + 1);
+        await sleep(delay);
       }
     }
   }
