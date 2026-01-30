@@ -3,11 +3,11 @@
  */
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { hasActiveRun } from '@/lib/game/run-state';
 import FeedbackButton from './FeedbackButton';
+import { UIButton, UIPanel } from './ui';
 
 export default function MetaHub() {
   const [hasRun, setHasRun] = useState(false);
@@ -91,63 +91,52 @@ export default function MetaHub() {
         {/* Main Menu Buttons - Vertically Stacked */}
         <div className="flex flex-col gap-3 sm:gap-4 animate-slide-in">
           {/* Start Game Button */}
-          <Link
-            href="/fish-select"
-            className="dv-button dv-button-primary text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 group"
-          >
-            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Start Game</span>
-            <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          </Link>
+          <UIButton variant="primary" size="xl" fullWidth href="/fish-select">
+            Start Game
+          </UIButton>
 
           {/* Continue Button */}
-          <button
+          <UIButton
+            variant={hasRun ? "warning" : "disabled"}
+            size="xl"
+            fullWidth
             onClick={handleContinue}
             disabled={!hasRun}
             aria-label={hasRun ? "Continue current game" : "No active game to continue"}
-            className={`dv-button text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 group ${
-              hasRun
-                ? 'bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-white border-orange-400/50 cursor-pointer'
-                : 'bg-gray-800/50 text-gray-600 border-gray-700/50 cursor-not-allowed'
-            }`}
-            style={hasRun ? { boxShadow: '0 0 25px rgba(234, 88, 12, 0.4)' } : {}}
           >
-            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Continue</span>
-            {hasRun && (
-              <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            )}
-          </button>
+            Continue
+          </UIButton>
 
           {/* Tech Tree / Upgrades Button */}
-          <Link
-            href="/tech-tree"
-            className="dv-button dv-button-secondary text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 group"
-          >
-            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Upgrades</span>
-            <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          </Link>
+          <UIButton variant="secondary" size="xl" fullWidth href="/tech-tree">
+            Upgrades
+          </UIButton>
 
           {/* Options Button */}
-          <button
+          <UIButton
+            variant="disabled"
+            size="xl"
+            fullWidth
             disabled
             aria-label="Options (coming soon)"
-            className="dv-button bg-gray-800/50 text-gray-500 border-gray-700/50 text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 cursor-not-allowed opacity-60"
           >
-            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Options</span>
-          </button>
+            Options
+          </UIButton>
 
           {/* Fish Editor Button */}
-          <Link
+          <UIButton 
+            variant="secondary" 
+            size="xl" 
+            fullWidth
             href="/fish-editor"
-            className="dv-button text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 group bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-cyan-400/50"
-            style={{ boxShadow: '0 0 25px rgba(8, 145, 178, 0.4)' }}
+            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 border-cyan-400/50"
           >
-            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Fish Editor</span>
-            <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          </Link>
+            Fish Editor
+          </UIButton>
         </div>
 
         {/* How to Play Section */}
-        <div className="dv-card dv-card-cyan p-4 sm:p-6 mt-6 sm:mt-8 animate-scale-in" style={{ animationDelay: '0.1s' }}>
+        <UIPanel variant="cyan" className="mt-6 sm:mt-8 animate-scale-in" style={{ animationDelay: '0.1s' }}>
           <h2 className="text-xl sm:text-2xl dv-subtitle mb-3 sm:mb-4 uppercase">How to Play</h2>
           <ul className="space-y-2 text-sm sm:text-base text-blue-200">
             <li className="flex items-start gap-2">
@@ -175,11 +164,11 @@ export default function MetaHub() {
               <span>Earn Essence on death to unlock permanent upgrades</span>
             </li>
           </ul>
-        </div>
+        </UIPanel>
 
         {/* Mobile Control Instructions */}
         {isMobile && (
-          <div className="dv-card dv-card-teal p-4 sm:p-6 mt-4 animate-scale-in" style={{ animationDelay: '0.2s' }}>
+          <UIPanel variant="teal" className="mt-4 animate-scale-in" style={{ animationDelay: '0.2s' }}>
             <h3 className="text-lg sm:text-xl dv-subtitle mb-3 uppercase flex items-center gap-2">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -210,7 +199,7 @@ export default function MetaHub() {
                 </div>
               </div>
             </div>
-          </div>
+          </UIPanel>
         )}
 
         {/* Feedback Button */}

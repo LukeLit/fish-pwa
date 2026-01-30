@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import type { RunState } from '@/lib/game/types';
+import { UIButton, UIPanel, UICard } from './ui';
 
 interface EvolutionScreenProps {
   runState: RunState;
@@ -70,7 +71,7 @@ export default function EvolutionScreen({
       />
 
       {/* Main content */}
-      <div className="dv-card dv-card-purple p-6 sm:p-8 max-w-4xl w-full relative animate-scale-in">
+      <UIPanel variant="purple" size="lg" className="max-w-4xl w-full relative animate-scale-in">
         {/* Header */}
         <div className="text-center mb-6 sm:mb-8">
           <h1 className="text-4xl sm:text-5xl md:text-6xl dv-title mb-2 sm:mb-3 animate-glow-pulse">
@@ -137,26 +138,26 @@ export default function EvolutionScreen({
 
         {/* Stats Display */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-cyan-400 dv-glow-cyan">
+          <UICard variant="cyan" glow>
             <div className="text-cyan-300 text-xs sm:text-sm font-bold uppercase mb-1">Size</div>
             <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.size.toFixed(1)}</div>
-          </div>
-          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-green-400 dv-glow-cyan">
+          </UICard>
+          <UICard variant="green" glow>
             <div className="text-green-300 text-xs sm:text-sm font-bold uppercase mb-1">Speed</div>
             <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.speed.toFixed(1)}</div>
-          </div>
-          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-red-400 dv-glow-cyan">
+          </UICard>
+          <UICard variant="red" glow>
             <div className="text-red-300 text-xs sm:text-sm font-bold uppercase mb-1">Health</div>
             <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.health}</div>
-          </div>
-          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-yellow-400 dv-glow-cyan">
+          </UICard>
+          <UICard variant="yellow" glow>
             <div className="text-yellow-300 text-xs sm:text-sm font-bold uppercase mb-1">Damage</div>
             <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.damage}</div>
-          </div>
+          </UICard>
         </div>
 
         {/* Selected Upgrades */}
-        <div className="bg-black/90 rounded-lg p-4 sm:p-6 border-4 border-purple-400 dv-glow-purple mb-6 sm:mb-8">
+        <UIPanel variant="purple" className="mb-6 sm:mb-8">
           <h3 className="text-xl sm:text-2xl dv-subtitle mb-3 sm:mb-4 uppercase">New Abilities</h3>
           <div className="space-y-2 sm:space-y-3">
             {selectedUpgrades.slice(-3).map((upgradeId, index) => (
@@ -173,23 +174,26 @@ export default function EvolutionScreen({
               <div className="text-gray-400 text-center text-sm sm:text-base">No upgrades selected yet</div>
             )}
           </div>
-        </div>
+        </UIPanel>
 
         {/* Continue Button */}
-        <button
+        <UIButton
+          variant="primary"
+          size="xl"
+          fullWidth
           onClick={onContinue}
-          className={`w-full dv-button dv-button-primary text-lg sm:text-xl md:text-2xl py-4 sm:py-5 px-6 sm:px-8 transition-all duration-300 ${
+          className={`transition-all duration-300 ${
             animationPhase === 'complete' ? 'scale-100 opacity-100 animate-glow-pulse' : 'scale-95 opacity-70'
           }`}
         >
           <span className="tracking-wider">ENTER LEVEL {nextLevel}</span>
-        </button>
+        </UIButton>
 
         {/* Level indicator */}
         <div className="text-center mt-4 sm:mt-6 dv-subtitle text-xs sm:text-sm">
           Completed: Level {runState.currentLevel}
         </div>
-      </div>
+      </UIPanel>
     </div>
   );
 }

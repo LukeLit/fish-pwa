@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { loadPlayerState, savePlayerState, addEvoPoints, updateHighScore } from '@/lib/game/player-state';
 import FeedbackButton from './FeedbackButton';
+import { UIButton, UIPanel, UICard } from './ui';
 
 export interface DeathStats {
   cause: 'starved' | 'eaten';
@@ -72,7 +73,10 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
     <div className="absolute inset-0 dv-bg-cosmic-alt flex items-center justify-center z-50 animate-in fade-in duration-500 p-4">
       {/* Death Message */}
       <div className="max-w-3xl w-full space-y-4 sm:space-y-6 animate-scale-in">
-        <div className={`dv-card border-4 ${deathColor} bg-black/90 p-6 sm:p-8 ${glowColor}`}>
+        <UIPanel 
+          variant={stats.cause === 'starved' ? 'yellow' : 'red'} 
+          className="bg-black/90"
+        >
           <h1 className="text-4xl sm:text-5xl md:text-6xl dv-title text-center mb-2 animate-glow-pulse">
             {deathMessage}
           </h1>
@@ -80,26 +84,26 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
 
           {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-            <div className="bg-black/80 border-4 border-cyan-500 p-3 sm:p-4 rounded-lg dv-glow-cyan">
+            <UICard variant="cyan" glow>
               <div className="text-cyan-300 text-xs sm:text-sm uppercase tracking-wide font-bold mb-1">Size Reached</div>
               <div className="text-white text-2xl sm:text-3xl font-bold">{Math.floor(stats.size)}</div>
-            </div>
-            <div className="bg-black/80 border-4 border-green-500 p-3 sm:p-4 rounded-lg dv-glow-cyan">
+            </UICard>
+            <UICard variant="green" glow>
               <div className="text-green-300 text-xs sm:text-sm uppercase tracking-wide font-bold mb-1">Fish Eaten</div>
               <div className="text-white text-2xl sm:text-3xl font-bold">{stats.fishEaten}</div>
-            </div>
-            <div className="bg-black/80 border-4 border-purple-500 p-3 sm:p-4 rounded-lg dv-glow-purple">
+            </UICard>
+            <UICard variant="purple" glow>
               <div className="text-purple-300 text-xs sm:text-sm uppercase tracking-wide font-bold mb-1">Essence Collected</div>
               <div className="text-white text-2xl sm:text-3xl font-bold">{stats.essenceCollected}</div>
-            </div>
-            <div className="bg-black/80 border-4 border-yellow-500 p-3 sm:p-4 rounded-lg dv-glow-yellow">
+            </UICard>
+            <UICard variant="yellow" glow>
               <div className="text-yellow-300 text-xs sm:text-sm uppercase tracking-wide font-bold mb-1">Time Survived</div>
               <div className="text-white text-2xl sm:text-3xl font-bold">{stats.timeSurvived}s</div>
-            </div>
+            </UICard>
           </div>
 
           {/* Score Calculation Breakdown */}
-          <div className="dv-card bg-black/80 border-4 border-purple-500 p-4 sm:p-6 mb-6 sm:mb-8 dv-glow-purple rounded-lg">
+          <UIPanel variant="purple" className="bg-black/80 mb-6 sm:mb-8">
             <div className="dv-subtitle text-sm sm:text-base uppercase mb-3">Score Breakdown</div>
             <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm font-mono">
               <div className="flex justify-between text-white/90 font-semibold">
@@ -124,10 +128,10 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
                 <span className="text-cyan-400">{score.toLocaleString()}</span>
               </div>
             </div>
-          </div>
+          </UIPanel>
 
           {/* Evo Points Conversion */}
-          <div className="dv-card bg-gradient-to-r from-yellow-900/80 to-amber-900/80 border-4 border-yellow-400 p-4 sm:p-6 dv-glow-yellow rounded-lg animate-pulse">
+          <UIPanel variant="yellow" className="bg-gradient-to-r from-yellow-900/80 to-amber-900/80 animate-pulse">
             <div className="text-yellow-200 text-xs sm:text-sm uppercase tracking-wide font-bold mb-2">Evo Points Earned</div>
             <div className="flex items-baseline gap-3 mb-3">
               <span className="text-yellow-400 text-4xl sm:text-5xl font-bold">+{evoPointsAwarded}</span>
@@ -141,28 +145,32 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
             
             {/* CTA to spend Evo Points */}
             <div className="mt-4 pt-4 border-t border-yellow-400/30">
-              <a
+              <UIButton 
+                variant="warning"
+                fullWidth
                 href="/tech-tree"
-                className="dv-button block text-center bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black border-yellow-300 text-sm sm:text-base py-3 px-6"
+                className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black border-yellow-300"
               >
                 🔧 Spend Evo Points
-              </a>
+              </UIButton>
               <p className="text-yellow-200 text-xs text-center mt-2 font-semibold">
                 Purchase permanent upgrades for future runs
               </p>
             </div>
-          </div>
-        </div>
+          </UIPanel>
+        </UIPanel>
 
         {/* Return Button */}
-        <button
+        <UIButton
+          variant="secondary"
+          size="lg"
+          fullWidth
           onClick={onReturnToMenu}
           disabled={isProcessing}
-          className="w-full dv-button bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-cyan-400 text-lg sm:text-xl py-4 px-6 sm:px-8 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ boxShadow: '0 0 25px rgba(34, 211, 238, 0.4)' }}
+          className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 border-cyan-400"
         >
           Return to Main Menu
-        </button>
+        </UIButton>
 
         {/* Feedback Button */}
         <div className="flex justify-center">
