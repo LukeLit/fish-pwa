@@ -51,8 +51,8 @@ export default function EvolutionScreen({
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-black via-indigo-950 to-purple-950 flex items-center justify-center z-50">
-      {/* Simple cosmic background pattern */}
+    <div className="fixed inset-0 dv-bg-cosmic-alt flex items-center justify-center z-50 p-4">
+      {/* Animated starfield background */}
       <div 
         className="absolute inset-0 opacity-20"
         style={{
@@ -70,19 +70,19 @@ export default function EvolutionScreen({
       />
 
       {/* Main content */}
-      <div className="bg-gradient-to-br from-indigo-900/80 via-purple-900/80 to-blue-900/80 backdrop-blur-sm rounded-lg p-8 max-w-3xl w-full mx-4 border-4 border-cyan-400 shadow-2xl relative">
+      <div className="dv-card dv-card-purple p-6 sm:p-8 max-w-4xl w-full relative animate-scale-in">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-5xl font-bold text-cyan-400 mb-2 tracking-wider animate-pulse">
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl dv-title mb-2 sm:mb-3 animate-glow-pulse">
             {animationPhase === 'transform' ? 'TRANSFORMING...' : 'EVOLUTION COMPLETE!'}
           </h1>
-          <div className="text-2xl text-purple-300">
+          <div className="text-2xl sm:text-3xl dv-subtitle">
             Evolution Level {runState.evolutionLevel}
           </div>
         </div>
 
         {/* Fish Display */}
-        <div className="flex justify-center items-center mb-8 min-h-[300px]">
+        <div className="flex justify-center items-center mb-6 sm:mb-8 min-h-[250px] sm:min-h-[300px]">
           <div className="relative">
             {/* Fish sprite with transformation animation */}
             <div
@@ -99,8 +99,8 @@ export default function EvolutionScreen({
             >
               <img
                 src={runState.fishState.sprite}
-                alt="Evolved Fish"
-                className="w-64 h-64 object-contain"
+                alt={`Evolved ${runState.selectedFishId} fish`}
+                className="w-48 h-48 sm:w-64 sm:h-64 object-contain"
               />
             </div>
 
@@ -110,7 +110,7 @@ export default function EvolutionScreen({
                 {[...Array(12)].map((_, i) => (
                   <div
                     key={i}
-                    className="absolute w-3 h-3 bg-cyan-400 rounded-full animate-ping"
+                    className="absolute w-2 h-2 sm:w-3 sm:h-3 bg-cyan-400 rounded-full animate-ping"
                     style={{
                       left: `${50 + Math.cos(i * 30 * Math.PI / 180) * 100}%`,
                       top: `${50 + Math.sin(i * 30 * Math.PI / 180) * 100}%`,
@@ -136,41 +136,41 @@ export default function EvolutionScreen({
         </div>
 
         {/* Stats Display */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-black/40 rounded-lg p-4 border-2 border-cyan-400/50">
-            <div className="text-cyan-300 text-sm mb-1">Size</div>
-            <div className="text-2xl font-bold text-white">{runState.fishState.size.toFixed(1)}</div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-cyan-400 dv-glow-cyan">
+            <div className="text-cyan-300 text-xs sm:text-sm font-bold uppercase mb-1">Size</div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.size.toFixed(1)}</div>
           </div>
-          <div className="bg-black/40 rounded-lg p-4 border-2 border-cyan-400/50">
-            <div className="text-cyan-300 text-sm mb-1">Speed</div>
-            <div className="text-2xl font-bold text-white">{runState.fishState.speed.toFixed(1)}</div>
+          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-green-400 dv-glow-cyan">
+            <div className="text-green-300 text-xs sm:text-sm font-bold uppercase mb-1">Speed</div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.speed.toFixed(1)}</div>
           </div>
-          <div className="bg-black/40 rounded-lg p-4 border-2 border-cyan-400/50">
-            <div className="text-cyan-300 text-sm mb-1">Health</div>
-            <div className="text-2xl font-bold text-white">{runState.fishState.health}</div>
+          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-red-400 dv-glow-cyan">
+            <div className="text-red-300 text-xs sm:text-sm font-bold uppercase mb-1">Health</div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.health}</div>
           </div>
-          <div className="bg-black/40 rounded-lg p-4 border-2 border-cyan-400/50">
-            <div className="text-cyan-300 text-sm mb-1">Damage</div>
-            <div className="text-2xl font-bold text-white">{runState.fishState.damage}</div>
+          <div className="bg-black/90 rounded-lg p-3 sm:p-4 border-4 border-yellow-400 dv-glow-cyan">
+            <div className="text-yellow-300 text-xs sm:text-sm font-bold uppercase mb-1">Damage</div>
+            <div className="text-2xl sm:text-3xl font-bold text-white">{runState.fishState.damage}</div>
           </div>
         </div>
 
         {/* Selected Upgrades */}
-        <div className="bg-black/40 rounded-lg p-4 border-2 border-purple-400/50 mb-6">
-          <h3 className="text-xl font-bold text-purple-300 mb-3">New Abilities</h3>
-          <div className="space-y-2">
+        <div className="bg-black/90 rounded-lg p-4 sm:p-6 border-4 border-purple-400 dv-glow-purple mb-6 sm:mb-8">
+          <h3 className="text-xl sm:text-2xl dv-subtitle mb-3 sm:mb-4 uppercase">New Abilities</h3>
+          <div className="space-y-2 sm:space-y-3">
             {selectedUpgrades.slice(-3).map((upgradeId, index) => (
               <div
                 key={upgradeId}
-                className="flex items-center gap-2 text-white animate-fade-in"
+                className="flex items-center gap-3 text-white text-sm sm:text-base font-semibold animate-slide-in"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                <div className="w-2 h-2 sm:w-3 sm:h-3 bg-cyan-400 rounded-full animate-pulse" />
                 <span>{getUpgradeName(upgradeId)}</span>
               </div>
             ))}
             {selectedUpgrades.length === 0 && (
-              <div className="text-gray-400 text-center">No upgrades selected yet</div>
+              <div className="text-gray-400 text-center text-sm sm:text-base">No upgrades selected yet</div>
             )}
           </div>
         </div>
@@ -178,20 +178,15 @@ export default function EvolutionScreen({
         {/* Continue Button */}
         <button
           onClick={onContinue}
-          className={`w-full bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 border-2 border-cyan-400 shadow-lg ${
-            animationPhase === 'complete' ? 'scale-100 opacity-100' : 'scale-95 opacity-70'
+          className={`w-full dv-button dv-button-primary text-lg sm:text-xl md:text-2xl py-4 sm:py-5 px-6 sm:px-8 transition-all duration-300 ${
+            animationPhase === 'complete' ? 'scale-100 opacity-100 animate-glow-pulse' : 'scale-95 opacity-70'
           }`}
-          style={{
-            boxShadow: animationPhase === 'complete'
-              ? '0 0 20px rgba(34, 211, 238, 0.5)'
-              : 'none',
-          }}
         >
-          <span className="text-2xl tracking-wider">ENTER LEVEL {nextLevel}</span>
+          <span className="tracking-wider">ENTER LEVEL {nextLevel}</span>
         </button>
 
         {/* Level indicator */}
-        <div className="text-center mt-4 text-purple-300 text-sm">
+        <div className="text-center mt-4 sm:mt-6 dv-subtitle text-xs sm:text-sm">
           Completed: Level {runState.currentLevel}
         </div>
       </div>

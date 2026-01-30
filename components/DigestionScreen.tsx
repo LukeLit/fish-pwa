@@ -96,55 +96,62 @@ export default function DigestionScreen({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
-      <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-blue-900 rounded-lg p-8 max-w-2xl w-full mx-4 border-4 border-cyan-400 shadow-2xl">
+    <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
+      <div className="dv-card dv-card-cyan p-6 sm:p-8 max-w-3xl w-full animate-scale-in">
         {/* Header */}
-        <h1 className="text-4xl font-bold text-white mb-6 text-center tracking-wider">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl dv-title mb-6 sm:mb-8 text-center animate-glow-pulse">
           DIGESTION SEQUENCE
         </h1>
 
         {/* Essence Display */}
-        <div className="mb-6 space-y-3">
-          <h2 className="text-xl font-bold text-cyan-300 mb-3">Essence Collected:</h2>
-          {Object.entries(collectedEssence).map(([type, amount]) => (
+        <div className="mb-6 sm:mb-8 space-y-3 animate-slide-in">
+          <h2 className="text-xl sm:text-2xl dv-subtitle mb-3 sm:mb-4">Essence Collected:</h2>
+          {Object.entries(collectedEssence).map(([type, amount], index) => (
             <div
               key={type}
-              className="flex justify-between items-center bg-black/40 rounded-lg px-4 py-2 border border-cyan-600"
+              className="flex justify-between items-center bg-black/80 rounded-lg px-4 sm:px-6 py-3 sm:py-4 border-4 border-cyan-600 dv-glow-cyan animate-slide-in"
+              style={{ animationDelay: `${index * 0.1}s` }}
             >
               <span 
-                className="font-bold text-lg"
+                className="font-bold text-lg sm:text-xl uppercase tracking-wider"
                 style={{ color: getEssenceColor(type) }}
               >
                 {getEssenceName(type)}
               </span>
-              <span className="text-white font-bold">{amount}</span>
+              <span className="text-white font-bold text-xl sm:text-2xl">{amount}</span>
             </div>
           ))}
         </div>
 
         {/* Level-up calculations */}
         {levelUps.length > 0 && (
-          <div className="mb-6 space-y-4">
-            <h2 className="text-xl font-bold text-yellow-300 mb-3">Level-Ups Available:</h2>
-            {levelUps.map((levelUp) => (
+          <div className="mb-6 sm:mb-8 space-y-4 animate-slide-in" style={{ animationDelay: '0.3s' }}>
+            <h2 className="text-xl sm:text-2xl font-bold text-yellow-300 mb-3 sm:mb-4 uppercase tracking-wide">
+              Level-Ups Available:
+            </h2>
+            {levelUps.map((levelUp, index) => (
               <div 
                 key={levelUp.essenceType}
-                className="bg-black/40 rounded-lg p-4 border-2 border-yellow-500"
+                className="dv-card-black rounded-lg p-4 sm:p-6 border-4 border-yellow-500 animate-slide-in"
+                style={{ 
+                  animationDelay: `${(index + 0.4) * 0.1}s`,
+                  boxShadow: '0 0 25px rgba(234, 179, 8, 0.5)'
+                }}
               >
-                <div className="mb-2">
-                  <p className="text-white text-sm">
+                <div className="mb-4">
+                  <p className="text-white text-sm sm:text-base font-semibold">
                     {collectedEssence[levelUp.essenceType]} {getEssenceName(levelUp.essenceType)} ÷ {LEVEL_UP_THRESHOLD} = 
-                    <span className="text-yellow-300 font-bold ml-2">
+                    <span className="text-yellow-300 font-bold ml-2 text-lg sm:text-xl">
                       {levelUp.count} Level-Up{levelUp.count !== 1 ? 's' : ''}
                     </span>
                   </p>
-                  <p className="text-gray-400 text-xs mt-1">
+                  <p className="text-cyan-400 text-xs sm:text-sm mt-2 font-semibold">
                     ({levelUp.remaining} essence remaining)
                   </p>
                 </div>
 
                 {/* Individual level-up buttons */}
-                <div className="flex flex-wrap gap-2 mt-3">
+                <div className="flex flex-wrap gap-2 sm:gap-3 mt-3">
                   {Array.from({ length: levelUp.count }, (_, i) => {
                     const key = `${levelUp.essenceType}_${i}`;
                     const collected = collectedLevelUps.has(key);
@@ -153,15 +160,11 @@ export default function DigestionScreen({
                         key={key}
                         onClick={() => handleCollectLevelUp(levelUp.essenceType, i)}
                         disabled={collected}
-                        className={`px-4 py-2 rounded-lg font-bold text-sm transition-all transform ${
+                        className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-bold text-sm sm:text-base transition-all transform border-4 ${
                           collected
-                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                            : 'bg-yellow-500 hover:bg-yellow-400 text-black hover:scale-105 animate-pulse'
+                            ? 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black border-yellow-300 hover:scale-110 animate-pulse'
                         }`}
-                        style={{
-                          borderColor: collected ? '#666' : getEssenceColor(levelUp.essenceType),
-                          borderWidth: '2px',
-                        }}
                       >
                         {collected ? '✓ Collected' : `🎁 Level-Up +1`}
                       </button>
@@ -175,11 +178,11 @@ export default function DigestionScreen({
 
         {/* No level-ups message */}
         {levelUps.length === 0 && (
-          <div className="mb-6 bg-black/40 rounded-lg p-6 border-2 border-gray-600 text-center">
-            <p className="text-gray-300 text-lg">
+          <div className="mb-6 sm:mb-8 dv-card-black rounded-lg p-6 sm:p-8 border-4 border-gray-600 text-center animate-scale-in">
+            <p className="text-gray-300 text-lg sm:text-xl font-semibold">
               Not enough essence for any level-ups.
             </p>
-            <p className="text-gray-400 text-sm mt-2">
+            <p className="text-cyan-400 text-sm sm:text-base mt-3 font-semibold">
               Collect {LEVEL_UP_THRESHOLD} essence to earn a level-up!
             </p>
           </div>
@@ -189,7 +192,11 @@ export default function DigestionScreen({
         {showContinue && (
           <button
             onClick={onComplete}
-            className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 border-2 border-white shadow-lg"
+            className="w-full dv-button bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white border-cyan-300 text-lg sm:text-xl py-4 sm:py-5 animate-scale-in"
+            style={{ 
+              animationDelay: '0.5s',
+              boxShadow: '0 0 30px rgba(34, 211, 238, 0.6)'
+            }}
           >
             CONTINUE
           </button>
@@ -197,7 +204,7 @@ export default function DigestionScreen({
 
         {/* Instructions */}
         {!showContinue && levelUps.length > 0 && (
-          <p className="text-center text-cyan-300 text-sm mt-4 animate-pulse">
+          <p className="text-center dv-subtitle text-xs sm:text-sm mt-4 animate-pulse">
             Click each level-up to collect it!
           </p>
         )}

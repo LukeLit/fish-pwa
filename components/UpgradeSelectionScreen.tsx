@@ -131,61 +131,72 @@ export default function UpgradeSelectionScreen({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
-      <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-blue-900 rounded-lg p-8 max-w-4xl w-full mx-4 border-4 shadow-2xl"
-        style={{ borderColor: getEssenceColor(essenceType) }}
+    <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
+      <div className="dv-card dv-card-purple p-6 sm:p-8 max-w-5xl w-full animate-scale-in"
+        style={{ borderColor: getEssenceColor(essenceType), boxShadow: `0 0 30px ${getEssenceColor(essenceType)}80` }}
       >
         {/* Header */}
-        <h1 className="text-4xl font-bold text-white mb-2 text-center tracking-wider">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl dv-title mb-2 text-center animate-glow-pulse">
           {getEssenceName(essenceType).toUpperCase()} ESSENCE LEVEL UP!
         </h1>
-        <p className="text-cyan-300 text-center mb-6 text-lg">
+        <p className="dv-subtitle text-center mb-6 sm:mb-8 text-base sm:text-lg">
           Choose an Upgrade
         </p>
 
         {/* Upgrade Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {selectedUpgrades.map((upgrade) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          {selectedUpgrades.map((upgrade, index) => (
             <button
               key={upgrade.id}
               onClick={() => onUpgradeSelected(upgrade.id)}
               onMouseEnter={() => setHoveredUpgrade(upgrade.id)}
               onMouseLeave={() => setHoveredUpgrade(null)}
-              className={`bg-black/60 rounded-lg p-4 border-2 transition-all transform hover:scale-105 hover:shadow-xl text-left ${
-                hoveredUpgrade === upgrade.id ? 'border-yellow-400' : 'border-cyan-600'
+              className={`dv-card-black rounded-lg p-4 sm:p-5 border-4 transition-all transform text-left animate-slide-in ${
+                hoveredUpgrade === upgrade.id 
+                  ? 'border-yellow-400 scale-105 shadow-[0_0_30px_rgba(234,179,8,0.6)]' 
+                  : 'hover:border-purple-400 hover:scale-105'
               }`}
+              style={{ animationDelay: `${index * 0.1}s` }}
             >
               {/* Impact level indicator */}
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-2xl">{getImpactIcon(upgrade.impactLevel)}</span>
-                <span className="text-xs text-gray-400 uppercase">{upgrade.impactLevel}</span>
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-2xl sm:text-3xl animate-float" style={{ animationDelay: `${index * 0.2}s` }}>
+                  {getImpactIcon(upgrade.impactLevel)}
+                </span>
+                <span className="text-xs sm:text-sm text-purple-300 uppercase font-bold px-2 py-1 bg-purple-900/50 rounded border border-purple-500/50">
+                  {upgrade.impactLevel}
+                </span>
               </div>
 
               {/* Upgrade name */}
-              <h3 className="text-xl font-bold text-white mb-2">{upgrade.name}</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-3 tracking-wide">
+                {upgrade.name}
+              </h3>
 
               {/* Description */}
-              <p className="text-gray-300 text-sm mb-3">{upgrade.description}</p>
+              <p className="text-gray-300 text-sm sm:text-base mb-3 leading-relaxed">
+                {upgrade.description}
+              </p>
 
               {/* Effect preview */}
-              <div className="bg-black/40 rounded px-3 py-2 mb-2">
-                <p className="text-yellow-300 text-sm font-mono">
+              <div className="bg-gradient-to-r from-purple-900/60 to-blue-900/60 rounded-lg px-3 py-2 mb-3 border-2 border-yellow-500/30">
+                <p className="text-yellow-300 text-sm sm:text-base font-mono font-bold">
                   {formatEffectDescription(upgrade)}
                 </p>
               </div>
 
               {/* Max level info */}
               {upgrade.maxLevel > 1 && (
-                <p className="text-gray-400 text-xs">
+                <p className="text-cyan-400 text-xs sm:text-sm font-semibold">
                   Max Level: {upgrade.maxLevel}
                 </p>
               )}
 
               {/* Select prompt on hover */}
               {hoveredUpgrade === upgrade.id && (
-                <div className="mt-3 text-center">
-                  <span className="text-yellow-400 font-bold animate-pulse">
-                    ▶ SELECT ◀
+                <div className="mt-3 text-center bg-yellow-400/20 rounded-lg py-2 border-2 border-yellow-400/50">
+                  <span className="text-yellow-400 font-bold text-base sm:text-lg animate-pulse">
+                    ▶ CLICK TO SELECT ◀
                   </span>
                 </div>
               )}
@@ -194,21 +205,23 @@ export default function UpgradeSelectionScreen({
         </div>
 
         {/* Reroll Button */}
-        <div className="flex justify-center">
+        <div className="flex justify-center mb-4">
           {rerollsRemaining > 0 ? (
             <button
               onClick={handleReroll}
-              className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105 border-2 border-purple-400"
+              className="dv-button dv-button-secondary text-base sm:text-lg py-3 sm:py-4 px-6 sm:px-10"
             >
               🎲 REROLL ({rerollsRemaining} remaining)
             </button>
           ) : (
-            <p className="text-gray-400 text-sm">No rerolls remaining</p>
+            <p className="text-gray-400 text-sm sm:text-base font-semibold px-6 py-3 bg-gray-800/50 rounded-lg border-2 border-gray-700">
+              No rerolls remaining
+            </p>
           )}
         </div>
 
         {/* Instructions */}
-        <p className="text-center text-cyan-300 text-sm mt-4">
+        <p className="text-center dv-subtitle text-xs sm:text-sm">
           Click an upgrade card to select it
         </p>
       </div>
