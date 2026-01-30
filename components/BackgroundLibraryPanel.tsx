@@ -139,7 +139,8 @@ export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew, o
   const handleDelete = async (background: Background, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (!window.confirm(`Delete background "${background.filename}"? This cannot be undone.`)) {
+    const displayName = isBackgroundAsset(background) ? background.name : background.filename;
+    if (!window.confirm(`Delete background "${displayName}"? This cannot be undone.`)) {
       return;
     }
 
@@ -320,8 +321,8 @@ export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew, o
           <button
             onClick={() => setActiveSubTab('all')}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${activeSubTab === 'all'
-                ? 'bg-gray-600 text-white'
-                : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+              ? 'bg-gray-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
               }`}
           >
             All ({backgrounds.length})
@@ -339,8 +340,8 @@ export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew, o
                 key={biomeId}
                 onClick={() => setActiveSubTab(biomeId)}
                 className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${isActive
-                    ? `${colors.bg.replace('/20', '')} text-white`
-                    : `${colors.text} hover:text-white ${colors.bg} border ${colors.border}/50`
+                  ? `${colors.bg.replace('/20', '')} text-white`
+                  : `${colors.text} hover:text-white ${colors.bg} border ${colors.border}/50`
                   }`}
               >
                 {getBiomeDisplayName(biomeId)} ({count})
