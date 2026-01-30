@@ -1326,25 +1326,42 @@ export default function FishEditorCanvas({
 
           ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         } else {
-          // Editor mode - normal background
-          ctx.drawImage(backgroundImageRef.current, 0, 0, scaledWidth, scaledHeight);
+          // Editor mode - cover mode background (maintain aspect ratio, center)
+          const img = backgroundImageRef.current;
+          const imgAspect = img.width / img.height;
+          const screenAspect = scaledWidth / scaledHeight;
+
+          let drawWidth, drawHeight;
+          if (imgAspect > screenAspect) {
+            // Image is wider - fit to height
+            drawHeight = scaledHeight;
+            drawWidth = scaledHeight * imgAspect;
+          } else {
+            // Image is taller - fit to width
+            drawWidth = scaledWidth;
+            drawHeight = scaledWidth / imgAspect;
+          }
+
+          // Center the background
+          const bgX = (scaledWidth - drawWidth) / 2;
+          const bgY = (scaledHeight - drawHeight) / 2;
+
+          ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         }
         ctx.restore();
 
-        // Add subtle vignette effect for polished look (game mode only)
-        if (gameMode) {
-          ctx.save();
-          const vignetteGradient = ctx.createRadialGradient(
-            scaledWidth / 2, scaledHeight / 2, scaledHeight * 0.3,
-            scaledWidth / 2, scaledHeight / 2, scaledHeight * 0.8
-          );
-          vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-          vignetteGradient.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
-          vignetteGradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
-          ctx.fillStyle = vignetteGradient;
-          ctx.fillRect(0, 0, scaledWidth, scaledHeight);
-          ctx.restore();
-        }
+        // Add subtle vignette effect for polished look (both modes)
+        ctx.save();
+        const vignetteGradient = ctx.createRadialGradient(
+          scaledWidth / 2, scaledHeight / 2, scaledHeight * 0.3,
+          scaledWidth / 2, scaledHeight / 2, scaledHeight * 0.8
+        );
+        vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignetteGradient.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
+        vignetteGradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+        ctx.fillStyle = vignetteGradient;
+        ctx.fillRect(0, 0, scaledWidth, scaledHeight);
+        ctx.restore();
 
         // Optional: Simple water shimmer overlay (much faster than pixel distortion)
         if (enableWaterDistortion) {

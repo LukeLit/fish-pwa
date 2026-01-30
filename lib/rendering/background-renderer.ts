@@ -25,6 +25,13 @@ export interface BackgroundRenderOptions {
   overlay?: string;
   /** Scale multiplier for the background (1.0 = exact fit, 1.2 = 20% larger) */
   scale?: number;
+  /** 
+   * Fill mode:
+   * - 'cover' (default): Fill container, crop if needed (standard CSS cover behavior)
+   * - 'fillHeight': Always fill height, may extend beyond width
+   * - 'fillWidth': Always fill width, may extend beyond height
+   */
+  fillMode?: 'cover' | 'fillHeight' | 'fillWidth';
 }
 
 export interface LoadedBackground {
@@ -95,13 +102,14 @@ export function invalidateBackground(url: string): void {
 // =============================================================================
 
 /**
- * Calculate draw dimensions for cover mode (fill container, crop if needed)
+ * Calculate draw dimensions for various fill modes
  * 
  * @param imgWidth - Image width
  * @param imgHeight - Image height
  * @param containerWidth - Container width
  * @param containerHeight - Container height
  * @param scale - Scale multiplier (default 1.0)
+ * @param fillMode - 'cover' | 'fillHeight' | 'fillWidth' (default 'cover')
  * @returns { width, height, x, y } for drawing
  */
 export function calculateCoverDimensions(
@@ -109,7 +117,8 @@ export function calculateCoverDimensions(
   imgHeight: number,
   containerWidth: number,
   containerHeight: number,
-  scale: number = 1.0
+  scale: number = 1.0,
+  fillMode: 'cover' | 'fillHeight' | 'fillWidth' = 'cover'
 ): { width: number; height: number; x: number; y: number } {
   const imgAspect = imgWidth / imgHeight;
   const containerAspect = containerWidth / containerHeight;
@@ -117,15 +126,25 @@ export function calculateCoverDimensions(
   let drawWidth: number;
   let drawHeight: number;
 
-  // Cover mode: scale to fill, may crop
-  if (imgAspect > containerAspect) {
-    // Image is wider than container - fit height, crop width
+  if (fillMode === 'fillHeight') {
+    // Always fill height, width may extend beyond container
     drawHeight = containerHeight * scale;
     drawWidth = drawHeight * imgAspect;
-  } else {
-    // Image is taller than container - fit width, crop height
+  } else if (fillMode === 'fillWidth') {
+    // Always fill width, height may extend beyond container
     drawWidth = containerWidth * scale;
     drawHeight = drawWidth / imgAspect;
+  } else {
+    // Cover mode: scale to fill, may crop (picks whichever fills both dimensions)
+    if (imgAspect > containerAspect) {
+      // Image is wider than container - fit height, crop width
+      drawHeight = containerHeight * scale;
+      drawWidth = drawHeight * imgAspect;
+    } else {
+      // Image is taller than container - fit width, crop height
+      drawWidth = containerWidth * scale;
+      drawHeight = drawWidth / imgAspect;
+    }
   }
 
   // Center the image
@@ -158,6 +177,7 @@ export function drawBackground(
     cameraOffset = { x: 0, y: 0 },
     overlay,
     scale = 1.0,
+    fillMode = 'cover',
   } = options;
 
   // Get image reference
@@ -165,13 +185,14 @@ export function drawBackground(
   const imgWidth = img.width;
   const imgHeight = img.height;
 
-  // Calculate dimensions for cover mode
+  // Calculate dimensions based on fill mode
   const { width: drawWidth, height: drawHeight, x: baseX, y: baseY } = calculateCoverDimensions(
     imgWidth,
     imgHeight,
     containerWidth,
     containerHeight,
-    scale
+    scale,
+    fillMode
   );
 
   // Apply parallax offset (negative because bg moves opposite to camera)

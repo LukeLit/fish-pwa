@@ -294,6 +294,12 @@ export function drawFishWithDeformation(
   // Using normalized position (0-1) ensures consistent wave shape regardless of segment count
   const WAVE_PHASE_LENGTH = 2.4; // ~0.3 * 8 segments worth of phase
 
+  // Overlap factor to hide seams between segments (percentage of segment width)
+  // Each segment is drawn slightly wider, overlapping its neighbors
+  const OVERLAP_FACTOR = 0.15; // 15% overlap on each side
+  const overlapPx = segmentWidth * OVERLAP_FACTOR;
+  const srcOverlapPx = (sprite.width / segments) * OVERLAP_FACTOR;
+
   for (let i = 0; i < segments; i++) {
     // Use normalized position (0-1) for consistent wave regardless of segment count
     const normalizedPos = i / segments;
@@ -320,15 +326,25 @@ export function drawFishWithDeformation(
     }
     ctx.translate(drawX, 0);
 
+    // Calculate source and destination with overlap to hide seams
+    // First and last segments only overlap on one side
+    const srcX = Math.max(0, (i / segments) * sprite.width - srcOverlapPx);
+    const srcW = Math.min(
+      sprite.width - srcX,
+      sprite.width / segments + srcOverlapPx * 2
+    );
+    const dstX = i === 0 ? 0 : -overlapPx;
+    const dstW = drawW + (i === 0 ? overlapPx : overlapPx * 2);
+
     ctx.drawImage(
       sprite,
-      (i / segments) * sprite.width,
+      srcX,
       0,
-      sprite.width / segments,
+      srcW,
       sprite.height,
-      0,
+      dstX,
       -size / 2,
-      drawW,
+      dstW,
       size
     );
 
