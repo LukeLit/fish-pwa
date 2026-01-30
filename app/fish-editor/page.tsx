@@ -14,6 +14,10 @@ import PauseMenu from '@/components/PauseMenu';
 import ArtSelectorPanel from '@/components/ArtSelectorPanel';
 import SettingsDrawer from '@/components/SettingsDrawer';
 
+// Constants
+const DEFAULT_ZOOM = 1.0;
+const MAX_EDIT_ZOOM = 3.0;
+
 export default function FishEditorPage() {
   const router = useRouter();
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
@@ -21,7 +25,7 @@ export default function FishEditorPage() {
   const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
   const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
   const [chromaTolerance, setChromaTolerance] = useState<number>(50);
-  const [zoom, setZoom] = useState<number>(1);
+  const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [enableWaterDistortion, setEnableWaterDistortion] = useState<boolean>(false);
   const [deformationIntensity, setDeformationIntensity] = useState<number>(1);
   const [editMode, setEditMode] = useState<boolean>(false);
@@ -42,9 +46,10 @@ export default function FishEditorPage() {
         // When unpausing, reset edit mode too
         setPaused(prev => {
           if (prev) {
-            // Was paused, now unpausing - reset edit state
+            // Was paused, now unpausing - reset edit state and zoom
             setEditMode(false);
             setSelectedFishId(null);
+            setZoom(DEFAULT_ZOOM);
           }
           return !prev;
         });
@@ -218,6 +223,7 @@ export default function FishEditorPage() {
     setFishData(new Map());
     setEditMode(false);
     setSelectedFishId(null);
+    setZoom(DEFAULT_ZOOM);
   };
 
   const handleBackToMenu = () => {
@@ -228,6 +234,7 @@ export default function FishEditorPage() {
     setSelectedFishId(fishId);
     setEditMode(true);
     setPaused(true); // Open pause menu to show edit UI
+    setZoom(MAX_EDIT_ZOOM); // Zoom in to max when entering fish edit mode
   };
 
   // Initialize player fish data when player sprite is set
@@ -257,6 +264,7 @@ export default function FishEditorPage() {
   const handleExitEditMode = () => {
     setEditMode(false);
     setSelectedFishId(null);
+    setZoom(DEFAULT_ZOOM); // Reset zoom when exiting edit mode
   };
 
   // Close pause menu AND reset all edit state
@@ -264,6 +272,7 @@ export default function FishEditorPage() {
     setPaused(false);
     setEditMode(false);
     setSelectedFishId(null);
+    setZoom(DEFAULT_ZOOM); // Reset zoom when closing pause menu
   };
 
   const handleSelectFishFromLibrary = (fish: FishData) => {
@@ -289,6 +298,7 @@ export default function FishEditorPage() {
     // Enter edit mode for this fish
     setSelectedFishId(fish.id);
     setEditMode(true);
+    setZoom(MAX_EDIT_ZOOM); // Zoom in to max when entering fish edit mode
   };
 
   const handleSetPlayerFish = (fish: FishData) => {
@@ -362,6 +372,7 @@ export default function FishEditorPage() {
 
     setSelectedFishId(newId);
     setEditMode(true);
+    setZoom(MAX_EDIT_ZOOM); // Zoom in to max when entering fish edit mode
   };
 
   const handleAddNewBackground = () => {
