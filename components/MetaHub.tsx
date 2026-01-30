@@ -3,7 +3,6 @@
  */
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { hasActiveRun } from '@/lib/game/run-state';
@@ -92,11 +91,9 @@ export default function MetaHub() {
         {/* Main Menu Buttons - Vertically Stacked */}
         <div className="flex flex-col gap-3 sm:gap-4 animate-slide-in">
           {/* Start Game Button */}
-          <Link href="/fish-select">
-            <UIButton variant="primary" size="xl" fullWidth>
-              Start Game
-            </UIButton>
-          </Link>
+          <UIButton variant="primary" size="xl" fullWidth href="/fish-select">
+            Start Game
+          </UIButton>
 
           {/* Continue Button */}
           <UIButton
@@ -111,11 +108,9 @@ export default function MetaHub() {
           </UIButton>
 
           {/* Tech Tree / Upgrades Button */}
-          <Link href="/tech-tree">
-            <UIButton variant="secondary" size="xl" fullWidth>
-              Upgrades
-            </UIButton>
-          </Link>
+          <UIButton variant="secondary" size="xl" fullWidth href="/tech-tree">
+            Upgrades
+          </UIButton>
 
           {/* Options Button */}
           <UIButton
@@ -129,16 +124,15 @@ export default function MetaHub() {
           </UIButton>
 
           {/* Fish Editor Button */}
-          <Link href="/fish-editor">
-            <UIButton 
-              variant="secondary" 
-              size="xl" 
-              fullWidth
-              className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 border-cyan-400/50"
-            >
-              Fish Editor
-            </UIButton>
-          </Link>
+          <UIButton 
+            variant="secondary" 
+            size="xl" 
+            fullWidth
+            href="/fish-editor"
+            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 border-cyan-400/50"
+          >
+            Fish Editor
+          </UIButton>
         </div>
 
         {/* How to Play Section */}

@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import type { RunState } from '@/lib/game/types';
-import { UIButton, UIPanel } from './ui';
+import { UIButton, UIPanel, UICard } from './ui';
 
 interface EvolutionScreenProps {
   runState: RunState;

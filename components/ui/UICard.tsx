@@ -6,44 +6,13 @@
 
 import { HTMLAttributes, forwardRef, useMemo } from 'react'
 import { cn } from '@/lib/utils/cn'
+import { generateClipPath, CLIP_PATH_CONFIGS } from '@/lib/utils/vector-shapes'
 
 export interface UICardProps extends HTMLAttributes<HTMLDivElement> {
   variant?: 'cyan' | 'purple' | 'teal' | 'black' | 'red' | 'yellow' | 'green' | 'default'
   selected?: boolean
   hoverable?: boolean
   glow?: boolean
-}
-
-/**
- * Generate a unique irregular clip-path for cards
- * Smaller chamfers than panels for a subtle effect
- */
-function generateClipPath(seed: number = Math.random()): string {
-  // Base corner chamfer sizes - one corner is always deeper
-  const baseCorner = 8
-  const deepCornerIndex = Math.floor(seed * 4) // 0-3 for which corner is deeper
-  
-  // Generate corner sizes with variation
-  const corners = [
-    baseCorner + (deepCornerIndex === 0 ? 4 : 0),
-    baseCorner + (deepCornerIndex === 1 ? 4 : 0),
-    baseCorner + (deepCornerIndex === 2 ? 4 : 0),
-    baseCorner + (deepCornerIndex === 3 ? 4 : 0),
-  ]
-  
-  // Add slight random variation to edges (0-2px slant)
-  const edgeSlant = Math.floor((seed * 10) % 3)
-  
-  return `polygon(
-    ${corners[0] + edgeSlant}px 0%, 
-    calc(100% - ${corners[1]}px) 0%, 
-    100% ${corners[1] + edgeSlant}px, 
-    100% calc(100% - ${corners[2]}px), 
-    calc(100% - ${corners[2] + edgeSlant}px) 100%, 
-    ${corners[3]}px 100%, 
-    0% calc(100% - ${corners[3] + edgeSlant}px), 
-    0% ${corners[0]}px
-  )`
 }
 
 const UICard = forwardRef<HTMLDivElement, UICardProps>(
@@ -57,7 +26,7 @@ const UICard = forwardRef<HTMLDivElement, UICardProps>(
     ...props 
   }, ref) => {
     // Generate consistent clip-path for this instance
-    const clipPath = useMemo(() => generateClipPath(), [])
+    const clipPath = useMemo(() => generateClipPath(CLIP_PATH_CONFIGS.card), [])
     
     // Variant classes
     const variantClasses = {

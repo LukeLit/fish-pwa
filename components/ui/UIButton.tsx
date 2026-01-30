@@ -4,49 +4,30 @@
  */
 'use client'
 
-import { ButtonHTMLAttributes, forwardRef, useMemo } from 'react'
+import { ButtonHTMLAttributes, AnchorHTMLAttributes, forwardRef, useMemo } from 'react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils/cn'
+import { generateClipPath, CLIP_PATH_CONFIGS } from '@/lib/utils/vector-shapes'
 
-export interface UIButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+type BaseProps = {
   variant?: 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'ghost' | 'disabled'
   size?: 'sm' | 'md' | 'lg' | 'xl'
   fullWidth?: boolean
   glow?: boolean
+  children?: React.ReactNode
 }
 
-/**
- * Generate a unique irregular clip-path for each button instance
- * Creates slight variations in corners while maintaining the vector aesthetic
- */
-function generateClipPath(seed: number = Math.random()): string {
-  // Base corner chamfer sizes - one corner is always deeper
-  const baseCorner = 8
-  const deepCornerIndex = Math.floor(seed * 4) // 0-3 for which corner is deeper
-  
-  // Generate corner sizes with variation
-  const corners = [
-    baseCorner + (deepCornerIndex === 0 ? 4 : 0),
-    baseCorner + (deepCornerIndex === 1 ? 4 : 0),
-    baseCorner + (deepCornerIndex === 2 ? 4 : 0),
-    baseCorner + (deepCornerIndex === 3 ? 4 : 0),
-  ]
-  
-  // Add slight random variation to edges (0-2px slant)
-  const edgeSlant = Math.floor((seed * 10) % 3)
-  
-  return `polygon(
-    ${corners[0] + edgeSlant}px 0%, 
-    calc(100% - ${corners[1]}px) 0%, 
-    100% ${corners[1] + edgeSlant}px, 
-    100% calc(100% - ${corners[2]}px), 
-    calc(100% - ${corners[2] + edgeSlant}px) 100%, 
-    ${corners[3]}px 100%, 
-    0% calc(100% - ${corners[3] + edgeSlant}px), 
-    0% ${corners[0]}px
-  )`
+type ButtonAsButton = BaseProps & ButtonHTMLAttributes<HTMLButtonElement> & {
+  href?: never
 }
 
-const UIButton = forwardRef<HTMLButtonElement, UIButtonProps>(
+type ButtonAsLink = BaseProps & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof BaseProps> & {
+  href: string
+}
+
+export type UIButtonProps = ButtonAsButton | ButtonAsLink
+
+const UIButton = forwardRef<HTMLButtonElement | HTMLAnchorElement, UIButtonProps>(
   ({ 
     className, 
     variant = 'primary', 
@@ -55,10 +36,11 @@ const UIButton = forwardRef<HTMLButtonElement, UIButtonProps>(
     glow = true,
     disabled,
     children,
+    href,
     ...props 
   }, ref) => {
     // Generate consistent clip-path for this instance
-    const clipPath = useMemo(() => generateClipPath(), [])
+    const clipPath = useMemo(() => generateClipPath(CLIP_PATH_CONFIGS.button), [])
     
     // Size classes
     const sizeClasses = {
@@ -114,35 +96,57 @@ const UIButton = forwardRef<HTMLButtonElement, UIButtonProps>(
       disabled: 'bg-gray-800/50 text-gray-600 border-gray-700/50 cursor-not-allowed opacity-60',
     }
     
-    return (
-      <button
-        ref={ref}
-        disabled={disabled}
-        className={cn(
-          // Base styles
-          'relative font-bold text-center uppercase tracking-wider',
-          'transition-all transform',
-          'border-4',
-          // Hover effects
-          !disabled && 'hover:scale-105',
-          // Size
-          sizeClasses[size],
-          // Variant
-          disabled ? variantClasses.disabled : variantClasses[variant],
-          // Full width
-          fullWidth && 'w-full',
-          // Custom classes
-          className
-        )}
-        style={{ clipPath }}
-        {...props}
-      >
+    const baseClasses = cn(
+      // Base styles
+      'group relative font-bold text-center uppercase tracking-wider',
+      'transition-all transform',
+      'border-4',
+      // Hover effects
+      !disabled && 'hover:scale-105',
+      // Size
+      sizeClasses[size],
+      // Variant
+      disabled ? variantClasses.disabled : variantClasses[variant],
+      // Full width
+      fullWidth && 'w-full',
+      // Custom classes
+      className
+    )
+    
+    const content = (
+      <>
         <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
           {children}
         </span>
         {!disabled && (
           <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
         )}
+      </>
+    )
+    
+    if (href && !disabled) {
+      return (
+        <Link
+          href={href}
+          ref={ref as React.Ref<HTMLAnchorElement>}
+          className={baseClasses}
+          style={{ clipPath }}
+          {...(props as AnchorHTMLAttributes<HTMLAnchorElement>)}
+        >
+          {content}
+        </Link>
+      )
+    }
+    
+    return (
+      <button
+        ref={ref as React.Ref<HTMLButtonElement>}
+        disabled={disabled}
+        className={baseClasses}
+        style={{ clipPath }}
+        {...(props as ButtonHTMLAttributes<HTMLButtonElement>)}
+      >
+        {content}
       </button>
     )
   }

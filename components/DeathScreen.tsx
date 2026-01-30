@@ -145,15 +145,14 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
             
             {/* CTA to spend Evo Points */}
             <div className="mt-4 pt-4 border-t border-yellow-400/30">
-              <a href="/tech-tree">
-                <UIButton 
-                  variant="warning"
-                  fullWidth
-                  className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black border-yellow-300"
-                >
-                  🔧 Spend Evo Points
-                </UIButton>
-              </a>
+              <UIButton 
+                variant="warning"
+                fullWidth
+                href="/tech-tree"
+                className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black border-yellow-300"
+              >
+                🔧 Spend Evo Points
+              </UIButton>
               <p className="text-yellow-200 text-xs text-center mt-2 font-semibold">
                 Purchase permanent upgrades for future runs
               </p>
