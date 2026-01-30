@@ -25,6 +25,7 @@ import {
   getSegmentsSmooth,
   PLAYER_SEGMENT_MULTIPLIER
 } from '@/lib/rendering/fish-renderer';
+import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
 
 export interface PlayerGameStats {
   size: number;
@@ -278,6 +279,8 @@ export default function FishEditorCanvas({
     life: number;
     scale: number;
     text: string;
+    color?: string; // Color for essence numbers
+    punchScale?: number; // Extra scale for punch animation
   }>>([]);
 
   const bloodParticlesRef = useRef<Array<{
@@ -1055,15 +1058,42 @@ export default function FishEditorCanvas({
               player.chompEndTime = now + 280;
               const eatX = (fish.x + player.x) * 0.5;
               const eatY = (fish.y + player.y) * 0.5;
-              for (let k = 0; k < 6; k++) {
+              
+              // Haptic feedback
+              if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                navigator.vibrate(50); // Short vibration on eat
+              }
+              
+              // Create chomp particles (CHOMP text + decoration symbols, NO hearts)
+              for (let k = 0; k < 5; k++) {
                 chompParticlesRef.current.push({
                   x: eatX + (Math.random() - 0.5) * 16,
                   y: eatY + (Math.random() - 0.5) * 16,
                   life: 1,
                   scale: 1 + Math.random() * 0.5,
-                  text: k === 0 ? 'CHOMP' : ['!', '•', '*', '♥'][k % 4],
+                  text: k === 0 ? 'CHOMP' : ['!', '•', '*', '★'][k % 4], // Removed heart, added star
+                  punchScale: 1.5, // Start with punch effect
                 });
               }
+              
+              // Add essence notifications with colors if creature data available
+              if (fish.creatureData?.essenceTypes && fish.creatureData.essenceTypes.length > 0) {
+                fish.creatureData.essenceTypes.forEach((essenceConfig, idx) => {
+                  const essenceType = ESSENCE_TYPES[essenceConfig.type];
+                  if (essenceType) {
+                    chompParticlesRef.current.push({
+                      x: eatX + (Math.random() - 0.5) * 24,
+                      y: eatY - 20 - (idx * 18), // Stack vertically
+                      life: 1.5,
+                      scale: 1.4,
+                      text: `+${essenceConfig.baseYield} ${essenceType.name}`,
+                      color: essenceType.color,
+                      punchScale: 1.8, // Bigger punch for essence
+                    });
+                  }
+                });
+              }
+              
               // Add hunger restore notification
               if (hungerRestore > 0) {
                 chompParticlesRef.current.push({
@@ -1072,6 +1102,8 @@ export default function FishEditorCanvas({
                   life: 1.5,
                   scale: 1.2,
                   text: `+${Math.ceil(hungerRestore)}`,
+                  color: '#4ade80', // Green for hunger
+                  punchScale: 1.6,
                 });
               }
               for (let b = 0; b < 22; b++) {
@@ -1097,13 +1129,21 @@ export default function FishEditorCanvas({
             player.chompEndTime = now + 280;
             const eatX = (fish.x + player.x) * 0.5;
             const eatY = (fish.y + player.y) * 0.5;
-            for (let k = 0; k < 6; k++) {
+            
+            // Haptic feedback
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              navigator.vibrate(50); // Short vibration on eat
+            }
+            
+            // Create chomp particles (CHOMP text + decoration symbols, NO hearts)
+            for (let k = 0; k < 5; k++) {
               chompParticlesRef.current.push({
                 x: eatX + (Math.random() - 0.5) * 16,
                 y: eatY + (Math.random() - 0.5) * 16,
                 life: 1,
                 scale: 1 + Math.random() * 0.5,
-                text: k === 0 ? 'CHOMP' : ['!', '•', '*', '♥'][k % 4],
+                text: k === 0 ? 'CHOMP' : ['!', '•', '*', '★'][k % 4], // Removed heart, added star
+                punchScale: 1.5, // Start with punch effect
               });
             }
             for (let b = 0; b < 22; b++) {
@@ -1120,6 +1160,10 @@ export default function FishEditorCanvas({
 
       chompParticlesRef.current = chompParticlesRef.current.filter((p) => {
         p.life -= 0.01;
+        // Decay punch scale for punch animation effect
+        if (p.punchScale !== undefined && p.punchScale > 1) {
+          p.punchScale = Math.max(1, p.punchScale - 0.08);
+        }
         return p.life > 0;
       });
 
@@ -1603,19 +1647,24 @@ export default function FishEditorCanvas({
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.globalAlpha = Math.max(0, p.life);
-        ctx.font = `bold ${Math.round(16 * p.scale)}px sans-serif`;
+        
+        // Apply punch scale animation
+        const totalScale = p.scale * (p.punchScale || 1);
+        ctx.font = `bold ${Math.round(16 * totalScale)}px sans-serif`;
 
-        // Color based on text type
-        let fillColor = '#fff';
-        if (p.text === 'CHOMP') {
-          fillColor = '#ffcc00';
-        } else if (p.text.startsWith('+')) {
-          fillColor = '#4ade80'; // Green for hunger restore
+        // Use custom color if provided, otherwise determine by text type
+        let fillColor = p.color || '#fff';
+        if (!p.color) {
+          if (p.text === 'CHOMP') {
+            fillColor = '#ffcc00';
+          } else if (p.text.startsWith('+') && !p.text.includes('Shallow') && !p.text.includes('Deep') && !p.text.includes('Tropical') && !p.text.includes('Polluted')) {
+            fillColor = '#4ade80'; // Green for hunger restore (if no essence name)
+          }
         }
 
         ctx.fillStyle = fillColor;
-        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 2;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.strokeText(p.text, 0, 0);
