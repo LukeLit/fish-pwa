@@ -157,30 +157,42 @@ async function processClipJob(
     if (operation.done) {
       // Check for errors
       if (operation.error) {
+        console.error(`[Cron] Operation error for ${job.id}:`, operation.error);
         return await updateJob<ClipGenerationJob>(job.id, {
           status: 'failed',
           error: operation.error.message || 'Video generation failed',
         }) || job;
       }
 
+      // Log the full response structure for debugging
+      console.log(`[Cron] Full response for ${job.id}:`, JSON.stringify(operation.response || operation).substring(0, 1000));
+
       // Get the video URI - handle different response formats
       let videoUri: string | undefined;
       
-      // Try different paths in the response
+      // Try different paths in the response (Google API format varies)
       const generatedSamples = operation.response?.generateVideoResponse?.generatedSamples;
       if (generatedSamples?.[0]?.video?.uri) {
         videoUri = generatedSamples[0].video.uri;
+        console.log(`[Cron] Found video URI via generatedSamples path`);
       } else if (operation.response?.generatedVideos?.[0]?.video?.uri) {
         videoUri = operation.response.generatedVideos[0].video.uri;
+        console.log(`[Cron] Found video URI via generatedVideos path`);
+      } else if (operation.result?.videos?.[0]?.uri) {
+        // Alternative path some APIs use
+        videoUri = operation.result.videos[0].uri;
+        console.log(`[Cron] Found video URI via result.videos path`);
       }
 
       if (!videoUri) {
-        console.error('[Cron] No video URI in response:', JSON.stringify(operation.response).substring(0, 500));
+        console.error('[Cron] No video URI found. Response keys:', Object.keys(operation.response || operation));
         return await updateJob<ClipGenerationJob>(job.id, {
           status: 'failed',
-          error: 'Video generation completed but no video URI returned',
+          error: 'Video generation completed but no video URI returned. Check logs for response format.',
         }) || job;
       }
+
+      console.log(`[Cron] Video URI for ${job.id}: ${videoUri.substring(0, 100)}...`);
 
       // Update progress
       await updateJob<ClipGenerationJob>(job.id, {
@@ -190,12 +202,16 @@ async function processClipJob(
 
       // Download and save the video
       try {
+        console.log(`[Cron] Downloading video for ${job.id}...`);
         const videoResponse = await fetch(videoUri);
         if (!videoResponse.ok) {
+          const errorText = await videoResponse.text().catch(() => 'Could not read error body');
+          console.error(`[Cron] Download failed for ${job.id}: ${videoResponse.status}`, errorText.substring(0, 200));
           throw new Error(`Failed to download video: ${videoResponse.status}`);
         }
 
         const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+        console.log(`[Cron] Downloaded ${videoBuffer.length} bytes for ${job.id}`);
         const videoPath = `creatures/${job.input.creatureId}/clips/${job.input.action}.mp4`;
         const videoResult = await uploadAsset(videoPath, videoBuffer, 'video/mp4');
 
@@ -216,6 +232,7 @@ async function processClipJob(
 
         return result || job;
       } catch (downloadError: any) {
+        console.error(`[Cron] Download/save error for ${job.id}:`, downloadError.message, downloadError.stack);
         return await updateJob<ClipGenerationJob>(job.id, {
           status: 'failed',
           error: `Failed to download video: ${downloadError.message}`,
