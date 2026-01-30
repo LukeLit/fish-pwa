@@ -6,6 +6,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
 import type { CreatureClips, ClipAction } from '@/lib/game/types';
+import { generateCreatureClip, type ClipGenerationProgress } from '@/lib/video/clip-generator';
 
 export interface EssenceData {
   primary: {
@@ -648,58 +649,45 @@ export default function FishEditOverlay({
     }
 
     setIsGeneratingClip(true);
-    setClipGenerationStatus(`Generating ${action} clip...`);
+    setClipGenerationStatus(`Starting ${action} clip generation...`);
 
     try {
-      // Start clip generation
-      const response = await fetch('/api/generate-creature-clip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creatureId: editedFish.id,
-          action,
-          spriteUrl: editedFish.sprite,
-          creatureDescription: editedFish.description || editedFish.name,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to start clip generation');
-      }
-
-      const data = await response.json();
-      if (!data.operation) {
-        throw new Error('No operation ID returned');
-      }
-
-      setClipGenerationStatus(`Generating ${action} clip... (this may take 1-2 minutes)`);
-
-      // Poll for completion
-      let attempts = 0;
-      const maxAttempts = 60; // 5 minutes max
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-
-        const pollResponse = await fetch(`/api/generate-creature-clip?operation=${encodeURIComponent(data.operation)}`);
-        const pollData = await pollResponse.json();
-
-        if (pollData.status === 'completed' && pollData.video) {
-          setClipGenerationStatus(`${action} clip generated! Processing frames...`);
-          setSaveMessage(`✓ ${action} clip generated! (Frame extraction not yet implemented)`);
-          break;
-        } else if (pollData.status === 'error') {
-          throw new Error(pollData.error || 'Generation failed');
+      // Use the full clip generation flow
+      const result = await generateCreatureClip(
+        editedFish.id,
+        action,
+        editedFish.sprite,
+        editedFish.description || editedFish.name,
+        (progress: ClipGenerationProgress) => {
+          // Update UI with progress
+          setClipGenerationStatus(progress.message);
+          if (progress.stage === 'error') {
+            setSaveMessage(`❌ ${progress.message}`);
+          }
         }
+      );
 
-        attempts++;
-        setClipGenerationStatus(`Generating ${action} clip... (${attempts * 5}s elapsed)`);
+      if (result.success && result.clip) {
+        // Update local fish state with new clip
+        const updatedClips: CreatureClips = {
+          ...(editedFish.clips || {}),
+          [action]: result.clip,
+        };
+        
+        const updatedFish = {
+          ...editedFish,
+          clips: updatedClips,
+        };
+        
+        setEditedFish(updatedFish);
+        onSave(updatedFish);
+        
+        setSaveMessage(`✓ ${action} clip generated and saved!`);
+        setClipGenerationStatus('');
+      } else {
+        setSaveMessage(`❌ ${result.error || 'Clip generation failed'}`);
+        setClipGenerationStatus('');
       }
-
-      if (attempts >= maxAttempts) {
-        throw new Error('Generation timed out');
-      }
-
     } catch (error: any) {
       console.error('[FishEditOverlay] Clip generation error:', error);
       setSaveMessage(`❌ Clip generation failed: ${error.message}`);
