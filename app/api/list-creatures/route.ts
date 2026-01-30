@@ -1,11 +1,10 @@
 /**
  * List creatures from Vercel Blob Storage with optional filters
- * Tries centralized store first, falls back to individual blob files
+ * Uses individual blob files to support concurrent creature creation by multiple users
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { list } from '@vercel/blob';
-import { downloadGameData, uploadGameData } from '@/lib/storage/blob-storage';
 import type { Creature } from '@/lib/game/types';
 
 export async function GET(request: NextRequest) {
@@ -15,23 +14,12 @@ export async function GET(request: NextRequest) {
     const rarity = searchParams.get('rarity');
     const playableOnly = searchParams.get('playable') === 'true';
 
-    // Try centralized creatures data store first
-    let creaturesMap = await downloadGameData<Record<string, Creature>>('creatures', {});
+    // Load creatures from individual blob files
+    // This approach supports concurrent creation by multiple users
+    const creatures = await loadCreaturesFromBlobs();
     
-    // If centralized store is empty, fall back to individual blob files and migrate
-    if (Object.keys(creaturesMap).length === 0) {
-      console.log('[ListCreatures] Centralized store empty, loading from individual blob files...');
-      creaturesMap = await loadFromIndividualBlobs();
-      
-      // If we loaded creatures, save them to centralized store for future
-      if (Object.keys(creaturesMap).length > 0) {
-        console.log(`[ListCreatures] Migrating ${Object.keys(creaturesMap).length} creatures to centralized store`);
-        await uploadGameData('creatures', creaturesMap);
-      }
-    }
-    
-    // Convert map to array
-    let filteredCreatures = Object.values(creaturesMap);
+    // Apply filters
+    let filteredCreatures = creatures;
 
     if (biome) {
       filteredCreatures = filteredCreatures.filter(c => 
@@ -66,10 +54,11 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Load creatures from individual blob files (legacy approach)
+ * Load creatures from individual blob files
+ * Handles errors gracefully and logs issues for debugging
  */
-async function loadFromIndividualBlobs(): Promise<Record<string, Creature>> {
-  const creaturesMap: Record<string, Creature> = {};
+async function loadCreaturesFromBlobs(): Promise<Creature[]> {
+  const creatures: Creature[] = [];
   
   try {
     // List all creature metadata files
@@ -79,44 +68,62 @@ async function loadFromIndividualBlobs(): Promise<Record<string, Creature>> {
 
     // Filter for JSON files only
     const metadataBlobs = blobs.filter(blob => blob.pathname.endsWith('.json'));
-    console.log(`[ListCreatures] Found ${metadataBlobs.length} creature blob files`);
+    
+    if (metadataBlobs.length === 0) {
+      console.log('[ListCreatures] No creature files found in blob storage');
+      return [];
+    }
 
-    // Fetch and parse all metadata (with error handling for each)
+    // Fetch all metadata in parallel with individual error handling
     const results = await Promise.allSettled(
       metadataBlobs.map(async (blob) => {
-        const response = await fetch(blob.url);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+        try {
+          const response = await fetch(blob.url, {
+            // Add cache control to avoid stale responses
+            cache: 'no-store',
+          });
+          
+          if (!response.ok) {
+            console.warn(`[ListCreatures] HTTP ${response.status} for ${blob.pathname}`);
+            return null;
+          }
+          
+          const text = await response.text();
+          
+          // Validate it looks like JSON before parsing
+          const trimmed = text.trim();
+          if (!trimmed.startsWith('{')) {
+            console.warn(`[ListCreatures] Non-JSON content for ${blob.pathname}: ${trimmed.substring(0, 50)}`);
+            return null;
+          }
+          
+          const creature = JSON.parse(text) as Creature;
+          
+          // Validate the creature has required fields
+          if (!creature.id) {
+            console.warn(`[ListCreatures] Creature missing id: ${blob.pathname}`);
+            return null;
+          }
+          
+          return creature;
+        } catch (error) {
+          console.warn(`[ListCreatures] Error loading ${blob.pathname}:`, error);
+          return null;
         }
-        
-        // Try to parse as JSON
-        const text = await response.text();
-        if (!text.trim().startsWith('{') && !text.trim().startsWith('[')) {
-          throw new Error('Not JSON');
-        }
-        
-        return JSON.parse(text) as Creature;
       })
     );
 
     // Collect successful results
-    let successCount = 0;
-    let failCount = 0;
-    
     for (const result of results) {
-      if (result.status === 'fulfilled' && result.value && result.value.id) {
-        creaturesMap[result.value.id] = result.value;
-        successCount++;
-      } else {
-        failCount++;
+      if (result.status === 'fulfilled' && result.value) {
+        creatures.push(result.value);
       }
     }
 
-    console.log(`[ListCreatures] Loaded ${successCount} creatures, ${failCount} failed`);
+    console.log(`[ListCreatures] Loaded ${creatures.length}/${metadataBlobs.length} creatures`);
   } catch (error) {
-    console.error('[ListCreatures] Error loading from individual blobs:', error);
+    console.error('[ListCreatures] Error listing blobs:', error);
   }
   
-  return creaturesMap;
+  return creatures;
 }
