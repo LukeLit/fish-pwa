@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
     const metadataBlob = await put(metadataPath, metadataJsonString, {
       access: 'public',
       addRandomSuffix: false,
+      allowOverwrite: true,
       contentType: 'application/json',
     });
 

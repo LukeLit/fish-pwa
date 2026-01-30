@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
     } catch (genError: any) {
       console.error(`[ClipJob] Video generation failed for ${jobId}:`, genError);
       console.error(`[ClipJob] Error details:`, JSON.stringify(genError, null, 2));
-      
+
       // Update job as failed
       await updateJob<ClipGenerationJob>(jobId, {
         status: 'failed',
@@ -287,7 +287,7 @@ async function processClipJob(
 
   // Acquire lock
   processingJobs.add(job.id);
-  
+
   try {
     return await doProcessClipJob(ai, job);
   } finally {
