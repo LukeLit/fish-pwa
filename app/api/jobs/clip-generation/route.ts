@@ -102,6 +102,28 @@ export async function POST(request: NextRequest) {
     prompt += ', solid bright magenta background (#FF00FF), isolated on magenta, no other background elements, game sprite animation, clean edges';
 
     console.log(`[ClipJob] Starting job ${jobId} for ${creatureId}/${action}`);
+    console.log(`[ClipJob] Prompt: ${prompt.substring(0, 100)}...`);
+    console.log(`[ClipJob] Sprite URL: ${spriteUrl.substring(0, 100)}...`);
+
+    // Validate sprite URL is accessible
+    try {
+      const spriteCheck = await fetch(spriteUrl, { method: 'HEAD' });
+      if (!spriteCheck.ok) {
+        throw new Error(`Sprite URL not accessible: ${spriteCheck.status}`);
+      }
+      console.log(`[ClipJob] Sprite URL validated`);
+    } catch (spriteError: any) {
+      console.error(`[ClipJob] Sprite validation failed:`, spriteError.message);
+      await updateJob<ClipGenerationJob>(jobId, {
+        status: 'failed',
+        error: `Invalid sprite URL: ${spriteError.message}`,
+      });
+      return NextResponse.json({
+        success: false,
+        jobId,
+        error: `Sprite URL not accessible: ${spriteError.message}`,
+      }, { status: 400 });
+    }
 
     // Start video generation
     const ai = new GoogleGenAI({ apiKey });
@@ -113,7 +135,9 @@ export async function POST(request: NextRequest) {
         prompt,
         referenceImages: [spriteUrl],
       };
+      console.log(`[ClipJob] Calling Gemini video API...`);
       const operation = await ai.models.generateVideos(requestConfig);
+      console.log(`[ClipJob] Gemini response: operation name=${operation?.name}`);
 
       // Update job with operation ID
       await updateJob<ClipGenerationJob>(jobId, {
@@ -132,13 +156,20 @@ export async function POST(request: NextRequest) {
         message: 'Clip generation job started. Poll /api/jobs?id=JOB_ID for status.',
       });
     } catch (genError: any) {
+      console.error(`[ClipJob] Video generation failed for ${jobId}:`, genError);
+      console.error(`[ClipJob] Error details:`, JSON.stringify(genError, null, 2));
+      
       // Update job as failed
       await updateJob<ClipGenerationJob>(jobId, {
         status: 'failed',
         error: genError.message || 'Failed to start video generation',
       });
 
-      throw genError;
+      return NextResponse.json({
+        success: false,
+        jobId,
+        error: genError.message || 'Failed to start video generation',
+      }, { status: 500 });
     }
   } catch (error: any) {
     console.error('[ClipJob] Start error:', error);
