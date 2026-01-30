@@ -129,6 +129,7 @@ export default function FishEditOverlay({
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [clipGenerationStatus, setClipGenerationStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'details' | 'animation'>('details');
+  const [useDirectMode, setUseDirectMode] = useState(false);
 
   // Helper to generate fallback description chunks when missing
   // This ensures the "Regenerate Sprite" produces quality similar to batch generation
@@ -652,41 +653,83 @@ export default function FishEditOverlay({
     setClipGenerationStatus(`Starting ${action} clip generation...`);
 
     try {
-      // Use the full clip generation flow
-      const result = await generateCreatureClip(
-        editedFish.id,
-        action,
-        editedFish.sprite,
-        editedFish.description || editedFish.name,
-        (progress: ClipGenerationProgress) => {
-          // Update UI with progress
-          setClipGenerationStatus(progress.message);
-          if (progress.stage === 'error') {
-            setSaveMessage(`❌ ${progress.message}`);
-          }
-        }
-      );
+      if (useDirectMode) {
+        // Direct mode: synchronous API call without job system
+        setClipGenerationStatus(`Calling Gemini API directly for ${action}...`);
+        
+        const response = await fetch('/api/generate-creature-clip-direct', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            creatureId: editedFish.id,
+            action,
+            spriteUrl: editedFish.sprite,
+            description: editedFish.description || editedFish.name,
+          }),
+        });
 
-      if (result.success && result.clip) {
-        // Update local fish state with new clip
-        const updatedClips: CreatureClips = {
-          ...(editedFish.clips || {}),
-          [action]: result.clip,
-        };
+        const data = await response.json();
         
-        const updatedFish = {
-          ...editedFish,
-          clips: updatedClips,
-        };
-        
-        setEditedFish(updatedFish);
-        onSave(updatedFish);
-        
-        setSaveMessage(`✓ ${action} clip generated and saved!`);
-        setClipGenerationStatus('');
+        if (!response.ok) {
+          throw new Error(data.error || data.message || 'Direct generation failed');
+        }
+
+        if (data.success && data.clip) {
+          const updatedClips: CreatureClips = {
+            ...(editedFish.clips || {}),
+            [action]: data.clip,
+          };
+          
+          const updatedFish = {
+            ...editedFish,
+            clips: updatedClips,
+          };
+          
+          setEditedFish(updatedFish);
+          onSave(updatedFish);
+          
+          setSaveMessage(`✓ ${action} clip generated (direct mode)!`);
+          setClipGenerationStatus('');
+        } else {
+          throw new Error(data.error || 'Direct generation failed');
+        }
       } else {
-        setSaveMessage(`❌ ${result.error || 'Clip generation failed'}`);
-        setClipGenerationStatus('');
+        // Job-based mode: use the full clip generation flow
+        const result = await generateCreatureClip(
+          editedFish.id,
+          action,
+          editedFish.sprite,
+          editedFish.description || editedFish.name,
+          (progress: ClipGenerationProgress) => {
+            // Update UI with progress
+            setClipGenerationStatus(progress.message);
+            if (progress.stage === 'error') {
+              setSaveMessage(`❌ ${progress.message}`);
+            }
+          }
+        );
+
+        if (result.success && result.clip) {
+          // Update local fish state with new clip
+          const updatedClips: CreatureClips = {
+            ...(editedFish.clips || {}),
+            [action]: result.clip,
+          };
+          
+          const updatedFish = {
+            ...editedFish,
+            clips: updatedClips,
+          };
+          
+          setEditedFish(updatedFish);
+          onSave(updatedFish);
+          
+          setSaveMessage(`✓ ${action} clip generated and saved!`);
+          setClipGenerationStatus('');
+        } else {
+          setSaveMessage(`❌ ${result.error || 'Clip generation failed'}`);
+          setClipGenerationStatus('');
+        }
       }
     } catch (error: any) {
       console.error('[FishEditOverlay] Clip generation error:', error);
@@ -1146,6 +1189,25 @@ export default function FishEditOverlay({
                       </button>
                     );
                   })}
+                </div>
+                
+                {/* Direct Mode Toggle */}
+                <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useDirectMode}
+                      onChange={(e) => setUseDirectMode(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-yellow-500 focus:ring-offset-gray-900"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-yellow-400">Direct Mode (Testing)</span>
+                      <p className="text-xs text-yellow-600 mt-1">
+                        Bypasses job system for faster iteration. Calls Gemini API synchronously - 
+                        page will wait 1-2 min. Best for debugging video generation issues.
+                      </p>
+                    </div>
+                  </label>
                 </div>
               </div>
 
