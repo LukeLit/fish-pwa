@@ -244,7 +244,7 @@ async function processClipJob(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[ClipJob] Poll error for ${job.id}:`, errorText);
-      
+
       // Don't fail immediately - might be transient
       const elapsedMinutes = (Date.now() - new Date(job.createdAt).getTime()) / 60000;
       if (elapsedMinutes > 15) {
@@ -253,7 +253,7 @@ async function processClipJob(
           error: `Generation timed out after ${Math.round(elapsedMinutes)} minutes`,
         }) || job;
       }
-      
+
       return job;
     }
 
@@ -335,7 +335,7 @@ async function processClipJob(
     }) || job;
   } catch (error: any) {
     console.error(`[ClipJob] Process error for ${job.id}:`, error);
-    
+
     // Don't fail immediately on transient errors
     const elapsedMinutes = (Date.now() - new Date(job.createdAt).getTime()) / 60000;
     if (elapsedMinutes > 15) {

@@ -86,7 +86,7 @@ export async function generateCreatureClip(
       try {
         // Poll job status and trigger processing
         const pollResponse = await fetch(`/api/jobs/clip-generation?jobId=${encodeURIComponent(jobId)}`);
-        
+
         if (!pollResponse.ok) {
           console.error('[ClipGenerator] Poll HTTP error:', pollResponse.status);
           attempts++;
