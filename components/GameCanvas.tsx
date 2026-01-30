@@ -124,7 +124,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
         // Calculate level-based difficulty
         const duration = 60000 + (level.levelNum - 1) * 15000; // 60s, 75s, 90s
-        const fishCount = 18 + (level.levelNum - 1) * 4; // 18, 22, 26 to avoid running out
+        const fishCount = 24 + (level.levelNum - 1) * 5; // 24, 29, 34 more fish for larger world
         setLevelDuration(duration);
 
         // Load background

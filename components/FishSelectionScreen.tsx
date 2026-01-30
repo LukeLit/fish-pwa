@@ -136,6 +136,10 @@ export default function FishSelectionScreen() {
       ctx.scale(dpr, dpr);
     }
 
+    // Enable high-quality image smoothing for better fish rendering on mobile
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
     const width = rect.width;
     const height = rect.height;
 
@@ -233,7 +237,6 @@ export default function FishSelectionScreen() {
       <canvas
         ref={canvasRef}
         className="fixed inset-0 w-full h-full"
-        style={{ imageRendering: 'pixelated' }}
       />
 
       {/* UI Layer - positioned on top of canvas */}

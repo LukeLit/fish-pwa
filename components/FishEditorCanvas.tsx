@@ -242,10 +242,10 @@ export default function FishEditorCanvas({
   const frameTimesRef = useRef<number[]>([]);
   const cameraRef = useRef({ x: 0, y: 0 });
   const worldBoundsRef = useRef({
-    minX: -2000,
-    maxX: 2000,
-    minY: -2000,
-    maxY: 2000,
+    minX: -3000,
+    maxX: 3000,
+    minY: -2500,
+    maxY: 2500,
   });
 
   // Game state
@@ -301,7 +301,7 @@ export default function FishEditorCanvas({
   /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
   const spawnPoolRef = useRef<(Creature | { id: string; sprite: string; type: string })[]>([]);
   const lastRespawnTimeRef = useRef(0);
-  const MAX_FISH_IN_WORLD = 28;
+  const MAX_FISH_IN_WORLD = 40;
   const RESPAWN_INTERVAL_MS = 3500;
 
   const keyKeysRef = useRef<Set<string>>(new Set());
@@ -677,10 +677,26 @@ export default function FishEditorCanvas({
           const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
           const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
 
+          // Spawn fish at least MIN_SPAWN_DISTANCE away from player
+          const MIN_SPAWN_DISTANCE = 350;
+          let spawnX, spawnY;
+          let attempts = 0;
+          const playerPos = playerRef.current;
+
+          do {
+            spawnX = Math.random() * canvas.width;
+            spawnY = Math.random() * canvas.height;
+            const distToPlayer = Math.sqrt(
+              Math.pow(spawnX - playerPos.x, 2) + Math.pow(spawnY - playerPos.y, 2)
+            );
+            attempts++;
+            if (distToPlayer >= MIN_SPAWN_DISTANCE || attempts > 10) break;
+          } while (true);
+
           const newFish = {
             id: fishItem.id,
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
+            x: spawnX,
+            y: spawnY,
             vx,
             vy,
             size: fishSize,
@@ -950,16 +966,30 @@ export default function FishEditorCanvas({
         }
       }
 
-      // Collision: eat prey and check predators
-      const playerR = player.size * 0.45;
+      // Collision: eat prey and check predators (head-based hitboxes)
+      // Hitbox is at the "mouth" of the fish (front 30% of body)
+      const getHeadPosition = (fishObj: { x: number; y: number; size: number; facingRight: boolean }) => {
+        const headOffset = fishObj.size * 0.35; // Head is 35% from center toward front
+        return {
+          x: fishObj.x + (fishObj.facingRight ? headOffset : -headOffset),
+          y: fishObj.y,
+        };
+      };
+
+      const playerHead = getHeadPosition(player);
+      const playerHeadR = player.size * 0.25; // Smaller head hitbox
+
       for (let idx = fishListRef.current.length - 1; idx >= 0; idx--) {
         const fish = fishListRef.current[idx];
-        const fishR = fish.size * 0.45;
-        const dx = fish.x - player.x;
-        const dy = fish.y - player.y;
+        const fishHead = getHeadPosition(fish);
+        const fishHeadR = fish.size * 0.25; // Smaller head hitbox
+
+        // Check head-to-head collision (eating happens when mouths touch)
+        const dx = fishHead.x - playerHead.x;
+        const dy = fishHead.y - playerHead.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < playerR + fishR) {
+        if (dist < playerHeadR + fishHeadR) {
           // In game mode, check if player can eat this fish or gets eaten
           if (gameMode) {
             if (fish.size > player.size * 1.2) {
@@ -1090,10 +1120,26 @@ export default function FishEditorCanvas({
             const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
             const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
             const bounds = worldBoundsRef.current;
+
+            // Spawn fish at least MIN_SPAWN_DISTANCE away from player
+            const MIN_SPAWN_DISTANCE = 400;
+            let spawnX, spawnY;
+            let attempts = 0;
+
+            do {
+              spawnX = bounds.minX + Math.random() * (bounds.maxX - bounds.minX);
+              spawnY = bounds.minY + Math.random() * (bounds.maxY - bounds.minY);
+              const distToPlayer = Math.sqrt(
+                Math.pow(spawnX - player.x, 2) + Math.pow(spawnY - player.y, 2)
+              );
+              attempts++;
+              if (distToPlayer >= MIN_SPAWN_DISTANCE || attempts > 10) break;
+            } while (true);
+
             const newFish = {
               id: `${creature.id}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-              x: bounds.minX + Math.random() * (bounds.maxX - bounds.minX),
-              y: bounds.minY + Math.random() * (bounds.maxY - bounds.minY),
+              x: spawnX,
+              y: spawnY,
               vx,
               vy,
               size: fishSize,
@@ -1200,6 +1246,10 @@ export default function FishEditorCanvas({
 
       // Render
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Enable high-quality image smoothing for better fish rendering on mobile
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Calculate target zoom and camera for edit mode
       // Use current targetZoomRef as base (preserves wheel/slider changes)
