@@ -23,9 +23,16 @@ import {
   removeBackground,
   drawFishWithDeformation,
   getSegmentsSmooth,
-  PLAYER_SEGMENT_MULTIPLIER
+  PLAYER_SEGMENT_MULTIPLIER,
+  getClipMode,
+  hasUsableClips,
+  type ClipMode,
+  type RenderContext,
 } from '@/lib/rendering/fish-renderer';
 import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
+import { getVideoSpriteManager, type VideoSprite } from '@/lib/rendering/video-sprite';
+import { getClipStateManager } from '@/lib/game/clip-state';
+import type { CreatureClips, ClipAction } from '@/lib/game/types';
 
 export interface PlayerGameStats {
   size: number;
@@ -306,7 +313,14 @@ export default function FishEditorCanvas({
     // Spawn animation properties
     spawnTime?: number; // When fish spawned (for fade-in)
     opacity?: number;   // Current opacity (0-1)
+    // Video clip animation
+    clips?: CreatureClips;
+    videoSprite?: VideoSprite;
   }>>([]);
+
+  // Video sprite manager ref
+  const videoSpriteManagerRef = useRef(getVideoSpriteManager());
+  const clipStateManagerRef = useRef(getClipStateManager());
 
   // Spawn animation constants
   const SPAWN_FADE_DURATION = 1500; // ms to fully fade in (collision enables when fully opaque)
@@ -712,6 +726,18 @@ export default function FishEditorCanvas({
           const spawnIndex = fishListRef.current.length;
           const staggerDelay = spawnIndex * (100 + Math.random() * 100);
 
+          // Initialize video sprite if creature has clips
+          const clips = isCreature(fishItem) ? fishItem.clips : undefined;
+          let videoSprite: VideoSprite | undefined;
+          if (clips && hasUsableClips(clips)) {
+            videoSprite = videoSpriteManagerRef.current.getSprite(fishItem.id, clips, {
+              chromaTolerance: chromaToleranceRef.current,
+            });
+            // Initialize clip state machine
+            const availableActions = Object.keys(clips) as ClipAction[];
+            clipStateManagerRef.current.getStateMachine(fishItem.id, availableActions);
+          }
+
           const newFish = {
             id: fishItem.id,
             x: spawnX,
@@ -729,6 +755,9 @@ export default function FishEditorCanvas({
             // Spawn animation - staggered to reduce initial load
             spawnTime: performance.now() + staggerDelay,
             opacity: 0,
+            // Video clip animation
+            clips,
+            videoSprite,
           };
           fishListRef.current.push(newFish);
         });
@@ -1058,12 +1087,12 @@ export default function FishEditorCanvas({
               player.chompEndTime = now + 280;
               const eatX = (fish.x + player.x) * 0.5;
               const eatY = (fish.y + player.y) * 0.5;
-              
+
               // Haptic feedback
               if (typeof navigator !== 'undefined' && navigator.vibrate) {
                 navigator.vibrate(50); // Short vibration on eat
               }
-              
+
               // Create chomp particles (CHOMP text + decoration symbols, NO hearts)
               for (let k = 0; k < 5; k++) {
                 chompParticlesRef.current.push({
@@ -1075,7 +1104,7 @@ export default function FishEditorCanvas({
                   punchScale: 1.5, // Start with punch effect
                 });
               }
-              
+
               // Add essence notifications with colors if creature data available
               if (fish.creatureData?.essenceTypes && fish.creatureData.essenceTypes.length > 0) {
                 fish.creatureData.essenceTypes.forEach((essenceConfig, idx) => {
@@ -1093,7 +1122,7 @@ export default function FishEditorCanvas({
                   }
                 });
               }
-              
+
               // Add hunger restore notification
               if (hungerRestore > 0) {
                 chompParticlesRef.current.push({
@@ -1129,12 +1158,12 @@ export default function FishEditorCanvas({
             player.chompEndTime = now + 280;
             const eatX = (fish.x + player.x) * 0.5;
             const eatY = (fish.y + player.y) * 0.5;
-            
+
             // Haptic feedback
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
               navigator.vibrate(50); // Short vibration on eat
             }
-            
+
             // Create chomp particles (CHOMP text + decoration symbols, NO hearts)
             for (let k = 0; k < 5; k++) {
               chompParticlesRef.current.push({
@@ -1546,20 +1575,49 @@ export default function FishEditorCanvas({
       }
 
       // Draw AI fish with LOD based on screen-space size
+      // Determine render context for clip mode decisions
+      const renderContext: RenderContext = currentEditMode ? 'edit' : (gameMode ? 'game' : 'game');
       const buttonPositions = new Map<string, { x: number; y: number; size: number }>();
       fishListRef.current.forEach((fish) => {
         const fishOpacity = fish.opacity ?? 1;
+        const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
+        const screenSize = fish.size * currentZoom;
 
-        if (fish.sprite) {
-          const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
+        // Determine rendering mode based on LOD and clip availability
+        const fishHasClips = hasUsableClips(fish.clips);
+        const clipMode = getClipMode(screenSize, fishHasClips, renderContext);
 
-          // Calculate screen-space size for smooth LOD
-          const screenSize = fish.size * currentZoom;
+        // Apply spawn fade-in opacity
+        ctx.save();
+        ctx.globalAlpha = fishOpacity;
+
+        let rendered = false;
+
+        // Try video rendering if in video mode with clips
+        if (clipMode === 'video' && fish.clips && fish.videoSprite) {
+          // Update clip state based on speed
+          const clipStateManager = clipStateManagerRef.current;
+          if (clipStateManager.hasStateMachine(fish.id)) {
+            clipStateManager.processEvent(fish.id, { type: 'speed_change', speed: fishSpeed });
+          }
+
+          // Draw from video sprite
+          rendered = fish.videoSprite.drawToContext(
+            ctx,
+            fish.x,
+            fish.y,
+            fish.size,
+            fish.size,
+            {
+              flipX: !fish.facingRight,
+              rotation: fish.facingRight ? fish.verticalTilt : -fish.verticalTilt,
+            }
+          );
+        }
+
+        // Fallback to deformation rendering if video not available/ready
+        if (!rendered && fish.sprite) {
           const segments = getSegmentsSmooth(screenSize);
-
-          // Apply spawn fade-in opacity
-          ctx.save();
-          ctx.globalAlpha = fishOpacity;
 
           drawFishWithDeformation(
             ctx,
@@ -1576,16 +1634,15 @@ export default function FishEditorCanvas({
               segments
             }
           );
-          ctx.restore();
-        } else {
-          ctx.save();
-          ctx.globalAlpha = fishOpacity;
+        } else if (!rendered && !fish.sprite) {
+          // Fallback to colored circle if no sprite
           ctx.fillStyle = fish.type === 'prey' ? '#4ade80' : fish.type === 'predator' ? '#f87171' : '#a78bfa';
           ctx.beginPath();
           ctx.arc(fish.x, fish.y, fish.size / 2, 0, Math.PI * 2);
           ctx.fill();
-          ctx.restore();
         }
+
+        ctx.restore();
 
         // Store position for edit button
         buttonPositions.set(fish.id, { x: fish.x, y: fish.y, size: fish.size });
@@ -1647,7 +1704,7 @@ export default function FishEditorCanvas({
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.globalAlpha = Math.max(0, p.life);
-        
+
         // Apply punch scale animation
         const totalScale = p.scale * (p.punchScale || 1);
         ctx.font = `bold ${Math.round(16 * totalScale)}px sans-serif`;

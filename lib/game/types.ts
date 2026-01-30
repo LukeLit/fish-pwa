@@ -151,6 +151,36 @@ export interface MutationMetadata {
 }
 
 /**
+ * Creature Clip - Single animation clip data
+ */
+export interface CreatureClip {
+  videoUrl: string;           // Full video URL for high LOD playback
+  frames: string[];           // Pre-extracted frame URLs for fallback/medium LOD
+  thumbnailUrl: string;       // Single frame for lowest LOD / preview
+  duration: number;           // Clip duration in milliseconds
+  loop: boolean;              // Whether clip loops (swimIdle: yes, bite: no)
+  frameRate?: number;         // Original frame rate (default: 24)
+}
+
+/**
+ * Creature Clips - All animation clips for a creature (all optional)
+ */
+export interface CreatureClips {
+  swimIdle?: CreatureClip;    // Slow, gentle swimming motion
+  swimFast?: CreatureClip;    // Rapid swimming with strong tail strokes
+  dash?: CreatureClip;        // Quick burst of speed
+  bite?: CreatureClip;        // Chomping/eating animation
+  takeDamage?: CreatureClip;  // Flinch/recoil when hit
+  death?: CreatureClip;       // Death animation (future)
+  special?: CreatureClip;     // Special ability animation (future)
+}
+
+/**
+ * Clip Action Types - Union type for clip actions
+ */
+export type ClipAction = keyof CreatureClips;
+
+/**
  * Creature - Complete creature data structure (extends BaseFishData)
  */
 export interface Creature extends BaseFishData {
@@ -199,6 +229,9 @@ export interface Creature extends BaseFishData {
     minDepth?: number; // Optional minimum depth
     maxDepth?: number; // Optional maximum depth
   };
+
+  // Animation clips (optional - falls back to sprite + deformation if not present)
+  clips?: CreatureClips;
 }
 
 /**

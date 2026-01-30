@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
+import type { CreatureClips, ClipAction } from '@/lib/game/types';
 
 export interface EssenceData {
   primary: {
@@ -73,6 +74,8 @@ export interface FishData {
     biomeUnlocked: string[];
     essenceSpent?: Record<string, number>;
   };
+  // Video animation clips
+  clips?: CreatureClips;
 }
 
 // Type alias for updateField values to improve readability
@@ -122,6 +125,9 @@ export default function FishEditOverlay({
   const [showFusionSection, setShowFusionSection] = useState(false);
   const [showMutationSection, setShowMutationSection] = useState(false);
   const [showAIGeneration, setShowAIGeneration] = useState(false);
+  const [showClipsSection, setShowClipsSection] = useState(false);
+  const [isGeneratingClip, setIsGeneratingClip] = useState(false);
+  const [clipGenerationStatus, setClipGenerationStatus] = useState<string>('');
 
   // Helper to generate fallback description chunks when missing
   // This ensures the "Regenerate Sprite" produces quality similar to batch generation
@@ -634,6 +640,75 @@ export default function FishEditOverlay({
     }
   };
 
+  // Handler for generating animation clips
+  const handleGenerateClip = async (action: ClipAction) => {
+    if (!editedFish || !editedFish.sprite) {
+      setSaveMessage('❌ No sprite available. Generate or upload a sprite first.');
+      return;
+    }
+
+    setIsGeneratingClip(true);
+    setClipGenerationStatus(`Generating ${action} clip...`);
+
+    try {
+      // Start clip generation
+      const response = await fetch('/api/generate-creature-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatureId: editedFish.id,
+          action,
+          spriteUrl: editedFish.sprite,
+          creatureDescription: editedFish.description || editedFish.name,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to start clip generation');
+      }
+
+      const data = await response.json();
+      if (!data.operation) {
+        throw new Error('No operation ID returned');
+      }
+
+      setClipGenerationStatus(`Generating ${action} clip... (this may take 1-2 minutes)`);
+
+      // Poll for completion
+      let attempts = 0;
+      const maxAttempts = 60; // 5 minutes max
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+
+        const pollResponse = await fetch(`/api/generate-creature-clip?operation=${encodeURIComponent(data.operation)}`);
+        const pollData = await pollResponse.json();
+
+        if (pollData.status === 'completed' && pollData.video) {
+          setClipGenerationStatus(`${action} clip generated! Processing frames...`);
+          setSaveMessage(`✓ ${action} clip generated! (Frame extraction not yet implemented)`);
+          break;
+        } else if (pollData.status === 'error') {
+          throw new Error(pollData.error || 'Generation failed');
+        }
+
+        attempts++;
+        setClipGenerationStatus(`Generating ${action} clip... (${attempts * 5}s elapsed)`);
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error('Generation timed out');
+      }
+
+    } catch (error: any) {
+      console.error('[FishEditOverlay] Clip generation error:', error);
+      setSaveMessage(`❌ Clip generation failed: ${error.message}`);
+      setClipGenerationStatus('');
+    } finally {
+      setIsGeneratingClip(false);
+    }
+  };
+
   const updateField = (field: string, value: FishFieldValue) => {
     setEditedFish((prev) => {
       if (!prev) return null;
@@ -968,6 +1043,73 @@ export default function FishEditOverlay({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Animation Clips Section */}
+        <div className="border-t border-gray-700 pt-4">
+          <button
+            onClick={() => setShowClipsSection(!showClipsSection)}
+            className="w-full flex items-center justify-between bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded border border-gray-600 transition-colors"
+          >
+            <span className="text-sm font-bold text-white">
+              Animation Clips {editedFish.clips && Object.keys(editedFish.clips).length > 0 ? `(${Object.keys(editedFish.clips).length})` : ''}
+            </span>
+            <span className="text-white">{showClipsSection ? '▼' : '▶'}</span>
+          </button>
+
+          {showClipsSection && (
+            <div className="mt-2 bg-gray-900/50 p-3 rounded border border-gray-700 space-y-3">
+              <p className="text-xs text-gray-400">
+                Generate video clips for different actions. Uses Veo 3.1 with your sprite as reference.
+              </p>
+
+              {/* Clip status */}
+              {clipGenerationStatus && (
+                <div className="bg-blue-600/20 text-blue-400 px-3 py-2 rounded text-xs">
+                  {clipGenerationStatus}
+                </div>
+              )}
+
+              {/* Existing clips */}
+              {editedFish.clips && Object.keys(editedFish.clips).length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-gray-300">Existing Clips:</h4>
+                  {(Object.keys(editedFish.clips) as ClipAction[]).map((action) => (
+                    <div key={action} className="flex items-center justify-between bg-gray-800 p-2 rounded">
+                      <span className="text-xs text-white capitalize">{action.replace(/([A-Z])/g, ' $1')}</span>
+                      <span className="text-xs text-green-400">✓</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Generate clip buttons */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-gray-300">Generate Clips:</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['swimIdle', 'swimFast', 'bite', 'takeDamage'] as ClipAction[]).map((action) => {
+                    const hasClip = editedFish.clips?.[action];
+                    return (
+                      <button
+                        key={action}
+                        onClick={() => handleGenerateClip(action)}
+                        disabled={isGeneratingClip || !editedFish.sprite}
+                        className={`px-2 py-2 rounded text-xs font-medium transition-colors ${hasClip
+                            ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                            : 'bg-blue-600 hover:bg-blue-500 text-white'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {hasClip ? `✓ ${action}` : `+ ${action.replace(/([A-Z])/g, ' $1')}`}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Each clip takes 1-2 minutes to generate via Veo 3.1
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Type */}

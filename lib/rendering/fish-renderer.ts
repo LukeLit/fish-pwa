@@ -22,6 +22,7 @@ export type LODLevel = 1 | 2 | 3 | 4;
 
 /** LOD thresholds based on screen-space size in pixels */
 export const LOD_THRESHOLDS = {
+  VIDEO_DETAIL: 120,  // >= 120px: use video clips if available
   FULL_DETAIL: 80,    // >= 80px: max segments
   MEDIUM_DETAIL: 40,  // 40-79px: medium segments  
   LOW_DETAIL: 20,     // 20-39px: low segments
@@ -89,6 +90,64 @@ export function getSegmentsForLOD(lod: LODLevel): number {
     case 3: return 3;
     case 4: return 0;
   }
+}
+
+// =============================================================================
+// Clip Mode System - Video/Frame Animation Integration
+// =============================================================================
+
+/** Rendering mode for a fish based on LOD and available assets */
+export type ClipMode = 'video' | 'frames' | 'deformation' | 'static';
+
+/** Context for clip mode decision */
+export type RenderContext = 'game' | 'edit' | 'select' | 'cinematic';
+
+/**
+ * Determine the rendering mode for a fish based on LOD, available clips, and context
+ * 
+ * @param screenSize - Size of fish in screen pixels (fish.size * zoom)
+ * @param hasClips - Whether the creature has video clips available
+ * @param context - Rendering context (game, edit, select, cinematic)
+ * @returns The rendering mode to use
+ */
+export function getClipMode(
+  screenSize: number,
+  hasClips: boolean,
+  context: RenderContext = 'game'
+): ClipMode {
+  // Force video in edit/select/cinematic mode if clips available
+  if ((context === 'edit' || context === 'select' || context === 'cinematic') && hasClips) {
+    return 'video';
+  }
+
+  // LOD-based selection during gameplay
+  if (screenSize >= LOD_THRESHOLDS.VIDEO_DETAIL && hasClips) {
+    return 'video';
+  }
+
+  // Use extracted frames for animation at medium-high LOD when clips exist
+  if (screenSize >= LOD_THRESHOLDS.FULL_DETAIL && hasClips) {
+    return 'frames';
+  }
+
+  // Use deformation for medium and low LOD
+  if (screenSize >= LOD_THRESHOLDS.STATIC) {
+    return 'deformation';
+  }
+
+  // Static sprite for very small fish
+  return 'static';
+}
+
+/**
+ * Check if a creature has usable clips
+ * 
+ * @param clips - CreatureClips object or undefined
+ * @returns boolean indicating if clips are available
+ */
+export function hasUsableClips(clips: object | undefined | null): boolean {
+  if (!clips) return false;
+  return Object.keys(clips).length > 0;
 }
 
 /**
