@@ -85,20 +85,42 @@ export async function generateCreatureClip(
     while (attempts < maxAttempts) {
       await sleep(5000); // Wait 5 seconds between polls
 
-      const pollResponse = await fetch(
-        `/api/generate-creature-clip?operation=${encodeURIComponent(operationName)}`
-      );
-      const pollData = await pollResponse.json();
-
-      if (pollData.status === 'completed') {
-        if (pollData.video?.uri) {
-          videoUri = pollData.video.uri;
-          break;
-        } else {
-          throw new Error('Generation completed but no video URI returned');
+      try {
+        const pollResponse = await fetch(
+          `/api/generate-creature-clip?operation=${encodeURIComponent(operationName)}`
+        );
+        
+        if (!pollResponse.ok) {
+          const errorText = await pollResponse.text();
+          console.error('[ClipGenerator] Poll HTTP error:', pollResponse.status, errorText);
+          // Don't throw on HTTP errors during polling - might be transient
+          attempts++;
+          continue;
         }
-      } else if (pollData.status === 'error') {
-        throw new Error(pollData.error || 'Video generation failed');
+
+        const pollData = await pollResponse.json();
+        console.log('[ClipGenerator] Poll response:', pollData.status);
+
+        if (pollData.status === 'completed') {
+          if (pollData.video?.uri) {
+            videoUri = pollData.video.uri;
+            console.log('[ClipGenerator] Video URI received:', videoUri);
+            break;
+          } else {
+            // Check if there's an error in the response
+            console.error('[ClipGenerator] Completed but no video:', pollData);
+            throw new Error('Generation completed but no video URI returned. The model may have rejected the prompt.');
+          }
+        } else if (pollData.status === 'error' || pollData.error) {
+          throw new Error(pollData.error || pollData.message || 'Video generation failed');
+        }
+      } catch (pollError: any) {
+        // If it's our thrown error, re-throw it
+        if (pollError.message.includes('Generation completed') || pollError.message.includes('failed')) {
+          throw pollError;
+        }
+        // Otherwise log and continue polling
+        console.error('[ClipGenerator] Poll error (will retry):', pollError.message);
       }
 
       attempts++;
@@ -193,34 +215,56 @@ export async function generateCreatureClip(
  * Download a video from URI and convert to data URL
  */
 async function downloadVideoAsDataUrl(uri: string): Promise<string> {
-  // Use our download API to fetch the video
-  const response = await fetch('/api/download-video', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uri }),
-  });
-
-  if (!response.ok) {
-    // If POST fails, try fetching directly (for already-accessible URIs)
-    console.log('[ClipGenerator] POST download failed, trying direct fetch...');
-    const directResponse = await fetch(uri);
-    if (!directResponse.ok) {
-      throw new Error('Failed to download video');
-    }
-    const blob = await directResponse.blob();
-    return blobToDataUrl(blob);
-  }
-
-  const data = await response.json();
+  console.log('[ClipGenerator] Downloading video from URI:', uri.substring(0, 100) + '...');
   
-  if (data.url) {
-    // Video was saved to blob storage, fetch it as data URL
-    const blobResponse = await fetch(data.url);
-    const blob = await blobResponse.blob();
-    return blobToDataUrl(blob);
-  }
+  // Use our download API to fetch the video
+  try {
+    const response = await fetch('/api/download-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uri }),
+    });
 
-  throw new Error('No video URL in download response');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('[ClipGenerator] Download API error:', response.status, errorText);
+      // Try direct fetch as fallback
+      throw new Error('Download API failed');
+    }
+
+    const data = await response.json();
+    console.log('[ClipGenerator] Download API response:', data.success ? 'success' : 'failed');
+    
+    if (data.url) {
+      // Video was saved to blob storage, fetch it as data URL
+      console.log('[ClipGenerator] Fetching from blob URL:', data.url.substring(0, 50) + '...');
+      const blobResponse = await fetch(data.url);
+      if (!blobResponse.ok) {
+        throw new Error(`Failed to fetch from blob storage: ${blobResponse.status}`);
+      }
+      const blob = await blobResponse.blob();
+      console.log('[ClipGenerator] Blob size:', blob.size, 'bytes');
+      return blobToDataUrl(blob);
+    }
+    
+    throw new Error('No video URL in download response');
+  } catch (downloadError: any) {
+    console.log('[ClipGenerator] Download via API failed, trying direct fetch...', downloadError.message);
+    
+    // Try fetching directly (for already-accessible URIs)
+    try {
+      const directResponse = await fetch(uri);
+      if (!directResponse.ok) {
+        throw new Error(`Direct fetch failed: ${directResponse.status}`);
+      }
+      const blob = await directResponse.blob();
+      console.log('[ClipGenerator] Direct download blob size:', blob.size, 'bytes');
+      return blobToDataUrl(blob);
+    } catch (directError: any) {
+      console.error('[ClipGenerator] All download methods failed:', directError.message);
+      throw new Error(`Failed to download video: ${downloadError.message}`);
+    }
+  }
 }
 
 /**

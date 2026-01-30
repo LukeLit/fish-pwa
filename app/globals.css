@@ -31,6 +31,7 @@ body {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -42,9 +43,12 @@ body {
 }
 
 @keyframes twinkle {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.2;
   }
+
   50% {
     opacity: 0.4;
   }
@@ -52,9 +56,12 @@ body {
 
 /* DICE VADERS Aesthetic Animations */
 @keyframes glow-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 10px currentColor;
   }
+
   50% {
     box-shadow: 0 0 20px currentColor;
   }
@@ -64,15 +71,19 @@ body {
   0% {
     background-position: -100% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-10px);
   }
@@ -83,6 +94,7 @@ body {
     opacity: 0;
     transform: translateX(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -94,6 +106,7 @@ body {
     opacity: 0;
     transform: scale(0.8);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -105,16 +118,14 @@ body {
   @apply relative font-bold py-4 px-6 text-center uppercase tracking-wider transition-all transform;
   @apply border-4 shadow-2xl;
   /* Angular shape: slight slant on left/right edges */
-  clip-path: polygon(
-    8px 0%, 
-    calc(100% - 8px) 0%, 
-    100% 8px, 
-    100% calc(100% - 8px), 
-    calc(100% - 8px) 100%, 
-    8px 100%, 
-    0% calc(100% - 8px), 
-    0% 8px
-  );
+  clip-path: polygon(8px 0%,
+      calc(100% - 8px) 0%,
+      100% 8px,
+      100% calc(100% - 8px),
+      calc(100% - 8px) 100%,
+      8px 100%,
+      0% calc(100% - 8px),
+      0% 8px);
 }
 
 .dv-button:hover {
@@ -147,16 +158,14 @@ body {
   @apply backdrop-blur-sm border-4 shadow-2xl;
   @apply transition-all duration-300;
   /* Angular card shape with chamfered corners */
-  clip-path: polygon(
-    12px 0%, 
-    calc(100% - 12px) 0%, 
-    100% 12px, 
-    100% calc(100% - 12px), 
-    calc(100% - 12px) 100%, 
-    12px 100%, 
-    0% calc(100% - 12px), 
-    0% 12px
-  );
+  clip-path: polygon(12px 0%,
+      calc(100% - 12px) 0%,
+      100% 12px,
+      100% calc(100% - 12px),
+      calc(100% - 12px) 100%,
+      12px 100%,
+      0% calc(100% - 12px),
+      0% 12px);
 }
 
 .dv-card-cyan {
@@ -201,14 +210,29 @@ body {
   @apply font-bold text-white uppercase tracking-wider;
   font-family: var(--font-orbitron), var(--font-geist-sans), sans-serif;
   font-weight: 900;
-  text-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
+  /* Cyan outline stroke */
+  -webkit-text-stroke: 2px rgba(56, 189, 248, 0.9);
+  paint-order: stroke fill;
+  /* Layered glow effect */
+  text-shadow:
+    0 0 10px rgba(56, 189, 248, 0.9),
+    0 0 20px rgba(56, 189, 248, 0.7),
+    0 0 40px rgba(56, 189, 248, 0.5),
+    0 0 60px rgba(56, 189, 248, 0.3);
 }
 
 .dv-subtitle {
   @apply font-semibold text-cyan-300 tracking-wide;
   font-family: var(--font-orbitron), var(--font-geist-sans), sans-serif;
   font-weight: 600;
-  text-shadow: 0 0 8px rgba(34, 211, 238, 0.4);
+  /* Subtle outline for subtitle */
+  -webkit-text-stroke: 1px rgba(34, 211, 238, 0.5);
+  paint-order: stroke fill;
+  /* Layered glow effect */
+  text-shadow:
+    0 0 8px rgba(34, 211, 238, 0.8),
+    0 0 16px rgba(34, 211, 238, 0.5),
+    0 0 24px rgba(34, 211, 238, 0.3);
 }
 
 /* Cosmic Background */
