@@ -167,10 +167,18 @@ export async function POST(request: NextRequest) {
 
         console.log(`[DirectClip] Video ready: ${videoUri.substring(0, 80)}...`);
 
-        // Download video
+        // Download video - Google URIs require API key authentication
         console.log('[DirectClip] Downloading video...');
-        const videoResponse = await fetch(videoUri);
+        let downloadUrl = videoUri;
+        if (videoUri.includes('generativelanguage.googleapis.com') || videoUri.includes('googleapis.com')) {
+          const separator = videoUri.includes('?') ? '&' : '?';
+          downloadUrl = `${videoUri}${separator}key=${apiKey}`;
+        }
+        
+        const videoResponse = await fetch(downloadUrl);
         if (!videoResponse.ok) {
+          const errorText = await videoResponse.text().catch(() => '');
+          console.error(`[DirectClip] Video download failed: ${videoResponse.status} - ${errorText.substring(0, 200)}`);
           return NextResponse.json(
             { error: `Failed to download video: ${videoResponse.status}` },
             { status: 500 }

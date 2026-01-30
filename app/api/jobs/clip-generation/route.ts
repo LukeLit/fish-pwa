@@ -369,9 +369,21 @@ async function doProcessClipJob(
       });
 
       // Download and save the video
+      // Google video URIs require API key authentication
       try {
-        const videoResponse = await fetch(videoUri);
+        const apiKey = process.env.GEMINI_API_KEY;
+        // Append API key to video URI if it's a Google URL
+        let downloadUrl = videoUri;
+        if (videoUri.includes('generativelanguage.googleapis.com') || videoUri.includes('googleapis.com')) {
+          const separator = videoUri.includes('?') ? '&' : '?';
+          downloadUrl = `${videoUri}${separator}key=${apiKey}`;
+        }
+        
+        console.log(`[ClipJob] Downloading video from: ${downloadUrl.substring(0, 100)}...`);
+        const videoResponse = await fetch(downloadUrl);
         if (!videoResponse.ok) {
+          const errorText = await videoResponse.text().catch(() => '');
+          console.error(`[ClipJob] Video download failed: ${videoResponse.status} - ${errorText.substring(0, 200)}`);
           throw new Error(`Failed to download video: ${videoResponse.status}`);
         }
 
