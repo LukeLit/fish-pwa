@@ -22,8 +22,10 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
   const [isGenerating, setIsGenerating] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [backgroundType, setBackgroundType] = useState<'image' | 'video'>('image');
+  const [imagePrompt, setImagePrompt] = useState('');
   const [videoPrompt, setVideoPrompt] = useState('');
   const [operationName, setOperationName] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<'google/imagen-4.0-fast-generate-001' | 'google/imagen-4.0-generate-001' | 'bfl/flux-2-pro'>('google/imagen-4.0-fast-generate-001');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -82,6 +84,46 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
       setMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (!imagePrompt.trim()) {
+      setMessage('❌ Please enter an image prompt');
+      return;
+    }
+
+    setIsGenerating(true);
+    setMessage('🎨 Generating background image...');
+
+    try {
+      // Compose prompt for underwater background
+      const fullPrompt = `Underwater ocean background scene, ${imagePrompt}, game background art, horizontal panoramic view, no fish in frame, atmospheric underwater lighting, seamless tileable edges preferred, high quality digital art`;
+
+      const response = await fetch('/api/generate-fish-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: fullPrompt,
+          model: selectedModel,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.imageBase64) {
+        const dataUrl = `data:image/png;base64,${result.imageBase64}`;
+        onBackgroundChange(dataUrl, 'image');
+        setBackgroundType('image');
+        setMessage('✅ Background generated! Click "Save to Biome" to persist.');
+      } else {
+        setMessage(`❌ Generation failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Image generation error:', error);
+      setMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -195,7 +237,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
         });
 
         const saveData = await saveResponse.json();
-        
+
         if (!saveData.success) {
           setMessage(`❌ Failed to save: ${saveData.error}`);
           setIsSaving(false);
@@ -257,28 +299,26 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
   return (
     <div className="space-y-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
       <h2 className="text-lg font-bold text-white">Background Management</h2>
-      
+
       {/* Type Selector */}
       <div>
         <label className="block text-sm font-bold text-white mb-2">Background Type</label>
         <div className="flex gap-2">
           <button
             onClick={() => setBackgroundType('image')}
-            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-              backgroundType === 'image'
+            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${backgroundType === 'image'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
+              }`}
           >
             Image
           </button>
           <button
             onClick={() => setBackgroundType('video')}
-            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-              backgroundType === 'video'
+            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${backgroundType === 'video'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
+              }`}
           >
             Video
           </button>
@@ -304,7 +344,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
               Choose Image File
             </button>
           </div>
-          
+
           <div>
             <button
               onClick={() => {
@@ -321,8 +361,55 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
               Select Existing Background
             </button>
           </div>
-          
-          <div className="text-xs text-gray-400 text-center">or use AI generation in the main controls</div>
+
+          {/* AI Image Generation */}
+          <div className="border-t border-gray-700 pt-3">
+            <label className="block text-sm font-bold text-white mb-2">
+              AI Image Generation
+              <span className="text-xs font-normal text-gray-400 ml-2">(Imagen / Flux)</span>
+            </label>
+
+            {/* Model Selection */}
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value as typeof selectedModel)}
+              className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 text-xs mb-2"
+            >
+              <option value="google/imagen-4.0-fast-generate-001">Imagen Fast</option>
+              <option value="google/imagen-4.0-generate-001">Imagen Standard</option>
+              <option value="bfl/flux-2-pro">Flux 2 Pro</option>
+            </select>
+
+            <textarea
+              value={imagePrompt}
+              onChange={(e) => setImagePrompt(e.target.value)}
+              className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none resize-none text-sm"
+              rows={3}
+              placeholder="Describe the underwater background (e.g., 'coral reef with sunlight rays', 'dark abyssal zone with bioluminescent particles')"
+            />
+            <button
+              onClick={handleGenerateImage}
+              disabled={isGenerating || !imagePrompt.trim()}
+              className="w-full mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isGenerating ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                  </svg>
+                  Generate Background
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
@@ -399,13 +486,12 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
 
       {/* Status Message */}
       {message && (
-        <div className={`text-sm p-2 rounded ${
-          message.startsWith('✅') 
-            ? 'bg-green-600/20 text-green-400' 
+        <div className={`text-sm p-2 rounded ${message.startsWith('✅')
+            ? 'bg-green-600/20 text-green-400'
             : message.startsWith('🔄')
-            ? 'bg-blue-600/20 text-blue-400'
-            : 'bg-red-600/20 text-red-400'
-        }`}>
+              ? 'bg-blue-600/20 text-blue-400'
+              : 'bg-red-600/20 text-red-400'
+          }`}>
           {message}
         </div>
       )}

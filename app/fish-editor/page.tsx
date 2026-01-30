@@ -12,6 +12,7 @@ import FishEditorCanvas from '@/components/FishEditorCanvas';
 import { type FishData } from '@/components/FishEditOverlay';
 import PauseMenu from '@/components/PauseMenu';
 import ArtSelectorPanel from '@/components/ArtSelectorPanel';
+import SettingsDrawer from '@/components/SettingsDrawer';
 
 export default function FishEditorPage() {
   const router = useRouter();
@@ -30,6 +31,8 @@ export default function FishEditorPage() {
   const [showArtSelector, setShowArtSelector] = useState(false);
   const [artSelectorType, setArtSelectorType] = useState<'fish' | 'background'>('fish');
   const [artSelectorCallback, setArtSelectorCallback] = useState<((url: string, filename: string) => void) | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
 
   // Handle Escape key for pause toggle - uses callback form to access current state
   useEffect(() => {
@@ -493,7 +496,113 @@ export default function FishEditorPage() {
             </svg>
           )}
         </button>
+        {/* Settings Menu */}
+        <SettingsDrawer mode="editor" />
       </div>
+
+      {/* Fish Name Bar with Prev/Next - Docked above the Pause Menu */}
+      {paused && selectedFish && (
+        <div
+          className="absolute left-0 right-0 z-40 flex items-center justify-between px-4 py-2"
+          style={{ bottom: '50%' }}
+        >
+          {/* Previous Arrow */}
+          <button
+            onClick={handlePreviousFish}
+            disabled={!hasPrevious}
+            className={`p-2 rounded-full transition-all ${hasPrevious
+              ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
+              : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
+              }`}
+            title="Previous Fish"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+
+          {/* Fish Name - Center */}
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (tempName.trim() && selectedFishId) {
+                      const updatedFish = { ...selectedFish, name: tempName.trim() };
+                      handleSaveFish(updatedFish);
+                    }
+                    setEditingName(false);
+                  } else if (e.key === 'Escape') {
+                    setEditingName(false);
+                  }
+                }}
+                className="bg-gray-800 text-white px-3 py-1 rounded text-lg font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+              <button
+                onClick={() => {
+                  if (tempName.trim() && selectedFishId) {
+                    const updatedFish = { ...selectedFish, name: tempName.trim() };
+                    handleSaveFish(updatedFish);
+                  }
+                  setEditingName(false);
+                }}
+                className="p-1 bg-green-600 hover:bg-green-500 rounded text-white"
+                title="Save Name"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setEditingName(false)}
+                className="p-1 bg-gray-600 hover:bg-gray-500 rounded text-white"
+                title="Cancel"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-white drop-shadow-lg">
+                {selectedFish.name}
+              </span>
+              <button
+                onClick={() => {
+                  setTempName(selectedFish.name);
+                  setEditingName(true);
+                }}
+                className="p-1 text-gray-400 hover:text-white transition-colors"
+                title="Edit Name"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Next Arrow */}
+          <button
+            onClick={handleNextFish}
+            disabled={!hasNext}
+            className={`p-2 rounded-full transition-all ${hasNext
+              ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
+              : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
+              }`}
+            title="Next Fish"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Canvas - Full screen, but fish will be positioned in top area during edit mode */}
       <div className="flex-1 relative">

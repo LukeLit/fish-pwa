@@ -1,143 +1,74 @@
 /**
  * Fish Selection Screen Component
- * Character select style layout inspired by DICE VADERS
+ * Clean design with animated fish preview over biome background
+ * Uses shared fish-renderer for consistent display across the game
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { loadPlayerState } from '@/lib/game/player-state';
 import { getPlayableCreaturesFromLocal } from '@/lib/storage/local-fish-storage';
 import { clearRunState } from '@/lib/game/run-state';
-import type { PlayerState, Creature } from '@/lib/game/types';
+import { loadFishSprite, drawFishWithDeformation } from '@/lib/rendering/fish-renderer';
+import type { Creature } from '@/lib/game/types';
+
+// Biome to background color mapping (fallback gradients)
+const BIOME_COLORS: Record<string, { top: string; bottom: string }> = {
+  shallow: { top: '#1e90ff', bottom: '#006994' },
+  deep: { top: '#1a365d', bottom: '#0d1b2a' },
+  deep_sea: { top: '#0f172a', bottom: '#020617' },
+  abyssal: { top: '#0c0a1d', bottom: '#000000' },
+  tropical: { top: '#06b6d4', bottom: '#0e7490' },
+  polluted: { top: '#4a5568', bottom: '#1a202c' },
+};
 
 export default function FishSelectionScreen() {
   const router = useRouter();
-  const [playerState, setPlayerState] = useState<PlayerState | null>(null);
   const [selectedFishId, setSelectedFishId] = useState<string>('');
   const [selectedFish, setSelectedFish] = useState<Creature | null>(null);
   const [playableFish, setPlayableFish] = useState<Creature[]>([]);
   const [loading, setLoading] = useState(true);
+  const [biomeBackground, setBiomeBackground] = useState<string | null>(null);
 
+  // Canvas refs for animated preview
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const spriteRef = useRef<HTMLCanvasElement | null>(null);
+  const animTimeRef = useRef(0);
+  const animFrameRef = useRef<number>(0);
+  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+
+  // Load fish data
   useEffect(() => {
-    // Load player state and playable fish from API
     const loadData = async () => {
-      const state = loadPlayerState();
-      setPlayerState(state);
-
-      // First, try to load from localStorage
+      loadPlayerState();
       const localFish = getPlayableCreaturesFromLocal();
-      console.log('[FishSelection] Loaded from localStorage:', localFish.length, 'playable fish');
 
       try {
-        // Fetch playable fish from the API
         const response = await fetch('/api/list-creatures?playable=true');
         const data = await response.json();
 
-        if (data.success && data.creatures && data.creatures.length > 0) {
-          // Combine API fish with local fish (API fish take precedence)
-          const apiFish = data.creatures;
-          const combinedFish = [...apiFish];
-
-          // Add local fish that aren't already in API results
-          localFish.forEach(localCreature => {
-            if (!apiFish.find((f: Creature) => f.id === localCreature.id)) {
-              combinedFish.push(localCreature);
+        if (data.success && data.creatures?.length > 0) {
+          const combinedFish = [...data.creatures];
+          localFish.forEach(local => {
+            if (!data.creatures.find((f: Creature) => f.id === local.id)) {
+              combinedFish.push(local);
             }
           });
-
-          console.log('[FishSelection] Combined fish count:', combinedFish.length);
           setPlayableFish(combinedFish);
-
-          // Set initial selected fish to first playable fish
-          const firstFish = combinedFish[0];
-          setSelectedFishId(firstFish.id);
-          setSelectedFish(firstFish);
+          setSelectedFishId(combinedFish[0].id);
+          setSelectedFish(combinedFish[0]);
         } else if (localFish.length > 0) {
-          // Use localStorage fish if API returns no results
-          console.log('[FishSelection] Using localStorage fish only');
           setPlayableFish(localFish);
           setSelectedFishId(localFish[0].id);
           setSelectedFish(localFish[0]);
-        } else {
-          // Fallback: Use hardcoded goldfish if no fish available
-          console.warn('No playable fish from API or localStorage, using fallback goldfish');
-          const fallbackFish: Creature = {
-            id: 'goldfish_starter',
-            name: 'Goldfish',
-            description: 'A small, hardy fish perfect for beginners. Fast and agile.',
-            type: 'prey',
-            rarity: 'common',
-            sprite: '/sprites/fish/goldfish.svg',
-            biomeId: 'shallow',
-            playable: true,
-            stats: {
-              size: 20,
-              speed: 7,
-              health: 15,
-              damage: 3,
-            },
-            essenceTypes: [
-              {
-                type: 'shallow',
-                baseYield: 3,
-              },
-            ],
-            grantedAbilities: [],
-            spawnRules: {
-              canAppearIn: ['shallow'],
-              spawnWeight: 10,
-              minDepth: 0,
-              maxDepth: 50,
-            },
-          };
-          setPlayableFish([fallbackFish]);
-          setSelectedFishId(fallbackFish.id);
-          setSelectedFish(fallbackFish);
         }
-      } catch (error) {
-        console.error('Failed to load playable fish from API:', error);
-        // On error, use localStorage fish or fallback
+      } catch {
         if (localFish.length > 0) {
-          console.log('[FishSelection] API failed, using localStorage fish');
           setPlayableFish(localFish);
           setSelectedFishId(localFish[0].id);
           setSelectedFish(localFish[0]);
-        } else {
-          // Fallback: Use hardcoded goldfish on error
-          const fallbackFish: Creature = {
-            id: 'goldfish_starter',
-            name: 'Goldfish',
-            description: 'A small, hardy fish perfect for beginners. Fast and agile.',
-            type: 'prey',
-            rarity: 'common',
-            sprite: '/sprites/fish/goldfish.svg',
-            biomeId: 'shallow',
-            playable: true,
-            stats: {
-              size: 20,
-              speed: 7,
-              health: 15,
-              damage: 3,
-            },
-            essenceTypes: [
-              {
-                type: 'shallow',
-                baseYield: 3,
-              },
-            ],
-            grantedAbilities: [],
-            spawnRules: {
-              canAppearIn: ['shallow'],
-              spawnWeight: 10,
-              minDepth: 0,
-              maxDepth: 50,
-            },
-          };
-          setPlayableFish([fallbackFish]);
-          setSelectedFishId(fallbackFish.id);
-          setSelectedFish(fallbackFish);
         }
       } finally {
         setLoading(false);
@@ -147,215 +78,248 @@ export default function FishSelectionScreen() {
     loadData();
   }, []);
 
+  // Update selected fish when ID changes
   useEffect(() => {
-    // Update selected fish when ID changes
     if (selectedFishId && playableFish.length > 0) {
       const fish = playableFish.find(f => f.id === selectedFishId);
-      if (fish) {
-        setSelectedFish(fish);
-      }
+      if (fish) setSelectedFish(fish);
     }
   }, [selectedFishId, playableFish]);
 
-  const handleBack = () => {
-    router.push('/');
-  };
+  // Load sprite and biome background when selected fish changes
+  useEffect(() => {
+    if (!selectedFish?.sprite) return;
+
+    // Load fish sprite using shared renderer (handles chroma key removal)
+    loadFishSprite(selectedFish.sprite).then(processedSprite => {
+      spriteRef.current = processedSprite;
+    }).catch(err => {
+      console.error('Failed to load fish sprite:', err);
+    });
+
+    // Load biome background
+    const loadBiomeBackground = async () => {
+      try {
+        const biome = selectedFish.biomeId || 'shallow';
+        const response = await fetch(`/api/list-assets?type=background&biome=${biome}`);
+        const data = await response.json();
+
+        if (data.success && data.assets?.length > 0) {
+          const bgUrl = data.assets[0].url;
+          setBiomeBackground(bgUrl);
+
+          // Preload background image
+          const bgImg = new window.Image();
+          bgImg.crossOrigin = 'anonymous';
+          bgImg.onload = () => {
+            backgroundImageRef.current = bgImg;
+          };
+          bgImg.src = bgUrl;
+        } else {
+          setBiomeBackground(null);
+          backgroundImageRef.current = null;
+        }
+      } catch {
+        setBiomeBackground(null);
+        backgroundImageRef.current = null;
+      }
+    };
+
+    loadBiomeBackground();
+  }, [selectedFish]);
+
+  // Animation loop
+  const animate = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+
+    // Set canvas size if needed
+    if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+    }
+
+    const width = rect.width;
+    const height = rect.height;
+
+    // Clear and draw background
+    ctx.clearRect(0, 0, width, height);
+
+    if (backgroundImageRef.current) {
+      // Draw biome background with blur
+      ctx.save();
+      ctx.filter = 'blur(3px)';
+      const img = backgroundImageRef.current;
+      const imgAspect = img.width / img.height;
+      const canvasAspect = width / height;
+
+      let drawW, drawH, drawX, drawY;
+      if (imgAspect > canvasAspect) {
+        drawH = height;
+        drawW = height * imgAspect;
+        drawX = (width - drawW) / 2;
+        drawY = 0;
+      } else {
+        drawW = width;
+        drawH = width / imgAspect;
+        drawX = 0;
+        drawY = (height - drawH) / 2;
+      }
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      ctx.restore();
+
+      // Slight overlay for contrast
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      // Fallback gradient
+      const biome = selectedFish?.biomeId || 'shallow';
+      const colors = BIOME_COLORS[biome] || BIOME_COLORS.shallow;
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, colors.top);
+      gradient.addColorStop(1, colors.bottom);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    // Draw animated fish with same deformation as in-game
+    if (spriteRef.current) {
+      animTimeRef.current += 0.06;
+      const fishSize = Math.min(width, height) * 0.45;
+      drawFishWithDeformation(
+        ctx,
+        spriteRef.current,
+        width / 2,
+        height / 2,
+        fishSize,
+        animTimeRef.current,
+        true,
+        { intensity: 1.0 }
+      );
+    }
+
+    animFrameRef.current = requestAnimationFrame(animate);
+  }, [selectedFish]);
+
+  // Start/stop animation
+  useEffect(() => {
+    animFrameRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [animate]);
+
+  const handleBack = () => router.push('/');
 
   const handleDive = () => {
-    // Clear any existing run state - selecting a fish means starting fresh
     clearRunState();
-    // Store selected fish in session storage for game to use
     sessionStorage.setItem('selected_fish_id', selectedFishId);
     router.push('/game');
   };
 
-  const handleSelectFish = (fishId: string) => {
-    setSelectedFishId(fishId);
-  };
-
   if (loading || !selectedFish) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-blue-950 to-black flex items-center justify-center">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-cyan-300 text-2xl">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-blue-950 to-black flex flex-col p-4 md:p-8 relative overflow-hidden">
-      {/* Cosmic background effects */}
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute top-20 left-20 w-64 h-64 bg-cyan-500 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 w-80 h-80 bg-blue-500 rounded-full blur-3xl"></div>
+    <div className="min-h-screen bg-gray-900 flex flex-col">
+      {/* Header */}
+      <div className="text-center py-4 bg-black/50">
+        <h1 className="text-2xl md:text-4xl font-bold text-white tracking-wider">
+          SELECT YOUR FISH
+        </h1>
       </div>
 
-      {/* Main Content */}
-      <div className="relative z-10 flex-1 flex flex-col max-w-7xl w-full mx-auto">
-        {/* Header */}
-        <div className="text-center mb-4 md:mb-8">
-          <h1 className="text-3xl md:text-5xl font-bold text-white tracking-wider drop-shadow-[0_0_15px_rgba(56,189,248,0.5)]">
-            SELECT YOUR FISH
-          </h1>
+      {/* Main Preview Area - Animated Fish over Biome Background */}
+      <div className="flex-1 relative">
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ imageRendering: 'pixelated' }}
+        />
+
+        {/* Fish Name Overlay */}
+        <div className="absolute top-4 left-0 right-0 text-center pointer-events-none">
+          <h2 className="text-3xl md:text-5xl font-bold text-white uppercase tracking-wider drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+            {selectedFish.name}
+          </h2>
+          <p className="text-lg md:text-xl text-cyan-300 mt-1 font-semibold drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+            LV 1
+          </p>
         </div>
 
-        {/* Main Layout: Responsive - Stack on mobile, side-by-side on desktop */}
-        <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-8 mb-4 md:mb-8">
-          {/* Left Panel - Biome Info - Hidden on small screens or shown at top */}
-          <div className="lg:w-64 flex flex-col gap-4">
-            <div className="bg-cyan-900/30 backdrop-blur-sm rounded-lg p-4 md:p-6 border-2 md:border-4 border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-              <h2 className="text-xl md:text-2xl font-bold text-cyan-300 mb-2 md:mb-3 uppercase tracking-wide">
-                Mission
-              </h2>
-              <div className="text-cyan-200 space-y-1 md:space-y-2">
-                <p className="text-lg md:text-xl font-semibold">SHALLOWS 1-1</p>
-                <p className="text-xs md:text-sm">Survive and grow!</p>
-                <p className="text-xs text-cyan-300/70 mt-2 md:mt-4">
-                  Eat smaller fish to increase your size. Avoid larger predators.
-                </p>
-              </div>
+        {/* Stats Overlay - Bottom of preview */}
+        <div className="absolute bottom-4 left-4 right-4 pointer-events-none">
+          <div className="flex justify-center gap-2 md:gap-4 flex-wrap">
+            <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-cyan-500/50">
+              <span className="text-xs text-cyan-300">SIZE</span>
+              <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.size}</span>
             </div>
-
-            {/* Stats Info - Hide on mobile to save space */}
-            <div className="hidden lg:block bg-purple-900/30 backdrop-blur-sm rounded-lg p-4 border-4 border-purple-500/40 shadow-[0_0_20px_rgba(147,51,234,0.3)]">
-              <h3 className="text-sm font-bold text-purple-300 mb-2 uppercase">Legend</h3>
-              <div className="text-xs text-purple-200 space-y-1">
-                <p>• <span className="text-cyan-300">Size</span>: Fish dimensions</p>
-                <p>• <span className="text-green-300">Speed</span>: Movement velocity</p>
-                <p>• <span className="text-red-300">Health</span>: Hit points</p>
-                <p>• <span className="text-yellow-300">Damage</span>: Attack power</p>
-              </div>
+            <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-green-500/50">
+              <span className="text-xs text-green-300">SPD</span>
+              <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.speed}</span>
             </div>
-          </div>
-          {/* Central Fish Card */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className="relative bg-gradient-to-br from-cyan-900/40 to-purple-900/40 backdrop-blur-sm rounded-xl md:rounded-2xl p-4 md:p-8 border-2 md:border-4 border-cyan-500/50 shadow-[0_0_30px_rgba(6,182,212,0.4)] w-full max-w-2xl">
-              {/* Fish Name and Level */}
-              <div className="text-center mb-4 md:mb-6">
-                <h2 className="text-3xl md:text-5xl font-bold text-white uppercase tracking-wider drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]">
-                  {selectedFish.name}
-                </h2>
-                <p className="text-xl md:text-2xl text-cyan-300 mt-1 md:mt-2 font-semibold">LV 1</p>
-              </div>
-
-              {/* Fish Sprite */}
-              <div className="relative h-48 md:h-64 flex items-center justify-center mb-4 md:mb-6 bg-black/30 rounded-lg border-2 border-cyan-400/30">
-                {selectedFish.sprite && (
-                  <div className="relative w-32 h-32 md:w-48 md:h-48">
-                    <Image
-                      src={selectedFish.sprite}
-                      alt={selectedFish.name}
-                      fill
-                      className="object-contain drop-shadow-[0_0_20px_rgba(56,189,248,0.6)]"
-                      unoptimized
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Fish Description */}
-              <p className="text-center text-sm md:text-lg text-blue-200 mb-4 md:mb-6 italic px-2">
-                {selectedFish.description}
-              </p>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-2 md:gap-4 mb-3 md:mb-4">
-                <div className="bg-cyan-900/40 rounded-lg p-2 md:p-4 border-2 border-cyan-500/40">
-                  <div className="text-xs text-cyan-300 uppercase mb-1">Size</div>
-                  <div className="text-xl md:text-2xl font-bold text-white">{selectedFish.stats.size}</div>
-                </div>
-                <div className="bg-green-900/40 rounded-lg p-2 md:p-4 border-2 border-green-500/40">
-                  <div className="text-xs text-green-300 uppercase mb-1">Speed</div>
-                  <div className="text-xl md:text-2xl font-bold text-white">{selectedFish.stats.speed}</div>
-                </div>
-                <div className="bg-red-900/40 rounded-lg p-2 md:p-4 border-2 border-red-500/40">
-                  <div className="text-xs text-red-300 uppercase mb-1">Health</div>
-                  <div className="text-xl md:text-2xl font-bold text-white">{selectedFish.stats.health}</div>
-                </div>
-                <div className="bg-yellow-900/40 rounded-lg p-2 md:p-4 border-2 border-yellow-500/40">
-                  <div className="text-xs text-yellow-300 uppercase mb-1">Damage</div>
-                  <div className="text-xl md:text-2xl font-bold text-white">{selectedFish.stats.damage}</div>
-                </div>
-              </div>
-
-              {/* Primary Essence Type */}
-              <div className="text-center mt-3 md:mt-4">
-                <span className="inline-block bg-cyan-600/40 px-3 md:px-4 py-1 md:py-2 rounded-full border-2 border-cyan-400/50 text-cyan-200 text-xs md:text-sm uppercase font-semibold">
-                  Essence: {selectedFish.essenceTypes[0]?.type || 'Unknown'}
-                </span>
-              </div>
+            <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-red-500/50">
+              <span className="text-xs text-red-300">HP</span>
+              <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.health}</span>
+            </div>
+            <div className="bg-black/60 backdrop-blur-sm rounded px-3 py-1 border border-yellow-500/50">
+              <span className="text-xs text-yellow-300">DMG</span>
+              <span className="text-lg font-bold text-white ml-2">{selectedFish.stats.damage}</span>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Bottom Carousel */}
-        <div className="mb-4 md:mb-8">
-          <div className="bg-black/40 backdrop-blur-sm rounded-lg p-4 md:p-6 border-2 md:border-4 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.2)]">
-            <h3 className="text-lg md:text-xl font-bold text-cyan-300 mb-3 md:mb-4 uppercase tracking-wide text-center">
-              Available Fish
-            </h3>
-            <div className="flex gap-2 md:gap-4 justify-center items-center overflow-x-auto pb-2">
-              {playableFish.map((fish) => (
-                <button
-                  key={fish.id}
-                  onClick={() => handleSelectFish(fish.id)}
-                  className={`relative w-24 h-24 md:w-32 md:h-32 rounded-lg border-2 md:border-4 transition-all transform hover:scale-105 flex-shrink-0 ${selectedFishId === fish.id
-                      ? 'border-cyan-400 bg-cyan-900/60 shadow-[0_0_25px_rgba(34,211,238,0.6)] scale-105'
-                      : 'border-cyan-700/50 bg-cyan-900/30 hover:border-cyan-500'
-                    }`}
-                  aria-label={`Select ${fish.name}`}
-                >
-                  {fish.sprite && (
-                    <Image
-                      src={fish.sprite}
-                      alt={fish.name}
-                      fill
-                      className="object-contain p-2"
-                      unoptimized
-                    />
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-1 px-1 text-xs text-white text-center truncate">
-                    {fish.name}
-                  </div>
-                </button>
-              ))}
-
-              {/* Show locked slots for visual balance - only on larger screens */}
-              {playableFish.length < 4 && (
-                Array.from({ length: Math.min(4 - playableFish.length, 3) }).map((_, i) => (
-                  <div
-                    key={`locked-${i}`}
-                    className="hidden md:flex relative w-32 h-32 rounded-lg border-4 border-gray-700/50 bg-gray-900/30 items-center justify-center flex-shrink-0"
-                  >
-                    <div className="text-4xl text-gray-600">🔒</div>
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 py-1 px-2 text-xs text-gray-500 text-center">
-                      LOCKED
-                    </div>
-                  </div>
-                ))
+      {/* Fish Carousel - Compact */}
+      <div className="bg-black/80 p-3">
+        <div className="flex gap-2 justify-center items-center overflow-x-auto pb-1">
+          {playableFish.map((fish) => (
+            <button
+              key={fish.id}
+              onClick={() => setSelectedFishId(fish.id)}
+              className={`relative w-16 h-16 md:w-20 md:h-20 rounded-lg border-2 transition-all flex-shrink-0 ${selectedFishId === fish.id
+                ? 'border-cyan-400 bg-cyan-900/60 shadow-[0_0_15px_rgba(34,211,238,0.6)] scale-110'
+                : 'border-gray-600 bg-gray-800/50 hover:border-cyan-500'
+                }`}
+            >
+              {fish.sprite && (
+                <Image
+                  src={fish.sprite}
+                  alt={fish.name}
+                  fill
+                  className="object-contain p-1"
+                  unoptimized
+                />
               )}
-            </div>
-          </div>
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Bottom Buttons */}
-        <div className="flex gap-3 md:gap-6 justify-center">
-          <button
-            onClick={handleBack}
-            className="group relative bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white font-bold py-3 md:py-4 px-8 md:px-12 rounded-lg text-lg md:text-xl uppercase tracking-wider transition-all transform hover:scale-105 border-2 md:border-4 border-gray-500/50 shadow-[0_0_20px_rgba(75,85,99,0.4)] hover:shadow-[0_0_30px_rgba(75,85,99,0.6)]"
-          >
-            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Back</span>
-            <div className="absolute inset-0 bg-white/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          </button>
-
-          <button
-            onClick={handleDive}
-            className="group relative bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-bold py-3 md:py-4 px-8 md:px-12 rounded-lg text-lg md:text-xl uppercase tracking-wider transition-all transform hover:scale-105 border-2 md:border-4 border-red-400/50 shadow-[0_0_25px_rgba(220,38,38,0.5)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)]"
-          >
-            <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Dive</span>
-            <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          </button>
-        </div>
+      {/* Bottom Buttons */}
+      <div className="flex gap-4 justify-center p-4 bg-black/50">
+        <button
+          onClick={handleBack}
+          className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg text-lg uppercase tracking-wider transition-all border-2 border-gray-500"
+        >
+          Back
+        </button>
+        <button
+          onClick={handleDive}
+          className="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-8 rounded-lg text-lg uppercase tracking-wider transition-all border-2 border-red-400 shadow-[0_0_20px_rgba(220,38,38,0.5)]"
+        >
+          Dive
+        </button>
       </div>
     </div>
   );

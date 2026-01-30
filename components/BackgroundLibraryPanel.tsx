@@ -14,12 +14,15 @@ interface Background {
 interface BackgroundLibraryPanelProps {
   onSelectBackground: (background: Background) => void;
   onAddNew: () => void;
+  /** Callback to set a background as active (optional, for editor mode) */
+  onSetAsActive?: (background: Background) => void;
 }
 
-export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew }: BackgroundLibraryPanelProps) {
+export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew, onSetAsActive }: BackgroundLibraryPanelProps) {
   const [backgrounds, setBackgrounds] = useState<Background[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadBackgrounds();
@@ -31,7 +34,7 @@ export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew }:
       setError(null);
       const response = await fetch('/api/list-assets?type=background');
       const result = await response.json();
-      
+
       if (result.success) {
         setBackgrounds(result.assets || []);
       } else {
@@ -52,6 +55,40 @@ export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew }:
       </div>
     );
   }
+
+  const handleDelete = async (background: Background, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (!window.confirm(`Delete background "${background.filename}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingId(background.url);
+    try {
+      const response = await fetch(`/api/delete-asset?url=${encodeURIComponent(background.url)}&type=background`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        setBackgrounds(prev => prev.filter(b => b.url !== background.url));
+      } else {
+        alert('Failed to delete: ' + (result.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Failed to delete: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleSetActive = (background: Background, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSetAsActive) {
+      onSetAsActive(background);
+    }
+  };
 
   if (error) {
     return (
@@ -94,16 +131,20 @@ export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew }:
         ) : (
           backgrounds.map((background) => {
             const isVideo = background.filename.toLowerCase().endsWith('.mp4');
-            
+            const isDeleting = deletingId === background.url;
+
             return (
-              <button
+              <div
                 key={background.url}
-                onClick={() => onSelectBackground(background)}
-                className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg p-3 transition-colors text-left"
+                className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg p-3 transition-colors"
               >
                 <div className="flex gap-3">
-                  {/* Thumbnail */}
-                  <div className="w-24 h-16 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
+                  {/* Thumbnail - clickable to edit */}
+                  <button
+                    onClick={() => onSelectBackground(background)}
+                    className="w-24 h-16 bg-gray-900 rounded flex-shrink-0 overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all"
+                    title="Edit background"
+                  >
                     {isVideo ? (
                       <video
                         src={background.url}
@@ -117,24 +158,46 @@ export default function BackgroundLibraryPanel({ onSelectBackground, onAddNew }:
                         className="w-full h-full object-cover"
                       />
                     )}
-                  </div>
+                  </button>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold text-white truncate">{background.filename}</h3>
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        isVideo ? 'bg-purple-600/20 text-purple-400' : 'bg-green-600/20 text-green-400'
-                      }`}>
-                        {isVideo ? 'Video' : 'Image'}
-                      </span>
+                  {/* Info + Actions */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-white truncate text-sm">{background.filename}</h3>
+                        <span className={`text-xs px-2 py-0.5 rounded ${isVideo ? 'bg-purple-600/20 text-purple-400' : 'bg-green-600/20 text-green-400'
+                          }`}>
+                          {isVideo ? 'Video' : 'Image'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        {new Date(parseInt(background.timestamp)).toLocaleDateString()}
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-400">
-                      {new Date(parseInt(background.timestamp)).toLocaleDateString()}
-                    </p>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 mt-2">
+                      {onSetAsActive && (
+                        <button
+                          onClick={(e) => handleSetActive(background, e)}
+                          className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+                          title="Set as current background"
+                        >
+                          Set BG
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => handleDelete(background, e)}
+                        disabled={isDeleting}
+                        className="bg-red-600 hover:bg-red-500 disabled:bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+                        title="Delete background"
+                      >
+                        {isDeleting ? '...' : 'Delete'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </button>
+              </div>
             );
           })
         )}

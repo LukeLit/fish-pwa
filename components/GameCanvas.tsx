@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import FishEditorCanvas, { type PlayerGameStats } from './FishEditorCanvas';
 import PauseMenu from './PauseMenu';
+import SettingsDrawer from './SettingsDrawer';
 import { type FishData } from './FishEditOverlay';
 import type { RunState, Creature } from '@/lib/game/types';
 import {
@@ -344,7 +345,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
       </div>
 
-      {/* Pause Button */}
+      {/* Pause Button + Settings Menu */}
       <div className="absolute top-4 right-4 z-40 flex gap-2">
         <button
           onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
@@ -361,6 +362,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             </svg>
           )}
         </button>
+        {/* Settings Menu */}
+        <SettingsDrawer mode="game" />
       </div>
 
       <FishEditorCanvas

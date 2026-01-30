@@ -19,6 +19,10 @@ import {
   HUNGER_FRAME_RATE,
 } from '@/lib/game/hunger-constants';
 import { loadRunState } from '@/lib/game/run-state';
+import {
+  removeBackground,
+  drawFishWithDeformation
+} from '@/lib/rendering/fish-renderer';
 
 export interface PlayerGameStats {
   size: number;
@@ -54,9 +58,6 @@ interface FishEditorCanvasProps {
   onCacheRefreshed?: () => void;
 }
 
-// Chroma key color - bright magenta for easy removal
-const CHROMA_KEY = { r: 255, g: 0, b: 255 }; // #FF00FF
-
 /**
  * Type guard to check if a fish item is a full Creature object
  * Checks for required Creature fields that distinguish it from legacy format
@@ -68,145 +69,6 @@ function isCreature(fish: Creature | { id: string; sprite: string; type: string 
     'rarity' in fish &&
     'spawnRules' in fish
   );
-}
-
-interface DrawFishOpts {
-  /** Speed 0–1+; boosts tail motion when moving */
-  speed?: number;
-  /** 0–1 chomp phase; bulges front (head) when > 0 */
-  chompPhase?: number;
-}
-
-// Draw fish sprite with spine-based deformation (warping/bending animation)
-function drawFishWithDeformation(
-  ctx: CanvasRenderingContext2D,
-  sprite: HTMLCanvasElement,
-  x: number,
-  y: number,
-  size: number,
-  animTime: number,
-  facingRight: boolean,
-  verticalTilt: number,
-  intensity: number,
-  opts: DrawFishOpts = {}
-) {
-  const { speed = 0, chompPhase = 0 } = opts;
-  // Movement-based animation: more tail motion when swimming
-  const speedBoost = 1 + Math.min(1, speed) * 0.6;
-  const effectiveIntensity = intensity * speedBoost;
-
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(facingRight ? verticalTilt : -verticalTilt);
-  ctx.scale(facingRight ? 1 : -1, 1);
-
-  const segments = 8;
-  const segmentWidth = size / segments;
-
-  for (let i = 0; i < segments; i++) {
-    const waveStrength = 1 - i / segments; // 1 at tail, 0 at head
-    const wave = Math.sin(animTime + i * 0.3) * 1.5 * waveStrength * effectiveIntensity;
-
-    ctx.save();
-
-    const segX = -size / 2 + i * segmentWidth;
-    ctx.translate(segX, wave);
-
-    const rotation = Math.sin(animTime + i * 0.3) * 0.025 * waveStrength * effectiveIntensity;
-    ctx.rotate(rotation);
-
-    // Chomp bulge: stretch front segments (head) horizontally
-    let drawW = segmentWidth;
-    let drawX = 0;
-    if (chompPhase > 0) {
-      const headAmount = i / segments; // 0 at tail, 1 at head
-      const bulge = 1 + chompPhase * 0.4 * headAmount; // up to 40% wider at peak
-      drawW = segmentWidth * bulge;
-      drawX = facingRight ? -segmentWidth * (bulge - 1) * 0.5 : segmentWidth * (bulge - 1) * 0.5;
-    }
-    ctx.translate(drawX, 0);
-
-    ctx.drawImage(
-      sprite,
-      (i / segments) * sprite.width,
-      0,
-      sprite.width / segments,
-      sprite.height,
-      0,
-      -size / 2,
-      drawW,
-      size
-    );
-
-    ctx.restore();
-  }
-
-  ctx.restore();
-}
-
-// Advanced background removal - detects and removes background color automatically
-function removeBackground(img: HTMLImageElement, tolerance: number = 50): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = img.width;
-  canvas.height = img.height;
-  const ctx = canvas.getContext('2d');
-
-  if (!ctx) return canvas;
-
-  ctx.drawImage(img, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  // Sample corner colors to detect background
-  const corners = [
-    { x: 0, y: 0 },
-    { x: canvas.width - 1, y: 0 },
-    { x: 0, y: canvas.height - 1 },
-    { x: canvas.width - 1, y: canvas.height - 1 },
-  ];
-
-  // Get average corner color (likely the background)
-  let totalR = 0, totalG = 0, totalB = 0;
-  corners.forEach(corner => {
-    const idx = (corner.y * canvas.width + corner.x) * 4;
-    totalR += data[idx];
-    totalG += data[idx + 1];
-    totalB += data[idx + 2];
-  });
-
-  const bgColor = {
-    r: Math.round(totalR / corners.length),
-    g: Math.round(totalG / corners.length),
-    b: Math.round(totalB / corners.length),
-  };
-
-  console.log('Detected background color:', bgColor);
-
-  // Remove background color
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-
-    // Calculate color difference from detected background
-    const diff = Math.sqrt(
-      Math.pow(r - bgColor.r, 2) +
-      Math.pow(g - bgColor.g, 2) +
-      Math.pow(b - bgColor.b, 2)
-    );
-
-    // If pixel is close to background color, make it transparent
-    if (diff < tolerance) {
-      data[i + 3] = 0; // Set alpha to 0
-    } else if (diff < tolerance * 1.5) {
-      // Feather edges for smoother transitions
-      const alpha = ((diff - tolerance) / (tolerance * 0.5)) * 255;
-      data[i + 3] = Math.min(data[i + 3], alpha);
-    }
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
 }
 
 export default function FishEditorCanvas({
@@ -363,11 +225,9 @@ export default function FishEditorCanvas({
   const totalPausedTimeRef = useRef<number>(0);
   const wasPausedRef = useRef<boolean>(false);
 
-  // FPS tracking
-  const fpsRef = useRef<number>(60);
+  // Frame timing for delta time calculation
   const lastFrameTimeRef = useRef<number>(0);
   const frameTimesRef = useRef<number[]>([]);
-  const [showFPS, setShowFPS] = useState<boolean>(false);
   const cameraRef = useRef({ x: 0, y: 0 });
   const worldBoundsRef = useRef({
     minX: -2000,
@@ -851,10 +711,6 @@ export default function FishEditorCanvas({
       const key = e.key.toLowerCase();
       keyKeysRef.current.add(key);
 
-      // Toggle FPS with F key
-      if (key === 'f') {
-        setShowFPS(prev => !prev);
-      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -886,10 +742,6 @@ export default function FishEditorCanvas({
         deltaTime = Math.min(frameDelta / 16.67, 3); // Cap at 3x to prevent huge jumps
         frameTimesRef.current.push(frameDelta);
         if (frameTimesRef.current.length > 60) frameTimesRef.current.shift();
-        if (frameTimesRef.current.length > 0) {
-          const avgFrameTime = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
-          fpsRef.current = Math.round(1000 / avgFrameTime);
-        }
       }
       lastFrameTimeRef.current = currentTime;
 
@@ -1358,11 +1210,10 @@ export default function FishEditorCanvas({
         ctx.filter = 'blur(6px)';
 
         if (gameMode) {
-          // Parallax background - moves slower than camera
+          // Parallax background - moves opposite to camera but slower
+          // parallaxFactor 0 = fixed to screen, 1 = moves with world
           const camera = cameraRef.current;
           const parallaxFactor = 0.3;
-          const bgOffsetX = camera.x * parallaxFactor;
-          const bgOffsetY = camera.y * parallaxFactor;
 
           // Calculate scaling to maintain aspect ratio
           const img = backgroundImageRef.current;
@@ -1378,8 +1229,10 @@ export default function FishEditorCanvas({
             drawHeight = drawWidth / imgAspect;
           }
 
-          const bgX = (scaledWidth - drawWidth) / 2 - bgOffsetX + camera.x - scaledWidth / 2;
-          const bgY = (scaledHeight - drawHeight) / 2 - bgOffsetY + camera.y - scaledHeight / 2;
+          // Center background, then offset by camera * parallaxFactor
+          // Negative because background moves opposite to camera direction
+          const bgX = (scaledWidth - drawWidth) / 2 - camera.x * parallaxFactor;
+          const bgY = (scaledHeight - drawHeight) / 2 - camera.y * parallaxFactor;
 
           ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         } else if (usingEditCamera) {
@@ -1398,11 +1251,10 @@ export default function FishEditorCanvas({
             drawHeight = drawWidth / imgAspect;
           }
 
-          // Center background on fish with parallax
-          const topAreaCenterY = scaledHeight * 0.25;
-          const parallaxFactor = 0.5;
-          const bgX = (scaledWidth / 2) - (drawWidth / 2) - (cameraX - scaledWidth / 2) * parallaxFactor;
-          const bgY = topAreaCenterY - (drawHeight / 2) - (cameraY - scaledHeight / 2) * parallaxFactor;
+          // Center background with parallax offset
+          const parallaxFactor = 0.3;
+          const bgX = (scaledWidth - drawWidth) / 2 - cameraX * parallaxFactor;
+          const bgY = (scaledHeight - drawHeight) / 2 - cameraY * parallaxFactor;
 
           ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         } else {
@@ -1479,9 +1331,11 @@ export default function FishEditorCanvas({
             fish.size,
             fish.animTime,
             fish.facingRight,
-            fish.verticalTilt,
-            deformationRef.current,
-            { speed: fishSpeed }
+            {
+              speed: fishSpeed,
+              intensity: deformationRef.current,
+              verticalTilt: fish.verticalTilt
+            }
           );
         } else {
           ctx.fillStyle = fish.type === 'prey' ? '#4ade80' : fish.type === 'predator' ? '#f87171' : '#a78bfa';
@@ -1505,9 +1359,12 @@ export default function FishEditorCanvas({
           player.size,
           player.animTime,
           player.facingRight,
-          player.verticalTilt,
-          deformationRef.current,
-          { speed: playerSpeed, chompPhase: player.chompPhase }
+          {
+            speed: playerSpeed,
+            chompPhase: player.chompPhase,
+            intensity: deformationRef.current,
+            verticalTilt: player.verticalTilt
+          }
         );
       } else {
         ctx.fillStyle = '#60a5fa';
@@ -1716,12 +1573,8 @@ export default function FishEditorCanvas({
         ctx.fillText(`HUNGER: ${Math.ceil(player.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
 
         ctx.restore();
-      } else if (!currentEditMode) {
-        // Editor mode UI
-        ctx.fillText('WASD / Arrows · Tap and hold for analog control', 10, 20);
-        ctx.fillText(`Zoom: ${(currentZoom * 100).toFixed(0)}%`, 10, 40);
-        ctx.fillText(`Size: ${player.size} (eat prey to grow)`, 10, 60);
       }
+      // Note: Editor mode UI removed - will be added to proper HUD later
 
       // Draw paused indicator (small, non-blocking) if paused
       if (isPaused) {
@@ -1770,20 +1623,6 @@ export default function FishEditorCanvas({
       <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
         <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
       </div>
-      {/* FPS Counter */}
-      {showFPS && (
-        <div className="absolute top-2 right-2 bg-black/70 px-3 py-1 rounded border border-cyan-400 text-cyan-300 text-sm font-mono z-30">
-          {fpsRef.current} FPS
-        </div>
-      )}
-      {/* FPS Toggle Button (small, bottom-right) */}
-      <button
-        onClick={() => setShowFPS(!showFPS)}
-        className="absolute bottom-2 right-2 bg-black/70 px-2 py-1 rounded border border-gray-600 text-gray-400 text-xs font-mono z-30 hover:border-cyan-400 hover:text-cyan-300 transition-colors"
-        title="Toggle FPS counter (or press F)"
-      >
-        FPS
-      </button>
     </div>
   );
 }

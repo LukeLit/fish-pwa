@@ -195,35 +195,87 @@ export default function PauseMenu({
       className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md z-50 flex flex-col border-t border-gray-700"
       style={{ height: '50%', maxHeight: '600px' }}
     >
-      {/* Header with tabs and resume button */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800/90 border-b border-gray-700">
-        {/* Tabs */}
-        <div className="flex gap-1">
-          {visibleTabs.map((tab) => (
+      {/* Action Bar - Only shown when editing a fish (TOP position) */}
+      {editingFish && selectedFish && (
+        <div className="flex items-center justify-between px-4 py-2 bg-gray-800/90 border-b border-gray-700 flex-shrink-0">
+          {/* Left side: Sprite actions */}
+          <div className="flex items-center gap-2">
+            {/* Back button */}
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-t-lg font-medium text-sm transition-colors ${activeTab === tab.id
-                ? 'bg-gray-700 text-white border-b-2 border-blue-500'
-                : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                }`}
+              onClick={handleBackFromFishEdit}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors text-sm"
+              title="Back to Library"
             >
-              {tab.label}
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              </svg>
+              Back
             </button>
-          ))}
-        </div>
 
-        {/* Resume button */}
-        <button
-          onClick={onClose}
-          className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-          </svg>
-          Resume
-        </button>
-      </div>
+            <div className="w-px h-6 bg-gray-600" />
+
+            {/* Upload */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('fishEditAction', { detail: { action: 'upload' } }))}
+              className="p-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+              title="Upload Image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+            </button>
+
+            {/* Regenerate - with text */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('fishEditAction', { detail: { action: 'regenerate' } }))}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors text-sm"
+              title="Regenerate Sprite with AI"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+              </svg>
+              Generate
+            </button>
+
+            {/* Flip */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('fishEditAction', { detail: { action: 'flip' } }))}
+              className="p-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-lg transition-colors"
+              title="Flip Sprite Horizontally"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Right side: Save and Delete */}
+          <div className="flex items-center gap-2">
+            {/* Save - with floppy disk icon */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('fishEditAction', { detail: { action: 'save' } }))}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors text-sm"
+              title="Save Creature"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+              </svg>
+              Save
+            </button>
+
+            {/* Delete */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('fishEditAction', { detail: { action: 'delete' } }))}
+              className="p-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
+              title="Delete Creature"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tab Content */}
       <div className="flex-1 overflow-hidden">
@@ -320,15 +372,6 @@ export default function PauseMenu({
               />
             ) : selectedFish ? (
               <div className="h-full flex flex-col">
-                {/* Back button header */}
-                <div className="px-4 py-2 border-b border-gray-700 flex-shrink-0">
-                  <button
-                    onClick={handleBackFromFishEdit}
-                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-                  >
-                    ← Back to Library
-                  </button>
-                </div>
                 {/* Fish editor */}
                 <div className="flex-1 overflow-hidden">
                   <FishEditOverlay
@@ -355,6 +398,7 @@ export default function PauseMenu({
               <BackgroundLibraryPanel
                 onSelectBackground={handleSelectBackgroundFromLibrary}
                 onAddNew={handleAddNewBackgroundClick}
+                onSetAsActive={onBackgroundChange ? (bg) => onBackgroundChange(bg.url) : undefined}
               />
             ) : (
               <div className="p-4">
@@ -478,6 +522,36 @@ export default function PauseMenu({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Bottom Bar: Tabs and Resume */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-800/90 border-t border-gray-700">
+        {/* Tabs */}
+        <div className="flex gap-1">
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === tab.id
+                ? 'bg-gray-700 text-white border-b-2 border-blue-500'
+                : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Resume button */}
+        <button
+          onClick={onClose}
+          className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+          </svg>
+          Resume
+        </button>
       </div>
     </div>
   );

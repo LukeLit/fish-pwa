@@ -166,54 +166,6 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
 
   return (
     <div className="h-full flex flex-col">
-      {/* Sub-tabs */}
-      <div className="flex-shrink-0 border-b border-gray-700 px-2 py-1 overflow-x-auto">
-        <div className="flex gap-1 min-w-max">
-          {/* All tab */}
-          <button
-            onClick={() => setActiveSubTab('all')}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${activeSubTab === 'all'
-              ? 'bg-gray-600 text-white'
-              : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-              }`}
-          >
-            All ({creatures.length})
-          </button>
-
-          {/* In Scene tab */}
-          {spawnedFishIds.length > 0 && (
-            <button
-              onClick={() => setActiveSubTab('in_scene')}
-              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${activeSubTab === 'in_scene'
-                ? 'bg-yellow-600 text-white'
-                : 'text-yellow-400 hover:text-white hover:bg-yellow-600/30 border border-yellow-600/50'
-                }`}
-            >
-              In Scene ({inSceneCount})
-            </button>
-          )}
-
-          {/* Biome tabs */}
-          {availableBiomes.map(biomeId => {
-            const colors = getBiomeColors(biomeId);
-            const count = creatures.filter(c => c.biomeId === biomeId).length;
-            const isActive = activeSubTab === biomeId;
-            return (
-              <button
-                key={biomeId}
-                onClick={() => setActiveSubTab(biomeId)}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${isActive
-                  ? `${colors.bg.replace('/20', '')} text-white`
-                  : `${colors.text} hover:text-white ${colors.bg} border ${colors.border}/50`
-                  }`}
-              >
-                {getBiomeDisplayName(biomeId)} ({count})
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Fish list */}
       <div className="flex-1 overflow-y-auto px-4 py-2">
         <div className="space-y-2">
@@ -376,6 +328,54 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Sub-tabs - Bottom of library panel */}
+      <div className="flex-shrink-0 border-t border-gray-700 px-2 py-1.5 overflow-x-auto bg-gray-800/50">
+        <div className="flex gap-1 min-w-max">
+          {/* All tab */}
+          <button
+            onClick={() => setActiveSubTab('all')}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${activeSubTab === 'all'
+              ? 'bg-gray-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+              }`}
+          >
+            All ({creatures.length})
+          </button>
+
+          {/* In Scene tab */}
+          {spawnedFishIds.length > 0 && (
+            <button
+              onClick={() => setActiveSubTab('in_scene')}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${activeSubTab === 'in_scene'
+                ? 'bg-yellow-600 text-white'
+                : 'text-yellow-400 hover:text-white hover:bg-yellow-600/30 border border-yellow-600/50'
+                }`}
+            >
+              In Scene ({inSceneCount})
+            </button>
+          )}
+
+          {/* Biome tabs */}
+          {availableBiomes.map(biomeId => {
+            const colors = getBiomeColors(biomeId);
+            const count = creatures.filter(c => c.biomeId === biomeId).length;
+            const isActive = activeSubTab === biomeId;
+            return (
+              <button
+                key={biomeId}
+                onClick={() => setActiveSubTab(biomeId)}
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${isActive
+                  ? `${colors.bg.replace('/20', '')} text-white`
+                  : `${colors.text} hover:text-white ${colors.bg} border ${colors.border}/50`
+                  }`}
+              >
+                {getBiomeDisplayName(biomeId)} ({count})
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

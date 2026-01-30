@@ -242,6 +242,60 @@ export default function FishEditOverlay({
     }
   }, [editedFish?.type]);
 
+  // Listen for action bar events from PauseMenu (when embedded)
+  useEffect(() => {
+    if (!embedded) return;
+
+    const handleActionEvent = (e: Event) => {
+      const event = e as CustomEvent<{ action: string }>;
+      const action = event.detail?.action;
+
+      switch (action) {
+        case 'upload':
+          // Trigger file upload
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.onchange = (ev) => {
+            const file = (ev.target as HTMLInputElement).files?.[0];
+            if (file && editedFish) {
+              const reader = new FileReader();
+              reader.onload = (readerEvent) => {
+                const spriteUrl = readerEvent.target?.result as string;
+                const updatedFish = { ...editedFish, sprite: spriteUrl };
+                setEditedFish(updatedFish);
+                onSave(updatedFish);
+                setSaveMessage('✓ Image uploaded. Click Save to persist.');
+              };
+              reader.readAsDataURL(file);
+            }
+          };
+          input.click();
+          break;
+
+        case 'regenerate':
+          // Trigger regeneration - dispatch another event that we handle below
+          handleRegenerateSprite();
+          break;
+
+        case 'flip':
+          handleFlipSprite();
+          break;
+
+        case 'save':
+          handleSaveToGame();
+          break;
+
+        case 'delete':
+          handleDeleteCreature();
+          break;
+      }
+    };
+
+    window.addEventListener('fishEditAction', handleActionEvent);
+    return () => window.removeEventListener('fishEditAction', handleActionEvent);
+  }, [embedded, editedFish]);
+
   if (!fish || !editedFish) return null;
 
   const handleSaveToGame = async () => {
@@ -352,7 +406,7 @@ export default function FishEditOverlay({
         // This avoids unnecessary cache clearing for metadata-only saves
         if (spriteWasRegenerated) {
           setSaveMessage(`✓ Saved successfully! Refreshing textures...`);
-          
+
           // Dispatch refresh event to reload sprites from server with new blob URLs
           // Small delay to ensure blob storage has propagated
           setTimeout(() => {
@@ -387,6 +441,113 @@ export default function FishEditOverlay({
       setSaveMessage(`❌ Error: ${error.message || 'Failed to save'}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Handler for regenerating sprite via action bar
+  const handleRegenerateSprite = async () => {
+    if (!editedFish) return;
+    setIsGenerating(true);
+    setSaveMessage('🎨 Regenerating sprite...');
+    try {
+      const usedDescriptionChunks = getFallbackDescriptionChunks(editedFish);
+      const usedVisualMotif = getFallbackVisualMotif(editedFish);
+
+      const { prompt } = composeFishPrompt({
+        id: editedFish.id,
+        name: editedFish.name,
+        biomeId: editedFish.biomeId,
+        rarity: editedFish.rarity,
+        essence: editedFish.essence?.primary ? {
+          [editedFish.essence.primary.type]: editedFish.essence.primary.baseYield,
+          ...(editedFish.essence.secondary?.reduce((acc, sec) => {
+            acc[sec.type] = sec.baseYield;
+            return acc;
+          }, {} as Record<string, number>) || {}),
+        } : undefined,
+        descriptionChunks: usedDescriptionChunks,
+        visualMotif: usedVisualMotif,
+        grantedAbilities: editedFish.grantedAbilities,
+      });
+
+      const response = await fetch('/api/generate-fish-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, model: selectedModel }),
+      });
+
+      const result = await response.json();
+      if (result.success && result.imageBase64) {
+        const dataUrl = `data:image/png;base64,${result.imageBase64}`;
+        const updatedFish: FishData = { ...editedFish, sprite: dataUrl };
+        setEditedFish(updatedFish);
+        onSave(updatedFish);
+        setSaveMessage('✓ Sprite regenerated! Click Save to persist.');
+      } else {
+        setSaveMessage(`❌ Generation failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setSaveMessage(`❌ Error: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Handler for flipping sprite via action bar
+  const handleFlipSprite = async () => {
+    if (!editedFish?.sprite) return;
+    setIsSaving(true);
+    setSaveMessage('Flipping sprite...');
+
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load image'));
+        const cleanUrl = editedFish.sprite!.split('?')[0];
+        img.src = editedFish.sprite!.startsWith('data:') ? editedFish.sprite! : `${cleanUrl}?flip=${Date.now()}`;
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No canvas context');
+
+      ctx.translate(img.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0);
+
+      const flippedDataUrl = canvas.toDataURL('image/png');
+      const updatedFish = { ...editedFish, sprite: flippedDataUrl };
+      setEditedFish(updatedFish);
+      onSave(updatedFish);
+      setSaveMessage('✓ Sprite flipped! Click Save to persist.');
+    } catch (err: any) {
+      setSaveMessage(`❌ Error: ${err.message || 'Failed to flip sprite'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handler for deleting creature via action bar
+  const handleDeleteCreature = async () => {
+    if (!editedFish) return;
+    if (!window.confirm(`Delete ${editedFish.name}? This cannot be undone.`)) return;
+
+    try {
+      const res = await fetch(`/api/delete-creature?id=${encodeURIComponent(editedFish.id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setSaveMessage('✓ Creature deleted.');
+        onBack();
+      } else {
+        setSaveMessage('❌ Delete failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      setSaveMessage('❌ Delete failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
   };
 
@@ -553,150 +714,120 @@ export default function FishEditOverlay({
     }
   };
 
-  // Compose preview prompt
-  const composePreviewPrompt = (): string => {
-    if (!editedFish) return '';
-    const chunks: string[] = [];
-
-    // Base description chunks
-    if (editedFish.descriptionChunks?.length) {
-      chunks.push(...editedFish.descriptionChunks);
-    }
-
-    // Visual motif
-    if (editedFish.visualMotif) {
-      chunks.push(editedFish.visualMotif);
-    }
-
-    // Primary essence visual chunks
-    if (editedFish.essence?.primary?.visualChunks?.length) {
-      chunks.push(...editedFish.essence.primary.visualChunks);
-    }
-
-    // Secondary essence visual chunks
-    if (editedFish.essence?.secondary) {
-      editedFish.essence.secondary.forEach(sec => {
-        if (sec.visualChunks?.length) {
-          chunks.push(...sec.visualChunks);
-        }
-      });
-    }
-
-    // Add art style suffix
-    chunks.push('isolated on transparent background', 'PNG cutout style', 'game sprite', 'side view right-facing');
-
-    return chunks.filter(c => c.trim().length > 0).join(', ');
-  };
-
   return (
     <div
       className={`${embedded ? 'relative h-full' : 'absolute bottom-0 left-0 right-0'} bg-gray-900/95 backdrop-blur-md z-50 flex flex-col border-t border-gray-700`}
       style={embedded ? {} : { height: '50%', maxHeight: '600px' }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 bg-gray-800/90 border-b border-gray-700">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-bold text-white">Edit Fish</h2>
-          {/* Delete and Save Buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleSaveToGame}
-              disabled={isSaving}
-              className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs font-medium transition-colors"
-              type="button"
-            >
-              {isSaving ? 'Saving...' : 'Save Creature'}
-            </button>
-            <button
-              title="Delete Creature"
-              onClick={async () => {
-                if (!editedFish) return;
-                if (!window.confirm(`Delete ${editedFish.name}? This cannot be undone.`)) return;
-                try {
-                  const res = await fetch(`/api/delete-creature?id=${encodeURIComponent(editedFish.id)}`, { method: 'DELETE' });
-                  const data = await res.json();
-                  if (data.success) {
-                    setSaveMessage('✓ Creature deleted.');
-                    onBack();
-                  } else {
-                    setSaveMessage('❌ Delete failed: ' + (data.error || 'Unknown error'));
-                  }
-                } catch (err) {
-                  setSaveMessage('❌ Delete failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                }
-              }}
-              className="bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
-              type="button"
-            >
-              Delete
-            </button>
-          </div>
-          {/* Set Player and Spawn Buttons */}
-          <div className="flex gap-2">
-            <button
-              title="Set as Player Fish"
-              onClick={() => {
-                if (editedFish && editedFish.sprite) {
-                  // Dispatch full fish data for player
-                  const event = new CustomEvent('setPlayerFish', { detail: { fish: editedFish } });
-                  window.dispatchEvent(event);
-                  setSaveMessage('✓ Set as player fish for testing.');
-                }
-              }}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
-              type="button"
-            >
-              Set Player
-            </button>
-            <button
-              title="Spawn as AI"
-              onClick={() => {
-                if (editedFish && editedFish.sprite) {
-                  // Dispatch full fish data for AI spawn
-                  const event = new CustomEvent('spawnAIFish', { detail: { fish: editedFish } });
-                  window.dispatchEvent(event);
-                  setSaveMessage('✓ Spawned as AI for testing.');
-                }
-              }}
-              className="bg-blue-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
-              type="button"
-            >
-              Spawn
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {saveMessage && (
-            <div className={`text-xs px-2 py-1 rounded ${saveMessage.startsWith('✓') || saveMessage.startsWith('✅')
+      {/* Header - Minimal when embedded, full controls when standalone */}
+      {embedded ? (
+        /* Embedded: Just show feedback messages */
+        saveMessage && (
+          <div className="px-4 py-2 bg-gray-800/90 border-b border-gray-700">
+            <div className={`text-xs px-2 py-1 rounded inline-block ${saveMessage.startsWith('✓') || saveMessage.startsWith('✅')
               ? 'bg-green-600/20 text-green-400'
-              : 'bg-red-600/20 text-red-400'
+              : saveMessage.startsWith('🎨')
+                ? 'bg-blue-600/20 text-blue-400'
+                : 'bg-red-600/20 text-red-400'
               }`}>
               {saveMessage}
             </div>
-          )}
-          <button
-            onClick={onBack}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-          >
-            ← Back
-          </button>
+          </div>
+        )
+      ) : (
+        /* Standalone: Full header with all buttons */
+        <div className="flex items-center justify-between p-3 bg-gray-800/90 border-b border-gray-700">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-bold text-white">Edit Fish</h2>
+            {/* Delete and Save Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveToGame}
+                disabled={isSaving}
+                className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                type="button"
+              >
+                {isSaving ? 'Saving...' : 'Save Creature'}
+              </button>
+              <button
+                title="Delete Creature"
+                onClick={async () => {
+                  if (!editedFish) return;
+                  if (!window.confirm(`Delete ${editedFish.name}? This cannot be undone.`)) return;
+                  try {
+                    const res = await fetch(`/api/delete-creature?id=${encodeURIComponent(editedFish.id)}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                      setSaveMessage('✓ Creature deleted.');
+                      onBack();
+                    } else {
+                      setSaveMessage('❌ Delete failed: ' + (data.error || 'Unknown error'));
+                    }
+                  } catch (err) {
+                    setSaveMessage('❌ Delete failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                  }
+                }}
+                className="bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+                type="button"
+              >
+                Delete
+              </button>
+            </div>
+            {/* Set Player and Spawn Buttons */}
+            <div className="flex gap-2">
+              <button
+                title="Set as Player Fish"
+                onClick={() => {
+                  if (editedFish && editedFish.sprite) {
+                    // Dispatch full fish data for player
+                    const event = new CustomEvent('setPlayerFish', { detail: { fish: editedFish } });
+                    window.dispatchEvent(event);
+                    setSaveMessage('✓ Set as player fish for testing.');
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+                type="button"
+              >
+                Set Player
+              </button>
+              <button
+                title="Spawn as AI"
+                onClick={() => {
+                  if (editedFish && editedFish.sprite) {
+                    // Dispatch full fish data for AI spawn
+                    const event = new CustomEvent('spawnAIFish', { detail: { fish: editedFish } });
+                    window.dispatchEvent(event);
+                    setSaveMessage('✓ Spawned as AI for testing.');
+                  }
+                }}
+                className="bg-blue-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+                type="button"
+              >
+                Spawn
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {saveMessage && (
+              <div className={`text-xs px-2 py-1 rounded ${saveMessage.startsWith('✓') || saveMessage.startsWith('✅')
+                ? 'bg-green-600/20 text-green-400'
+                : 'bg-red-600/20 text-red-400'
+                }`}>
+                {saveMessage}
+              </div>
+            )}
+            <button
+              onClick={onBack}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            >
+              ← Back
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Name */}
-        <div>
-          <label className="block text-sm font-bold text-white mb-2">Name</label>
-          <input
-            type="text"
-            value={editedFish.name}
-            onChange={(e) => updateField('name', e.target.value)}
-            className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-            placeholder="Enter fish name"
-          />
-        </div>
-
         {/* Description Chunks Editor */}
         <div className="border-t border-gray-700 pt-4">
           <div className="flex items-center justify-between mb-2">
@@ -786,230 +917,10 @@ export default function FishEditOverlay({
           </div>
         )}
 
-        {/* Sprite Selection */}
+        {/* AI Generation Section - Collapsible */}
         <div>
-          <label className="block text-sm font-bold text-white mb-2">Sprite</label>
+          <label className="block text-sm font-bold text-white mb-2">Advanced Sprite Options</label>
           <div className="space-y-3">
-            {/* Current sprite preview and Flip button */}
-            {editedFish.sprite && (
-              <div className="w-full bg-gray-800 rounded border border-gray-600 p-3 flex flex-col items-center justify-center gap-2" style={{ minHeight: '100px' }}>
-                <img
-                  key={`${editedFish.id}-${editedFish.sprite}`} // Force re-render when sprite changes
-                  src={
-                    editedFish.sprite
-                      ? editedFish.sprite.startsWith('data:')
-                        ? editedFish.sprite
-                        : editedFish.sprite.split('?')[0]
-                      : ''
-                  }
-                  alt="Current sprite"
-                  className="max-w-full max-h-24 object-contain"
-                  onError={(e) => {
-                    console.error('[FishEditOverlay] Failed to load sprite:', editedFish.sprite);
-                  }}
-                />
-                <button
-                  onClick={async () => {
-                    if (!editedFish?.sprite) return;
-
-                    setIsSaving(true);
-                    setSaveMessage('Flipping and saving sprite...');
-
-                    try {
-                      // Step 1: Load and flip the image
-                      const img = new Image();
-                      img.crossOrigin = 'anonymous';
-
-                      await new Promise<void>((resolve, reject) => {
-                        img.onload = () => resolve();
-                        img.onerror = () => reject(new Error('Failed to load image'));
-                        // Always load the freshest version of the sprite when flipping
-                        const cleanUrl = editedFish.sprite!.split('?')[0];
-                        img.src = `${cleanUrl}?flip=${Date.now()}`;
-                      });
-
-                      // Step 2: Flip on canvas
-                      const canvas = document.createElement('canvas');
-                      canvas.width = img.width;
-                      canvas.height = img.height;
-                      const ctx = canvas.getContext('2d');
-                      if (!ctx) throw new Error('No canvas context');
-
-                      ctx.translate(img.width, 0);
-                      ctx.scale(-1, 1);
-                      ctx.drawImage(img, 0, 0);
-
-                      // Step 3: Convert to blob
-                      const flippedDataUrl = canvas.toDataURL('image/png');
-                      const blobResponse = await fetch(flippedDataUrl);
-                      const blob = await blobResponse.blob();
-
-                      // Step 4: Save to blob storage immediately
-                      const formData = new FormData();
-                      formData.append('creatureId', editedFish.id);
-                      formData.append('metadata', JSON.stringify({
-                        ...editedFish,
-                        sprite: '', // Server fills this in
-                      }));
-                      formData.append('sprite', blob, `${editedFish.id}.png`);
-
-                      const saveResponse = await fetch('/api/save-creature', {
-                        method: 'POST',
-                        body: formData,
-                      });
-
-                      const result = await saveResponse.json();
-                      if (!result.success) {
-                        throw new Error(result.error || 'Save failed');
-                      }
-
-                      // Step 5: Update state with clean blob URL (no cache buster in stored state)
-                      const spriteUrl = result.spriteUrl || flippedDataUrl;
-                      const cleanSpriteUrl = spriteUrl.split('?')[0];
-
-                      const updatedFish = {
-                        ...editedFish,
-                        sprite: cleanSpriteUrl,
-                      };
-
-                      // Force state update - use a completely new object to force React re-render
-                      const newFish = { ...updatedFish };
-                      setEditedFish(newFish);
-
-                      // Update parent state immediately
-                      onSave(newFish);
-
-                      setSaveMessage('✓ Sprite flipped and saved!');
-
-                      // Log final clean sprite URL for debugging
-                      console.log('[FishEditOverlay] Flip complete, new sprite URL:', cleanSpriteUrl);
-                    } catch (err: any) {
-                      setSaveMessage(`❌ Error: ${err.message || 'Failed to flip sprite'}`);
-                      console.error('[FishEditOverlay] Flip error:', err);
-                    } finally {
-                      setIsSaving(false);
-                    }
-                  }}
-                  disabled={isSaving || !editedFish?.sprite}
-                  className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs font-medium transition-colors"
-                  type="button"
-                >
-                  {isSaving ? 'Flipping...' : 'Flip ↔'}
-                </button>
-              </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => {
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = 'image/*';
-                  input.onchange = (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = (ev) => {
-                        const spriteUrl = ev.target?.result as string;
-                        updateField('sprite', spriteUrl);
-                        // Update parent immediately so preview refreshes
-                        const updatedFish = { ...editedFish, sprite: spriteUrl };
-                        onSave(updatedFish);
-                        setSaveMessage('✓ Image uploaded. Click "Save Creature" to persist.');
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  };
-                  input.click();
-                }}
-                className="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
-              >
-                Upload Image
-              </button>
-              <button
-                onClick={async () => {
-                  if (!editedFish) return;
-                  setIsGenerating(true);
-                  setSaveMessage('🎨 Regenerating sprite...');
-                  try {
-                    // Get the chunks that will be used
-                    const usedDescriptionChunks = getFallbackDescriptionChunks(editedFish);
-                    const usedVisualMotif = getFallbackVisualMotif(editedFish);
-
-                    // Log what data we have for debugging
-                    console.log('[Regenerate] Fish data:', {
-                      id: editedFish.id,
-                      name: editedFish.name,
-                      biomeId: editedFish.biomeId,
-                      hasDescriptionChunks: !!editedFish.descriptionChunks?.length,
-                      descriptionChunks: editedFish.descriptionChunks,
-                      hasVisualMotif: !!editedFish.visualMotif,
-                      visualMotif: editedFish.visualMotif,
-                      usedDescriptionChunks,
-                      usedVisualMotif,
-                    });
-
-                    const { prompt } = composeFishPrompt({
-                      id: editedFish.id,
-                      name: editedFish.name,
-                      biomeId: editedFish.biomeId,
-                      rarity: editedFish.rarity,
-                      essence: editedFish.essence?.primary ? {
-                        [editedFish.essence.primary.type]: editedFish.essence.primary.baseYield,
-                        ...(editedFish.essence.secondary?.reduce((acc, sec) => {
-                          acc[sec.type] = sec.baseYield;
-                          return acc;
-                        }, {} as Record<string, number>) || {}),
-                      } : undefined,
-                      descriptionChunks: usedDescriptionChunks,
-                      visualMotif: usedVisualMotif,
-                      grantedAbilities: editedFish.grantedAbilities,
-                    });
-
-                    console.log('[Regenerate] Using prompt:', prompt.substring(0, 200) + '...');
-
-                    const response = await fetch('/api/generate-fish-image', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        prompt,
-                        model: selectedModel,
-                      }),
-                    });
-
-                    const result = await response.json();
-                    if (result.success && result.imageBase64) {
-                      const dataUrl = `data:image/png;base64,${result.imageBase64}`;
-
-                      // Update local editor state
-                      const updatedFish: FishData = {
-                        ...editedFish,
-                        sprite: dataUrl,
-                      };
-                      setEditedFish(updatedFish);
-
-                      // Update parent immediately so preview fish refreshes
-                      onSave(updatedFish);
-
-                      setSaveMessage('✓ Sprite regenerated! Click "Save Creature" to persist.');
-                    } else {
-                      setSaveMessage(`❌ Generation failed: ${result.error || 'Unknown error'}`);
-                    }
-                  } catch (err: any) {
-                    setSaveMessage(`❌ Error: ${err.message || 'Unknown error'}`);
-                  } finally {
-                    setIsGenerating(false);
-                  }
-                }}
-                disabled={isGenerating}
-                className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-medium transition-colors"
-              >
-                {isGenerating ? 'Regenerating...' : 'Regenerate Sprite'}
-              </button>
-            </div>
-
-            {/* AI Generation Section - Collapsible */}
             <div className="border-t border-gray-700 pt-3 mt-2">
               <button
                 onClick={() => {
@@ -1550,19 +1461,6 @@ export default function FishEditOverlay({
           )}
         </div>
 
-        {/* Prompt Preview Section */}
-        <div className="border-t border-gray-700 pt-4">
-          <h3 className="text-sm font-bold text-white mb-2">Composed Prompt Preview</h3>
-          <div className="bg-gray-900/70 p-3 rounded border border-gray-600">
-            <p className="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap break-words">
-              {composePreviewPrompt() || 'No prompt components defined yet...'}
-            </p>
-          </div>
-          <p className="text-xs text-gray-400 mt-1">
-            This is how the final AI prompt would look when composed from all chunks
-          </p>
-        </div>
-
         {/* Stats */}
         <div className="border-t border-gray-700 pt-4">
           <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
@@ -1786,32 +1684,6 @@ export default function FishEditOverlay({
             </button>
           </div>
         )}
-      </div>
-
-      {/* Navigation Arrows - Bottom Left and Right */}
-      <div className="absolute bottom-3 left-3">
-        <button
-          onClick={onPrevious}
-          disabled={!hasPrevious}
-          className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${hasPrevious
-            ? 'bg-blue-600 hover:bg-blue-500'
-            : 'bg-gray-700 opacity-50 cursor-not-allowed'
-            }`}
-        >
-          ← Previous
-        </button>
-      </div>
-      <div className="absolute bottom-3 right-3">
-        <button
-          onClick={onNext}
-          disabled={!hasNext}
-          className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${hasNext
-            ? 'bg-blue-600 hover:bg-blue-500'
-            : 'bg-gray-700 opacity-50 cursor-not-allowed'
-            }`}
-        >
-          Next →
-        </button>
       </div>
     </div>
   );
