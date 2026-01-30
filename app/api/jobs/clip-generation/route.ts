@@ -77,26 +77,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the job record
-    const jobId = generateJobId();
-    const job = await createJob<ClipGenerationJob>({
-      id: jobId,
-      type: 'clip_generation',
-      status: 'pending',
-      progress: 0,
-      progressMessage: 'Initializing video generation...',
-      input: {
-        creatureId,
-        action,
-        spriteUrl,
-        description,
-      },
-    });
-    
-    // Wait a moment for blob storage to sync (prevents race condition)
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Build the prompt
+    // Build the prompt first (before creating job)
     const actionConfig = ACTION_PROMPTS[action];
     let prompt = actionConfig.prompt;
     if (description) {
@@ -104,6 +85,7 @@ export async function POST(request: NextRequest) {
     }
     prompt += ', solid bright magenta background (#FF00FF), isolated on magenta, no other background elements, game sprite animation, clean edges';
 
+    const jobId = generateJobId();
     console.log(`[ClipJob] Starting job ${jobId} for ${creatureId}/${action}`);
     console.log(`[ClipJob] Prompt: ${prompt.substring(0, 100)}...`);
     console.log(`[ClipJob] Sprite URL: ${spriteUrl.substring(0, 100)}...`);
@@ -117,10 +99,6 @@ export async function POST(request: NextRequest) {
       console.log(`[ClipJob] Sprite URL validated`);
     } catch (spriteError: any) {
       console.error(`[ClipJob] Sprite validation failed:`, spriteError.message);
-      await updateJob<ClipGenerationJob>(jobId, {
-        status: 'failed',
-        error: `Invalid sprite URL: ${spriteError.message}`,
-      });
       return NextResponse.json({
         success: false,
         jobId,
@@ -128,7 +106,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Start video generation
+    // Start video generation BEFORE creating job (to get operation ID first)
     const ai = new GoogleGenAI({ apiKey });
 
     try {
@@ -142,15 +120,27 @@ export async function POST(request: NextRequest) {
       const operation = await ai.models.generateVideos(requestConfig);
       console.log(`[ClipJob] Gemini response: operation name=${operation?.name}`);
 
-      // Update job with operation ID
-      await updateJob<ClipGenerationJob>(jobId, {
+      if (!operation?.name) {
+        throw new Error('Gemini API did not return an operation name');
+      }
+
+      // Create job record with operation ID already set (single write - no race condition)
+      const job = await createJob<ClipGenerationJob>({
+        id: jobId,
+        type: 'clip_generation',
         status: 'processing',
         progress: 10,
         progressMessage: 'Video generation started...',
+        input: {
+          creatureId,
+          action,
+          spriteUrl,
+          description,
+        },
         operationId: operation.name,
       });
 
-      console.log(`[ClipJob] Job ${jobId} started with operation: ${operation.name}`);
+      console.log(`[ClipJob] Job ${jobId} created with operation: ${operation.name}`);
 
       return NextResponse.json({
         success: true,
@@ -162,9 +152,19 @@ export async function POST(request: NextRequest) {
       console.error(`[ClipJob] Video generation failed for ${jobId}:`, genError);
       console.error(`[ClipJob] Error details:`, JSON.stringify(genError, null, 2));
 
-      // Update job as failed
-      await updateJob<ClipGenerationJob>(jobId, {
+      // Create job record in failed state (single write)
+      await createJob<ClipGenerationJob>({
+        id: jobId,
+        type: 'clip_generation',
         status: 'failed',
+        progress: 0,
+        progressMessage: 'Video generation failed',
+        input: {
+          creatureId,
+          action,
+          spriteUrl,
+          description,
+        },
         error: genError.message || 'Failed to start video generation',
       });
 

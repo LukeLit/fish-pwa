@@ -63,7 +63,7 @@ export async function updateJob<T extends AnyJob>(
   maxRetries: number = 5
 ): Promise<T | null> {
   let lastError: Error | null = null;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const jobs = await downloadGameData<Record<string, AnyJob>>(JOBS_KEY, {});
