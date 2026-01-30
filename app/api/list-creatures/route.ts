@@ -1,9 +1,11 @@
 /**
  * List creatures from Vercel Blob Storage with optional filters
+ * Uses the centralized creatures data store for reliability
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { list } from '@vercel/blob';
+import { downloadGameData } from '@/lib/storage/blob-storage';
+import type { Creature } from '@/lib/game/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,30 +14,11 @@ export async function GET(request: NextRequest) {
     const rarity = searchParams.get('rarity');
     const playableOnly = searchParams.get('playable') === 'true';
 
-    // List all creature metadata files
-    const { blobs } = await list({
-      prefix: 'assets/creatures/',
-    });
-
-    // Filter for JSON files only
-    const metadataBlobs = blobs.filter(blob => blob.pathname.endsWith('.json'));
-
-    // Fetch and parse all metadata
-    const creatures = await Promise.all(
-      metadataBlobs.map(async (blob) => {
-        try {
-          const response = await fetch(blob.url);
-          const metadata = await response.json();
-          return metadata;
-        } catch (error) {
-          console.error(`Failed to fetch metadata for ${blob.pathname}:`, error);
-          return null;
-        }
-      })
-    );
-
-    // Filter out null values and apply filters
-    let filteredCreatures = creatures.filter(c => c !== null);
+    // Load from centralized creatures data store (more reliable than individual blob files)
+    const creaturesMap = await downloadGameData<Record<string, Creature>>('creatures', {});
+    
+    // Convert map to array
+    let filteredCreatures = Object.values(creaturesMap);
 
     if (biome) {
       filteredCreatures = filteredCreatures.filter(c => 
