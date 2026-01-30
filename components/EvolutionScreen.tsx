@@ -99,7 +99,7 @@ export default function EvolutionScreen({
             >
               <img
                 src={runState.fishState.sprite}
-                alt="Evolved Fish"
+                alt={`Evolved ${runState.selectedFishId} fish`}
                 className="w-48 h-48 sm:w-64 sm:h-64 object-contain"
               />
             </div>

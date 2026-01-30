@@ -151,15 +151,12 @@ export default function UpgradeSelectionScreen({
               onClick={() => onUpgradeSelected(upgrade.id)}
               onMouseEnter={() => setHoveredUpgrade(upgrade.id)}
               onMouseLeave={() => setHoveredUpgrade(null)}
-              className={`dv-card rounded-lg p-4 sm:p-5 border-4 transition-all transform text-left animate-slide-in ${
+              className={`dv-card-black rounded-lg p-4 sm:p-5 border-4 transition-all transform text-left animate-slide-in ${
                 hoveredUpgrade === upgrade.id 
                   ? 'border-yellow-400 scale-105 shadow-[0_0_30px_rgba(234,179,8,0.6)]' 
-                  : 'border-cyan-600 hover:border-purple-400 hover:scale-102'
+                  : 'hover:border-purple-400 hover:scale-105'
               }`}
-              style={{ 
-                animationDelay: `${index * 0.1}s`,
-                backgroundColor: 'rgba(0, 0, 0, 0.8)'
-              }}
+              style={{ animationDelay: `${index * 0.1}s` }}
             >
               {/* Impact level indicator */}
               <div className="flex justify-between items-start mb-3">

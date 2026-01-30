@@ -132,10 +132,9 @@ export default function DigestionScreen({
             {levelUps.map((levelUp, index) => (
               <div 
                 key={levelUp.essenceType}
-                className="dv-card rounded-lg p-4 sm:p-6 border-4 border-yellow-500 animate-slide-in"
+                className="dv-card-black rounded-lg p-4 sm:p-6 border-4 border-yellow-500 animate-slide-in"
                 style={{ 
                   animationDelay: `${(index + 0.4) * 0.1}s`,
-                  backgroundColor: 'rgba(0, 0, 0, 0.9)',
                   boxShadow: '0 0 25px rgba(234, 179, 8, 0.5)'
                 }}
               >
@@ -179,7 +178,7 @@ export default function DigestionScreen({
 
         {/* No level-ups message */}
         {levelUps.length === 0 && (
-          <div className="mb-6 sm:mb-8 dv-card rounded-lg p-6 sm:p-8 border-4 border-gray-600 text-center animate-scale-in" style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}>
+          <div className="mb-6 sm:mb-8 dv-card-black rounded-lg p-6 sm:p-8 border-4 border-gray-600 text-center animate-scale-in">
             <p className="text-gray-300 text-lg sm:text-xl font-semibold">
               Not enough essence for any level-ups.
             </p>

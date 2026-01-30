@@ -52,10 +52,10 @@ body {
 /* DICE VADERS Aesthetic Animations */
 @keyframes glow-pulse {
   0%, 100% {
-    filter: drop-shadow(0 0 10px currentColor);
+    box-shadow: 0 0 10px currentColor;
   }
   50% {
-    filter: drop-shadow(0 0 20px currentColor);
+    box-shadow: 0 0 20px currentColor;
   }
 }
 
@@ -161,6 +161,16 @@ body {
 
 .dv-card-teal:hover {
   box-shadow: 0 0 30px rgba(20, 184, 166, 0.5);
+}
+
+.dv-card-black {
+  @apply border-cyan-600;
+  background-color: rgba(0, 0, 0, 0.8);
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
+}
+
+.dv-card-black:hover {
+  box-shadow: 0 0 30px rgba(34, 211, 238, 0.5);
 }
 
 /* DICE VADERS Text Styles */

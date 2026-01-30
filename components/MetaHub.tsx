@@ -107,7 +107,7 @@ export default function MetaHub() {
             className={`dv-button text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 group ${
               hasRun
                 ? 'bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-white border-orange-400/50 cursor-pointer'
-                : 'bg-gray-800/50 text-gray-600 border-gray-700/50 cursor-not-allowed hover:scale-100'
+                : 'bg-gray-800/50 text-gray-600 border-gray-700/50 cursor-not-allowed'
             }`}
             style={hasRun ? { boxShadow: '0 0 25px rgba(234, 88, 12, 0.4)' } : {}}
           >
@@ -130,7 +130,7 @@ export default function MetaHub() {
           <button
             disabled
             aria-label="Options (coming soon)"
-            className="dv-button bg-gray-800/50 text-gray-500 border-gray-700/50 text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 cursor-not-allowed hover:scale-100 opacity-60"
+            className="dv-button bg-gray-800/50 text-gray-500 border-gray-700/50 text-xl sm:text-2xl py-5 sm:py-6 px-6 sm:px-8 cursor-not-allowed opacity-60"
           >
             <span className="relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">Options</span>
           </button>

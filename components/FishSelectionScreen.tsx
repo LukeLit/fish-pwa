@@ -300,7 +300,7 @@ export default function FishSelectionScreen() {
                 {fish.sprite && (
                   <Image
                     src={fish.sprite}
-                    alt={fish.name}
+                    alt={`${fish.name} fish`}
                     fill
                     className="object-contain p-1"
                     unoptimized
