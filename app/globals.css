@@ -10,6 +10,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-orbitron);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -101,8 +102,19 @@ body {
 
 /* DICE VADERS Button Styles */
 .dv-button {
-  @apply relative font-bold py-4 px-6 rounded-lg text-center uppercase tracking-wider transition-all transform;
+  @apply relative font-bold py-4 px-6 text-center uppercase tracking-wider transition-all transform;
   @apply border-4 shadow-2xl;
+  /* Angular shape: slight slant on left/right edges */
+  clip-path: polygon(
+    8px 0%, 
+    calc(100% - 8px) 0%, 
+    100% 8px, 
+    100% calc(100% - 8px), 
+    calc(100% - 8px) 100%, 
+    8px 100%, 
+    0% calc(100% - 8px), 
+    0% 8px
+  );
 }
 
 .dv-button:hover {
@@ -132,8 +144,19 @@ body {
 /* DICE VADERS Card Styles */
 .dv-card {
   @apply bg-gradient-to-br from-indigo-900/90 via-purple-900/90 to-blue-900/90;
-  @apply backdrop-blur-sm rounded-lg border-4 shadow-2xl;
+  @apply backdrop-blur-sm border-4 shadow-2xl;
   @apply transition-all duration-300;
+  /* Angular card shape with chamfered corners */
+  clip-path: polygon(
+    12px 0%, 
+    calc(100% - 12px) 0%, 
+    100% 12px, 
+    100% calc(100% - 12px), 
+    calc(100% - 12px) 100%, 
+    12px 100%, 
+    0% calc(100% - 12px), 
+    0% 12px
+  );
 }
 
 .dv-card-cyan {
@@ -176,11 +199,15 @@ body {
 /* DICE VADERS Text Styles */
 .dv-title {
   @apply font-bold text-white uppercase tracking-wider;
+  font-family: var(--font-orbitron), var(--font-geist-sans), sans-serif;
+  font-weight: 900;
   text-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
 }
 
 .dv-subtitle {
   @apply font-semibold text-cyan-300 tracking-wide;
+  font-family: var(--font-orbitron), var(--font-geist-sans), sans-serif;
+  font-weight: 600;
   text-shadow: 0 0 8px rgba(34, 211, 238, 0.4);
 }
 
