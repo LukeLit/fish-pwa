@@ -78,7 +78,7 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
       {/* Backdrop + Drawer */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm"
           onClick={handleBackdropClick}
         >
           {/* Drawer Panel */}

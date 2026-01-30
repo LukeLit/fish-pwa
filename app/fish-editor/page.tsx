@@ -228,6 +228,7 @@ export default function FishEditorPage() {
     setSelectedFishId(fishId);
     setEditMode(true);
     setPaused(true); // Open pause menu to show edit UI
+    setZoom(3.0); // Zoom in to max when entering fish edit mode
   };
 
   // Initialize player fish data when player sprite is set
@@ -257,6 +258,7 @@ export default function FishEditorPage() {
   const handleExitEditMode = () => {
     setEditMode(false);
     setSelectedFishId(null);
+    setZoom(1.0); // Reset zoom when exiting edit mode
   };
 
   // Close pause menu AND reset all edit state
@@ -289,6 +291,7 @@ export default function FishEditorPage() {
     // Enter edit mode for this fish
     setSelectedFishId(fish.id);
     setEditMode(true);
+    setZoom(3.0); // Zoom in to max when entering fish edit mode
   };
 
   const handleSetPlayerFish = (fish: FishData) => {
@@ -362,6 +365,7 @@ export default function FishEditorPage() {
 
     setSelectedFishId(newId);
     setEditMode(true);
+    setZoom(3.0); // Zoom in to max when entering fish edit mode
   };
 
   const handleAddNewBackground = () => {
