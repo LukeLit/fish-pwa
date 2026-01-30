@@ -27,17 +27,18 @@ export async function POST(request: NextRequest) {
     }
 
     const timestamp = new Date().toISOString();
-    const feedbackId = `feedback-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const feedbackId = `feedback-${Date.now()}-${crypto.randomUUID()}`;
 
     // Create feedback object
     const feedbackData = {
       id: feedbackId,
       feedback: feedback.trim(),
       timestamp,
-      userAgent: request.headers.get('user-agent') || 'unknown',
+      userAgent: (request.headers.get('user-agent') || 'unknown').substring(0, 500),
     };
 
     // Store feedback in Vercel Blob Storage (primary storage)
+    // Note: Stored with public access for transparency - users are informed their feedback is public
     try {
       await put(`feedback/${feedbackId}.json`, JSON.stringify(feedbackData, null, 2), {
         access: 'public',

@@ -158,7 +158,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                 />
                 <div className="flex justify-between items-center mt-1">
                   <p className="text-xs text-blue-400">
-                    No personal information needed
+                    Feedback is publicly accessible
                   </p>
                   <p className="text-xs text-blue-400">
                     {feedback.length}/2000

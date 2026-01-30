@@ -133,7 +133,6 @@ Response (success):
 ```
 
 **Note**: `issueCreated`, `issueNumber`, and `issueUrl` are only included if GitHub integration is configured and the issue was successfully created.
-```
 
 Response (error):
 ```json
@@ -186,17 +185,31 @@ User Feedback: [first 50 characters of feedback]...
 
 ## Security Considerations
 
-1. **No Personal Information**: The form doesn't collect names, emails, or any personal data (only anonymous user agent)
-2. **Rate Limiting**: Consider implementing client-side rate limiting to prevent spam
-3. **Input Validation**: 
+1. **Public Feedback**: Feedback is stored with public read access in Vercel Blob Storage
+   - Users are informed that "Feedback is publicly accessible" in the form
+   - Do not submit personal information, credentials, or sensitive data
+   - All feedback submissions can potentially be viewed by anyone with the blob URL
+   
+2. **No Personal Information**: The form doesn't explicitly collect names or emails
+   - Only stores: feedback text, timestamp, and user agent (truncated to 500 chars)
+   - User agent is sanitized to prevent abuse
+   
+3. **Rate Limiting**: Consider implementing rate limiting to prevent spam
+   - Vercel has built-in rate limiting for API routes
+   - Additional client-side rate limiting could be added
+   
+4. **Input Validation**: 
    - Maximum 2000 characters
    - Required field validation
    - XSS prevention via React's built-in escaping
-4. **Token Security**: 
+   - User agent truncated to 500 characters
+   
+5. **Token Security**: 
    - Tokens are stored in environment variables (not in code)
    - Fine-grained GitHub token with minimal permissions (only issues:write)
    - Tokens never exposed to client
-5. **Blob Storage Access**: Feedback is stored with public read access for transparency
+   
+6. **ID Generation**: Uses `crypto.randomUUID()` for guaranteed unique feedback IDs
 
 ## Troubleshooting
 
