@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import type { UpgradeNode } from '@/lib/game/types';
 import { getUpgradeTree } from '@/lib/game/data/upgrades';
+import { UIButton, UIPanel, UICard } from './ui';
 
 interface UpgradeSelectionScreenProps {
   essenceType: string;
@@ -132,7 +133,10 @@ export default function UpgradeSelectionScreen({
 
   return (
     <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
-      <div className="dv-card dv-card-purple p-6 sm:p-8 max-w-5xl w-full animate-scale-in"
+      <UIPanel 
+        variant="purple" 
+        size="lg"
+        className="max-w-5xl w-full animate-scale-in"
         style={{ borderColor: getEssenceColor(essenceType), boxShadow: `0 0 30px ${getEssenceColor(essenceType)}80` }}
       >
         {/* Header */}
@@ -146,15 +150,18 @@ export default function UpgradeSelectionScreen({
         {/* Upgrade Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
           {selectedUpgrades.map((upgrade, index) => (
-            <button
+            <UICard
               key={upgrade.id}
+              variant="black"
+              hoverable
+              selected={hoveredUpgrade === upgrade.id}
               onClick={() => onUpgradeSelected(upgrade.id)}
               onMouseEnter={() => setHoveredUpgrade(upgrade.id)}
               onMouseLeave={() => setHoveredUpgrade(null)}
-              className={`dv-card-black rounded-lg p-4 sm:p-5 border-4 transition-all transform text-left animate-slide-in ${
+              className={`p-4 sm:p-5 text-left animate-slide-in cursor-pointer ${
                 hoveredUpgrade === upgrade.id 
-                  ? 'border-yellow-400 scale-105 shadow-[0_0_30px_rgba(234,179,8,0.6)]' 
-                  : 'hover:border-purple-400 hover:scale-105'
+                  ? 'border-yellow-400 scale-105' 
+                  : 'hover:border-purple-400'
               }`}
               style={{ animationDelay: `${index * 0.1}s` }}
             >
@@ -200,19 +207,20 @@ export default function UpgradeSelectionScreen({
                   </span>
                 </div>
               )}
-            </button>
+            </UICard>
           ))}
         </div>
 
         {/* Reroll Button */}
         <div className="flex justify-center mb-4">
           {rerollsRemaining > 0 ? (
-            <button
+            <UIButton
+              variant="secondary"
+              size="lg"
               onClick={handleReroll}
-              className="dv-button dv-button-secondary text-base sm:text-lg py-3 sm:py-4 px-6 sm:px-10"
             >
               🎲 REROLL ({rerollsRemaining} remaining)
-            </button>
+            </UIButton>
           ) : (
             <p className="text-gray-400 text-sm sm:text-base font-semibold px-6 py-3 bg-gray-800/50 rounded-lg border-2 border-gray-700">
               No rerolls remaining
@@ -224,7 +232,7 @@ export default function UpgradeSelectionScreen({
         <p className="text-center dv-subtitle text-xs sm:text-sm">
           Click an upgrade card to select it
         </p>
-      </div>
+      </UIPanel>
     </div>
   );
 }

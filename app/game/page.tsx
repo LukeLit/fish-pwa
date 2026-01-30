@@ -15,6 +15,7 @@ import DeathScreen, { type DeathStats } from '@/components/DeathScreen';
 import DigestionScreen from '@/components/DigestionScreen';
 import UpgradeSelectionScreen from '@/components/UpgradeSelectionScreen';
 import EvolutionScreen from '@/components/EvolutionScreen';
+import { UIButton, UIPanel } from '@/components/ui';
 import { EssenceManager } from '@/lib/meta/essence';
 import {
   clearRunState,
@@ -209,8 +210,8 @@ export default function GamePage() {
       {/* Level Complete Screen */}
       {showEndScreen && !showDeathScreen && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-gradient-to-br from-blue-900 to-indigo-900 rounded-lg p-8 max-w-md w-full mx-4 border-2 border-blue-600">
-            <h2 className="text-3xl font-bold text-white mb-4 text-center">Run Complete!</h2>
+          <UIPanel variant="cyan" className="max-w-md w-full mx-4 bg-gradient-to-br from-blue-900 to-indigo-900">
+            <h2 className="text-3xl font-bold text-white mb-4 text-center dv-title">Run Complete!</h2>
             <div className="space-y-4 mb-6">
               <div className="flex justify-between">
                 <span className="text-blue-200">Score:</span>
@@ -226,20 +227,22 @@ export default function GamePage() {
               </div>
             </div>
             <div className="flex gap-4">
-              <button
+              <UIButton
+                variant="secondary"
                 onClick={handleContinue}
-                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                className="flex-1"
               >
                 Continue
-              </button>
-              <button
+              </UIButton>
+              <UIButton
+                variant="primary"
                 onClick={handlePlayAgain}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                className="flex-1"
               >
                 Play Again
-              </button>
+              </UIButton>
             </div>
-          </div>
+          </UIPanel>
         </div>
       )}
     </div>
