@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import FeedbackButton from './FeedbackButton';
 
 interface DigestionScreenProps {
   collectedEssence: Record<string, number>;
@@ -200,6 +201,11 @@ export default function DigestionScreen({
             Click each level-up to collect it!
           </p>
         )}
+
+        {/* Feedback Button */}
+        <div className="flex justify-center mt-4">
+          <FeedbackButton variant="icon" />
+        </div>
       </div>
     </div>
   );

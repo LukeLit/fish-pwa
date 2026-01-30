@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import FeedbackButton from './FeedbackButton';
 
 interface SettingsDrawerProps {
   /** Whether this is in game mode (shows different options) */
@@ -148,6 +149,9 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
                   </svg>
                   <span>Main Menu</span>
                 </button>
+
+                {/* Feedback Button */}
+                <FeedbackButton variant="full" />
               </div>
 
               {/* Settings Section */}
