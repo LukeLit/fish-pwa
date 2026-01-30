@@ -14,14 +14,15 @@ type BaseProps = {
   size?: 'sm' | 'md' | 'lg' | 'xl'
   fullWidth?: boolean
   glow?: boolean
+  disabled?: boolean
   children?: React.ReactNode
 }
 
-type ButtonAsButton = BaseProps & ButtonHTMLAttributes<HTMLButtonElement> & {
+type ButtonAsButton = BaseProps & Omit<ButtonHTMLAttributes<HTMLButtonElement>, keyof BaseProps> & {
   href?: never
 }
 
-type ButtonAsLink = BaseProps & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof BaseProps> & {
+type ButtonAsLink = BaseProps & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof BaseProps | 'disabled'> & {
   href: string
 }
 
