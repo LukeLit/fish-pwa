@@ -93,6 +93,61 @@ export function getSegmentsForLOD(lod: LODLevel): number {
 }
 
 // =============================================================================
+// Multi-Resolution Sprite Selection
+// =============================================================================
+
+import type { SpriteResolutions } from '@/lib/game/types';
+
+/** Thresholds for selecting sprite resolution based on screen size */
+export const SPRITE_RESOLUTION_THRESHOLDS = {
+  HIGH: 100,    // >= 100px screen size: use 512px sprite
+  MEDIUM: 40,   // >= 40px screen size: use 256px sprite
+  // < 40px: use 128px sprite
+};
+
+/**
+ * Get the appropriate sprite URL based on screen-space size
+ * 
+ * Selects the optimal resolution variant to avoid choppy rendering
+ * when large images are scaled down significantly (mipmap-like behavior).
+ * 
+ * @param creature - Object with sprite URL and optional resolution variants
+ * @param screenSize - Size of fish in screen pixels (fish.size * zoom)
+ * @returns URL of the appropriate sprite resolution
+ */
+export function getSpriteUrl(
+  creature: { sprite: string; spriteResolutions?: SpriteResolutions },
+  screenSize: number
+): string {
+  // Fall back to original sprite if no resolution variants available
+  if (!creature.spriteResolutions) {
+    return creature.sprite;
+  }
+
+  // Select resolution based on screen size
+  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.HIGH) {
+    return creature.spriteResolutions.high;
+  }
+  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) {
+    return creature.spriteResolutions.medium;
+  }
+  return creature.spriteResolutions.low;
+}
+
+/**
+ * Get the resolution key (high/medium/low) for a given screen size
+ * Useful for cache key generation
+ * 
+ * @param screenSize - Size of fish in screen pixels
+ * @returns Resolution key
+ */
+export function getResolutionKey(screenSize: number): 'high' | 'medium' | 'low' {
+  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.HIGH) return 'high';
+  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) return 'medium';
+  return 'low';
+}
+
+// =============================================================================
 // Clip Mode System - Video/Frame Animation Integration
 // =============================================================================
 

@@ -26,9 +26,12 @@ import {
   PLAYER_SEGMENT_MULTIPLIER,
   getClipMode,
   hasUsableClips,
+  getSpriteUrl,
+  getResolutionKey,
   type ClipMode,
   type RenderContext,
 } from '@/lib/rendering/fish-renderer';
+import type { SpriteResolutions } from '@/lib/game/types';
 import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
 import { getVideoSpriteManager, type VideoSprite } from '@/lib/rendering/video-sprite';
 import { getClipStateManager } from '@/lib/game/clip-state';
@@ -325,7 +328,10 @@ export default function FishEditorCanvas({
   // Spawn animation constants
   const SPAWN_FADE_DURATION = 1500; // ms to fully fade in (collision enables when fully opaque)
 
-  /** Cache processed sprites by creature id for respawn (game mode). */
+  /** 
+   * Cache processed sprites by creature id and resolution for respawn (game mode).
+   * Key format: "{creatureId}:{resolution}" where resolution is 'high'|'medium'|'low'
+   */
   const spriteCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
   const spawnPoolRef = useRef<(Creature | { id: string; sprite: string; type: string })[]>([]);
@@ -612,8 +618,30 @@ export default function FishEditorCanvas({
     // Keep spawn pool in sync for respawn (use full list so weighting matches initial spawn)
     spawnPoolRef.current = spawnedFish.length ? [...spawnedFish] : [];
 
-    // Helper to load and process a sprite
-    const loadSprite = (spriteUrl: string, fishId: string, onLoaded: (processedSprite: HTMLCanvasElement) => void) => {
+    // Helper to load and process a sprite with resolution awareness
+    const loadSprite = (
+      spriteUrl: string,
+      fishId: string,
+      onLoaded: (processedSprite: HTMLCanvasElement) => void,
+      options?: {
+        spriteResolutions?: SpriteResolutions;
+        fishSize?: number;
+      }
+    ) => {
+      // Calculate screen size to determine appropriate resolution
+      const fishSize = options?.fishSize || 60; // Default size
+      const currentZoom = zoomRef.current;
+      const screenSize = fishSize * currentZoom;
+
+      // Get the appropriate sprite URL based on screen size
+      let finalUrl = spriteUrl;
+      let resolution: 'high' | 'medium' | 'low' = 'high';
+
+      if (options?.spriteResolutions) {
+        finalUrl = getSpriteUrl({ sprite: spriteUrl, spriteResolutions: options.spriteResolutions }, screenSize);
+        resolution = getResolutionKey(screenSize);
+      }
+
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
@@ -621,15 +649,15 @@ export default function FishEditorCanvas({
         onLoaded(processedSprite);
       };
       img.onerror = () => {
-        console.error('Failed to load fish sprite:', spriteUrl);
+        console.error('Failed to load fish sprite:', finalUrl);
       };
       // For data: URLs, use as-is; for HTTP(S), add cache buster to force reload
-      if (spriteUrl.startsWith('data:')) {
-        img.src = spriteUrl;
+      if (finalUrl.startsWith('data:')) {
+        img.src = finalUrl;
       } else {
         // Add cache buster with version to force reload after save
         const version = spriteVersionRef.current.get(fishId) || 0;
-        img.src = `${spriteUrl.split('?')[0]}?v=${version}&t=${Date.now()}`;
+        img.src = `${finalUrl.split('?')[0]}?v=${version}&t=${Date.now()}`;
       }
     };
 
@@ -663,6 +691,17 @@ export default function FishEditorCanvas({
       // Update tracked sprite URL
       fishSpriteUrlsRef.current.set(fishItem.id, currentSpriteUrl);
 
+      // Get creature data for resolution selection
+      const creatureForResolution = isCreature(fishItem) ? fishItem : undefined;
+      const fishSizeForResolution = creatureForResolution?.stats.size ||
+        (fishItem.type === 'prey' ? 60 : fishItem.type === 'predator' ? 120 : 90);
+      const spriteResolutions = creatureForResolution?.spriteResolutions;
+
+      // Calculate cache key with resolution
+      const screenSize = fishSizeForResolution * zoomRef.current;
+      const resolution = getResolutionKey(screenSize);
+      const cacheKey = `${fishItem.id}:${resolution}`;
+
       if (existingFish && spriteChanged) {
         // SPRITE CHANGED - reload the sprite for existing fish
         // Increment version to bust cache
@@ -671,14 +710,14 @@ export default function FishEditorCanvas({
         console.log('[FishEditorCanvas] Sprite changed for fish:', fishItem.id, '- reloading (version:', newVersion, ')');
         loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
           existingFish.sprite = processedSprite;
-          // Update cache for respawn
-          spriteCacheRef.current.set(fishItem.id, processedSprite);
-        });
+          // Update cache for respawn with resolution-aware key
+          spriteCacheRef.current.set(cacheKey, processedSprite);
+        }, { spriteResolutions, fishSize: fishSizeForResolution });
       } else if (!existingFish) {
         // NEW FISH - add to list
         loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
-          // Cache by creature id for respawn in game mode
-          spriteCacheRef.current.set(fishItem.id, processedSprite);
+          // Cache by creature id + resolution for respawn in game mode
+          spriteCacheRef.current.set(cacheKey, processedSprite);
 
           // Check if this is a full Creature object or legacy format
           let fishSize: number;
@@ -760,7 +799,7 @@ export default function FishEditorCanvas({
             videoSprite,
           };
           fishListRef.current.push(newFish);
-        });
+        }, { spriteResolutions, fishSize: fishSizeForResolution });
       }
     });
 
@@ -792,6 +831,14 @@ export default function FishEditorCanvas({
 
     updateCanvasSize();
     window.addEventListener('resize', updateCanvasSize);
+
+    // Use ResizeObserver to detect container size changes (e.g., when side panel opens/closes)
+    const resizeObserver = new ResizeObserver(() => {
+      updateCanvasSize();
+    });
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -1210,9 +1257,13 @@ export default function FishEditorCanvas({
           fishListRef.current.length < MAX_FISH_IN_WORLD
         ) {
           const creature = pool[Math.floor(Math.random() * pool.length)];
-          const sprite = spriteCacheRef.current.get(creature.id);
+          const fishSize = isCreature(creature) ? creature.stats.size : 60;
+          // Get sprite from cache using resolution-aware key
+          const screenSize = fishSize * zoomRef.current;
+          const resolution = getResolutionKey(screenSize);
+          const cacheKey = `${creature.id}:${resolution}`;
+          const sprite = spriteCacheRef.current.get(cacheKey) || spriteCacheRef.current.get(creature.id);
           if (sprite && canvas) {
-            const fishSize = isCreature(creature) ? creature.stats.size : 60;
             const baseSpeed = isCreature(creature) ? (creature.stats.speed ?? 2) : 2;
             const speedScale = 0.1;
             const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
@@ -1941,6 +1992,7 @@ export default function FishEditorCanvas({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', updateCanvasSize);
+      resizeObserver.disconnect();
       // Clean up zoom controls
       if (container) {
         container.removeEventListener('wheel', handleWheel);

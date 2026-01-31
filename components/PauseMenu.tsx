@@ -235,8 +235,10 @@ export default function PauseMenu({
 
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md flex flex-col border-t border-gray-700"
-      style={{ height: '50%', maxHeight: '600px', zIndex: Z_LAYERS.PANEL }}
+      className={`absolute bottom-0 left-0 right-0 h-[65vh] max-h-[700px]
+        lg:top-0 lg:right-auto lg:w-[420px] lg:h-full lg:max-h-none lg:border-t-0 lg:border-r
+        bg-gray-900/95 backdrop-blur-md flex flex-col border-t border-gray-700`}
+      style={{ zIndex: Z_LAYERS.PANEL }}
     >
       {/* Action Bar - Only shown when editing a fish (TOP position) */}
       {editingFish && selectedFish && (

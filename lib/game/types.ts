@@ -185,6 +185,18 @@ export interface CreatureClips {
 export type ClipAction = keyof CreatureClips;
 
 /**
+ * Sprite Resolution Variants - Multi-resolution sprites for optimal rendering
+ * 
+ * Provides different resolution versions of the same sprite to optimize
+ * rendering at different screen sizes (mipmap-like system for web).
+ */
+export interface SpriteResolutions {
+  high: string;    // 512px - full detail for large/close fish
+  medium: string;  // 256px - medium detail for normal view
+  low: string;     // 128px - low detail for small/distant fish
+}
+
+/**
  * Creature - Complete creature data structure (extends BaseFishData)
  */
 export interface Creature extends BaseFishData {
@@ -194,6 +206,7 @@ export interface Creature extends BaseFishData {
 
   // Visual
   biomeId: string; // Native biome ID
+  spriteResolutions?: SpriteResolutions; // Multi-resolution sprite variants (optional, falls back to sprite)
 
   // Optional size tier used by biome ecosystems and runtime scaling
   sizeTier?: 'prey' | 'mid' | 'predator' | 'boss' | string;

@@ -79,6 +79,10 @@ export default function GenerationSettingsPanel() {
   const [videoAspectRatio, setVideoAspectRatio] = useState('1:1'); // Square for fish!
   const [negativePrompt, setNegativePrompt] = useState('blurry, distorted, low quality, text, watermark');
 
+  // Save indicator
+  const [showSaved, setShowSaved] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
   // Calculate cost estimate based on current settings
   const selectedModel = VIDEO_MODELS.find(m => m.id === selectedVideoModel);
   const estimatedCostPerVideo = selectedModel ? (selectedModel.costPerSecond * videoDuration) : 0;
@@ -130,14 +134,19 @@ export default function GenerationSettingsPanel() {
         if (settings.videoResolution) setVideoResolution(settings.videoResolution);
         if (settings.videoAspectRatio) setVideoAspectRatio(settings.videoAspectRatio);
         if (settings.negativePrompt !== undefined) setNegativePrompt(settings.negativePrompt);
+        console.log('[Settings] Loaded from localStorage:', settings);
       } catch {
         // Ignore parse errors
       }
     }
+    setSettingsLoaded(true);
   }, []);
 
   // Save settings to localStorage when changed
-  const saveSettings = () => {
+  useEffect(() => {
+    // Don't save until initial load is complete (prevents overwriting with defaults)
+    if (!settingsLoaded) return;
+
     const settings = {
       selectedImageModel,
       selectedVideoModel,
@@ -149,19 +158,74 @@ export default function GenerationSettingsPanel() {
       negativePrompt,
     };
     localStorage.setItem('generationSettings', JSON.stringify(settings));
-  };
+    console.log('[Settings] Saved to localStorage:', settings);
 
-  useEffect(() => {
-    saveSettings();
-  }, [selectedImageModel, selectedVideoModel, enableVideoGeneration, enableDirectMode, videoDuration, videoResolution, videoAspectRatio, negativePrompt]);
+    // Show saved indicator
+    setShowSaved(true);
+    const timer = setTimeout(() => setShowSaved(false), 2000);
+    return () => clearTimeout(timer);
+  }, [settingsLoaded, selectedImageModel, selectedVideoModel, enableVideoGeneration, enableDirectMode, videoDuration, videoResolution, videoAspectRatio, negativePrompt]);
+
+  // Check if settings are "expensive"
+  const isExpensiveModel = (selectedModel?.costPerSecond ?? 0) >= 0.10;
+  const isLongDuration = videoDuration >= 8;
+  const showCostWarning = isExpensiveModel || (isLongDuration && enableVideoGeneration);
 
   return (
-    <div className="px-4 pb-4 pt-2 space-y-6">
+    <div className="px-4 pb-4 pt-2 space-y-6 relative">
+      {/* Saved indicator toast */}
+      {showSaved && (
+        <div className="fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-pulse">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
+          Settings saved
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h2 className="text-lg font-bold text-white mb-1">Generation Settings</h2>
         <p className="text-xs text-gray-400">Configure AI generation APIs and limits</p>
       </div>
+
+      {/* Current Settings Summary Card */}
+      {enableVideoGeneration && (
+        <div className={`rounded-lg p-3 border ${showCostWarning ? 'bg-yellow-900/20 border-yellow-600/50' : 'bg-green-900/20 border-green-600/50'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              {showCostWarning ? (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-yellow-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-green-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              Active Video Settings
+            </h3>
+            <span className={`text-lg font-bold ${showCostWarning ? 'text-yellow-400' : 'text-green-400'}`}>
+              ${estimatedCostPerVideo.toFixed(2)}/video
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="text-gray-400">Model:</div>
+            <div className="text-white font-medium">{selectedModel?.name}</div>
+            <div className="text-gray-400">Duration:</div>
+            <div className="text-white font-medium">{videoDuration}s</div>
+            <div className="text-gray-400">Resolution:</div>
+            <div className="text-white font-medium">{videoResolution}</div>
+            <div className="text-gray-400">Aspect:</div>
+            <div className="text-white font-medium">{videoAspectRatio === 'auto' ? 'Auto (input)' : videoAspectRatio}</div>
+          </div>
+          {showCostWarning && (
+            <p className="text-xs text-yellow-400/80 mt-2">
+              Higher cost settings selected. These will be used for all video generations.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Spending Status Card */}
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">

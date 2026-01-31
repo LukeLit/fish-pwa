@@ -513,11 +513,12 @@ export default function FishEditorPage() {
       {/* Settings Drawer - Rendered at page level to avoid stacking context issues */}
       <SettingsDrawer mode="editor" />
 
-      {/* Fish Name Bar with Prev/Next - Docked above the Pause Menu */}
+      {/* Fish Name Bar with Prev/Next - Docked above the Pause Menu on mobile, above canvas on desktop */}
       {paused && selectedFish && (
         <div
-          className="absolute left-0 right-0 flex items-center justify-between px-4 py-2"
-          style={{ bottom: '50%', zIndex: Z_LAYERS.CONTROLS }}
+          className="absolute left-0 right-0 flex items-center justify-between px-4 py-2
+            bottom-[65vh] lg:bottom-4 lg:left-[420px]"
+          style={{ zIndex: Z_LAYERS.CONTROLS }}
         >
           {/* Previous Arrow */}
           <button
@@ -618,7 +619,11 @@ export default function FishEditorPage() {
       )}
 
       {/* Canvas - Full screen, but fish will be positioned in top area during edit mode */}
-      <div className="flex-1 relative">
+      {/* Mobile: explicit height above panel, Desktop: left margin for side drawer */}
+      <div className={`relative transition-all duration-200 ${paused
+          ? 'h-[35vh] lg:h-auto lg:flex-1 lg:ml-[420px]'
+          : 'flex-1'
+        }`}>
         <FishEditorCanvas
           background={selectedBackground}
           playerFishSprite={playerFishSprite}
