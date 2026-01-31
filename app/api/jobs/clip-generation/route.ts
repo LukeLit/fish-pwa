@@ -7,10 +7,50 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { put } from '@vercel/blob';
 import { createJob, updateJob, getJob, generateJobId } from '@/lib/jobs/job-store';
 import { uploadAsset } from '@/lib/storage/blob-storage';
 import type { ClipGenerationJob } from '@/lib/jobs/types';
 import type { ClipAction } from '@/lib/game/types';
+
+/**
+ * Immediately backup operation ID to blob storage
+ * This ensures we can recover even if everything else fails
+ */
+async function backupOperationId(
+  operationId: string,
+  jobId: string,
+  creatureId: string,
+  action: string,
+  spriteUrl: string
+): Promise<void> {
+  try {
+    const backup = {
+      operationId,
+      jobId,
+      creatureId,
+      action,
+      spriteUrl,
+      timestamp: new Date().toISOString(),
+      recovered: false,
+    };
+    
+    const backupPath = `operations/${jobId}.json`;
+    await put(backupPath, JSON.stringify(backup, null, 2), {
+      access: 'public',
+      contentType: 'application/json',
+      allowOverwrite: true,
+    });
+    
+    console.log(`[ClipJob] BACKUP: Operation ID saved to ${backupPath}`);
+    console.log(`[ClipJob] BACKUP: operationId=${operationId}`);
+  } catch (backupError) {
+    // Log but don't fail - this is a safety net
+    console.error(`[ClipJob] BACKUP FAILED:`, backupError);
+    // Still log the operation ID to stdout as last resort
+    console.log(`[ClipJob] CRITICAL BACKUP - operationId=${operationId}, jobId=${jobId}, creatureId=${creatureId}, action=${action}`);
+  }
+}
 
 // Simple in-memory lock to prevent concurrent processing of the same job
 // Note: This only works within a single serverless instance, but helps reduce race conditions
@@ -145,6 +185,10 @@ export async function POST(request: NextRequest) {
       if (!operation?.name) {
         throw new Error('Gemini API did not return an operation name');
       }
+
+      // CRITICAL: Immediately backup the operation ID before doing ANYTHING else
+      // This ensures we can recover the video even if everything else fails
+      await backupOperationId(operation.name, jobId, creatureId, action, spriteUrl);
 
       // Create job record with operation ID already set (single write - no race condition)
       const job = await createJob<ClipGenerationJob>({
