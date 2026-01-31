@@ -3,10 +3,16 @@
  */
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
 import type { CreatureClips, ClipAction } from '@/lib/game/types';
 import { generateCreatureClip, type ClipGenerationProgress } from '@/lib/video/clip-generator';
+
+/**
+ * Minimum time between clip generation requests (ms)
+ * Prevents accidental double-clicks from firing multiple expensive API calls
+ */
+const CLIP_GENERATION_DEBOUNCE_MS = 3000;
 
 export interface EssenceData {
   primary: {
@@ -131,6 +137,9 @@ export default function FishEditOverlay({
   const [activeTab, setActiveTab] = useState<'details' | 'animation'>('details');
   const [useDirectMode, setUseDirectMode] = useState(false);
   const [previewClip, setPreviewClip] = useState<{ action: ClipAction; mode: 'video' | 'frames' } | null>(null);
+
+  // Debounce ref to prevent rapid-fire clip generation requests
+  const lastClipGenerationTime = useRef<number>(0);
 
   // Helper to generate fallback description chunks when missing
   // This ensures the "Regenerate Sprite" produces quality similar to batch generation
@@ -650,6 +659,16 @@ export default function FishEditOverlay({
       return;
     }
 
+    // Debounce: prevent rapid-fire requests (protects against accidental double-clicks)
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastClipGenerationTime.current;
+    if (timeSinceLastRequest < CLIP_GENERATION_DEBOUNCE_MS) {
+      const waitTime = Math.ceil((CLIP_GENERATION_DEBOUNCE_MS - timeSinceLastRequest) / 1000);
+      setSaveMessage(`⏳ Please wait ${waitTime}s before generating another clip...`);
+      return;
+    }
+    lastClipGenerationTime.current = now;
+
     setIsGeneratingClip(true);
     setClipGenerationStatus(`Starting ${action} clip generation...`);
 
@@ -940,8 +959,8 @@ export default function FishEditOverlay({
           <button
             onClick={() => setActiveTab('details')}
             className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'details'
-                ? 'text-white border-b-2 border-blue-500'
-                : 'text-gray-400 hover:text-white'
+              ? 'text-white border-b-2 border-blue-500'
+              : 'text-gray-400 hover:text-white'
               }`}
           >
             Details
@@ -949,8 +968,8 @@ export default function FishEditOverlay({
           <button
             onClick={() => setActiveTab('animation')}
             className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'animation'
-                ? 'text-white border-b-2 border-blue-500'
-                : 'text-gray-400 hover:text-white'
+              ? 'text-white border-b-2 border-blue-500'
+              : 'text-gray-400 hover:text-white'
               }`}
           >
             Animation {editedFish.clips && Object.keys(editedFish.clips).length > 0 ? `(${Object.keys(editedFish.clips).length})` : ''}
@@ -1221,8 +1240,8 @@ export default function FishEditOverlay({
                         onClick={() => handleGenerateClip(action)}
                         disabled={isGeneratingClip || !editedFish.sprite}
                         className={`px-3 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${hasClip
-                            ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30'
-                            : 'bg-blue-600 hover:bg-blue-500 text-white'
+                          ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30'
+                          : 'bg-blue-600 hover:bg-blue-500 text-white'
                           } disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
                         {hasClip ? '✓' : '+'} {actionLabels[action] || action}
@@ -2008,7 +2027,7 @@ function ClipPreviewModal({
   mode,
   onClose,
 }: {
-  clip: { videoUrl: string; frames: string[]; thumbnailUrl: string; duration: number; loop: boolean; frameRate?: number };
+  clip: { videoUrl: string; frames?: string[]; thumbnailUrl?: string; duration: number; loop?: boolean; frameRate?: number };
   action: string;
   mode: 'video' | 'frames';
   onClose: () => void;
@@ -2024,7 +2043,7 @@ function ClipPreviewModal({
     const interval = setInterval(() => {
       setCurrentFrame((prev) => {
         const next = prev + 1;
-        if (next >= clip.frames.length) {
+        if (next >= (clip.frames?.length || 0)) {
           return clip.loop ? 0 : prev;
         }
         return next;
@@ -2052,7 +2071,7 @@ function ClipPreviewModal({
             <p className="text-xs text-gray-400">
               {mode === 'video'
                 ? `${(clip.duration / 1000).toFixed(1)}s • ${clip.loop ? 'Looping' : 'One-shot'}`
-                : `Frame ${currentFrame + 1} of ${clip.frames.length} • ${clip.frameRate || 24} fps`
+                : `Frame ${currentFrame + 1} of ${clip.frames?.length || 0} • ${clip.frameRate || 24} fps`
               }
             </p>
           </div>
@@ -2080,7 +2099,7 @@ function ClipPreviewModal({
             />
           ) : (
             <img
-              src={clip.frames[currentFrame] || clip.thumbnailUrl}
+              src={clip.frames?.[currentFrame] || clip.thumbnailUrl || ''}
               alt={`Frame ${currentFrame + 1}`}
               className="max-w-full max-h-[400px] object-contain"
               style={{ background: '#FF00FF' }}
@@ -2119,7 +2138,7 @@ function ClipPreviewModal({
                   )}
                 </button>
                 <button
-                  onClick={() => setCurrentFrame((prev) => Math.min(clip.frames.length - 1, prev + 1))}
+                  onClick={() => setCurrentFrame((prev) => Math.min((clip.frames?.length || 1) - 1, prev + 1))}
                   className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors"
                   title="Next Frame"
                 >
@@ -2135,7 +2154,7 @@ function ClipPreviewModal({
                 <input
                   type="range"
                   min={0}
-                  max={clip.frames.length - 1}
+                  max={(clip.frames?.length || 1) - 1}
                   value={currentFrame}
                   onChange={(e) => {
                     setCurrentFrame(parseInt(e.target.value));
@@ -2143,7 +2162,7 @@ function ClipPreviewModal({
                   }}
                   className="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
-                <span className="text-xs text-gray-400 w-8">{clip.frames.length}</span>
+                <span className="text-xs text-gray-400 w-8">{clip.frames?.length || 0}</span>
               </div>
             </div>
           )}

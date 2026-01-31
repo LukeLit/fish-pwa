@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
+import { canGenerateVideo, recordVideoGeneration } from '@/lib/jobs/spending-tracker';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +26,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Enforce daily spending limit
+    const spendingCheck = await canGenerateVideo();
+    if (!spendingCheck.allowed) {
+      console.log(`[VideoGen] Daily spending limit reached: ${spendingCheck.reason}`);
+      return NextResponse.json(
+        {
+          error: 'Daily limit reached',
+          message: spendingCheck.reason,
+          remaining: spendingCheck.remaining,
+        },
+        { status: 429 }
+      );
+    }
+
+    console.log(`[VideoGen] Spending check passed. ${spendingCheck.remaining} videos remaining today.`);
     console.log('[VideoGen] Generating video with', model, ':', prompt.substring(0, 50) + '...');
 
     // Initialize the Google GenAI client
@@ -47,6 +63,9 @@ export async function POST(request: NextRequest) {
     const operation = await ai.models.generateVideos(requestConfig);
 
     console.log('[VideoGen] Video generation started, operation:', operation.name);
+
+    // Record this video generation for spending tracking
+    await recordVideoGeneration();
 
     // Return the operation name for polling
     return NextResponse.json({
@@ -99,7 +118,7 @@ export async function GET(request: NextRequest) {
     // The SDK requires an operation object with at least the 'name' field for polling
     // This is the documented pattern in the SDK examples
     const operationInput: Partial<GenerateVideosOperation> = { name: operationName };
-    const operation = await ai.operations.getVideosOperation({ 
+    const operation = await ai.operations.getVideosOperation({
       operation: operationInput as GenerateVideosOperation
     });
 
@@ -108,7 +127,7 @@ export async function GET(request: NextRequest) {
       if (operation.response?.generatedVideos && operation.response.generatedVideos.length > 0) {
         const generatedVideo = operation.response.generatedVideos[0];
         const video = generatedVideo?.video;
-        
+
         // The video object contains a URI that can be used to download the file
         // Return the video information to the client
         return NextResponse.json({

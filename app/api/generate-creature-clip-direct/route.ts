@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { put } from '@vercel/blob';
+import { canGenerateVideo, recordVideoGeneration } from '@/lib/jobs/spending-tracker';
 import type { ClipAction, CreatureClip } from '@/lib/game/types';
 
 // Action-specific prompts
@@ -68,6 +69,22 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Enforce daily spending limit
+    const spendingCheck = await canGenerateVideo();
+    if (!spendingCheck.allowed) {
+      console.log(`[DirectClip] Daily spending limit reached: ${spendingCheck.reason}`);
+      return NextResponse.json(
+        {
+          error: 'Daily limit reached',
+          message: spendingCheck.reason,
+          remaining: spendingCheck.remaining,
+        },
+        { status: 429 }
+      );
+    }
+
+    console.log(`[DirectClip] Spending check passed. ${spendingCheck.remaining} videos remaining today.`);
 
     // Build prompt
     const actionConfig = ACTION_PROMPTS[action as ClipAction];
@@ -140,6 +157,9 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Record this video generation for spending tracking
+    await recordVideoGeneration();
 
     // Poll for completion
     const operationId = operation.name;
@@ -249,8 +269,7 @@ export async function POST(request: NextRequest) {
 
         const clip: CreatureClip = {
           videoUrl: blobResult.url,
-          frames: [], // Frames can be extracted later
-          thumbnailUrl: spriteUrl, // Use sprite as thumbnail for now
+          thumbnailUrl: spriteUrl, // Use sprite as thumbnail
           duration: 5000, // 5 seconds in milliseconds
           loop: shouldLoop,
         };

@@ -75,13 +75,25 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Process all pending clip generation jobs
+ * Maximum number of jobs to process per cron run
+ * This prevents runaway API calls
  */
-async function processClipGenerationJobs(): Promise<{ processed: number; jobs: any[] }> {
+const MAX_JOBS_PER_CRON = 2;
+
+/**
+ * Delay between processing jobs (ms) to avoid rate limiting
+ */
+const DELAY_BETWEEN_JOBS_MS = 2000;
+
+/**
+ * Process pending clip generation jobs SEQUENTIALLY with limits
+ * This prevents the burst of parallel API calls that caused rate limiting
+ */
+async function processClipGenerationJobs(): Promise<{ processed: number; jobs: any[]; skipped: number }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.log('[Cron] GEMINI_API_KEY not configured, skipping clip processing');
-    return { processed: 0, jobs: [] };
+    return { processed: 0, jobs: [], skipped: 0 };
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -91,21 +103,44 @@ async function processClipGenerationJobs(): Promise<{ processed: number; jobs: a
   const clipJobs = processingJobs.filter(j => j.type === 'clip_generation') as ClipGenerationJob[];
 
   if (clipJobs.length === 0) {
-    return { processed: 0, jobs: [] };
+    return { processed: 0, jobs: [], skipped: 0 };
   }
 
   console.log(`[Cron] Found ${clipJobs.length} clip generation jobs to process`);
 
-  const results = await Promise.all(
-    clipJobs.map(job => processClipJob(ai, job).catch(err => {
+  // Limit to MAX_JOBS_PER_CRON to prevent burst API calls
+  const jobsToProcess = clipJobs.slice(0, MAX_JOBS_PER_CRON);
+  const skipped = clipJobs.length - jobsToProcess.length;
+
+  if (skipped > 0) {
+    console.log(`[Cron] Processing ${jobsToProcess.length} jobs, ${skipped} will be processed in next cron run`);
+  }
+
+  // Process jobs SEQUENTIALLY (not in parallel) to avoid rate limits
+  const results: ClipGenerationJob[] = [];
+  for (let i = 0; i < jobsToProcess.length; i++) {
+    const job = jobsToProcess[i];
+
+    try {
+      console.log(`[Cron] Processing job ${i + 1}/${jobsToProcess.length}: ${job.id}`);
+      const result = await processClipJob(ai, job);
+      results.push(result);
+    } catch (err: any) {
       console.error(`[Cron] Error processing job ${job.id}:`, err);
-      return job;
-    }))
-  );
+      results.push(job);
+    }
+
+    // Add delay between jobs to avoid rate limiting (except after last job)
+    if (i < jobsToProcess.length - 1) {
+      console.log(`[Cron] Waiting ${DELAY_BETWEEN_JOBS_MS}ms before next job...`);
+      await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_JOBS_MS));
+    }
+  }
 
   return {
     processed: results.length,
     jobs: results.map(j => ({ id: j.id, status: j.status })),
+    skipped,
   };
 }
 
@@ -138,7 +173,7 @@ async function processClipJob(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[Cron] Poll error for ${job.id}:`, errorText);
-      
+
       // Don't fail immediately - might be transient
       const elapsedMinutes = (Date.now() - new Date(job.createdAt).getTime()) / 60000;
       if (elapsedMinutes > 15) {
@@ -147,7 +182,7 @@ async function processClipJob(
           error: `Generation timed out after ${Math.round(elapsedMinutes)} minutes`,
         }) || job;
       }
-      
+
       return job;
     }
 
@@ -169,7 +204,7 @@ async function processClipJob(
 
       // Get the video URI - handle different response formats
       let videoUri: string | undefined;
-      
+
       // Try different paths in the response (Google API format varies)
       const generatedSamples = operation.response?.generateVideoResponse?.generatedSamples;
       if (generatedSamples?.[0]?.video?.uri) {
@@ -223,8 +258,6 @@ async function processClipJob(
           progressMessage: 'Clip generation complete!',
           result: {
             videoUrl: videoResult.url,
-            thumbnailUrl: '',
-            frames: [],
             duration: 4000,
             frameRate: 24,
           },
@@ -250,7 +283,7 @@ async function processClipJob(
     }) || job;
   } catch (error: any) {
     console.error(`[Cron] Process error for ${job.id}:`, error);
-    
+
     const elapsedMinutes = (Date.now() - new Date(job.createdAt).getTime()) / 60000;
     if (elapsedMinutes > 15) {
       return await updateJob<ClipGenerationJob>(job.id, {

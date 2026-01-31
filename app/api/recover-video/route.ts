@@ -37,9 +37,9 @@ export async function POST(request: NextRequest) {
     // Check operation status
     const pollUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`;
     console.log(`[RecoverVideo] Polling: ${pollUrl.replace(apiKey, 'API_KEY')}`);
-    
+
     const pollResponse = await fetch(pollUrl);
-    
+
     if (!pollResponse.ok) {
       const errorText = await pollResponse.text();
       console.error(`[RecoverVideo] Poll failed: ${pollResponse.status} - ${errorText}`);
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Try to extract video URI from various possible response structures
-    const videoUri = 
+    const videoUri =
       pollData.response?.generatedVideos?.[0]?.video?.uri ||
       pollData.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri ||
       pollData.result?.videos?.[0]?.uri ||
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[RecoverVideo] Downloading video...`);
     const videoResponse = await fetch(downloadUrl);
-    
+
     if (!videoResponse.ok) {
       const errorText = await videoResponse.text().catch(() => '');
       console.error(`[RecoverVideo] Download failed: ${videoResponse.status} - ${errorText.substring(0, 500)}`);
@@ -134,8 +134,7 @@ export async function POST(request: NextRequest) {
 
     const clip: CreatureClip = {
       videoUrl: blobResult.url,
-      frames: [],
-      thumbnailUrl: spriteUrl || '',
+      thumbnailUrl: spriteUrl,
       duration: 5000,
       loop: shouldLoop,
     };
@@ -181,7 +180,7 @@ export async function GET(request: NextRequest) {
   try {
     const pollUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`;
     const pollResponse = await fetch(pollUrl);
-    
+
     if (!pollResponse.ok) {
       const errorText = await pollResponse.text();
       return NextResponse.json({
@@ -191,7 +190,7 @@ export async function GET(request: NextRequest) {
     }
 
     const pollData = await pollResponse.json();
-    
+
     return NextResponse.json({
       operationId,
       done: pollData.done,

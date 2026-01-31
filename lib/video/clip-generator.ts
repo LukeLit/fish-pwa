@@ -88,7 +88,7 @@ export async function generateCreatureClip(
         // Other polls are read-only to avoid race conditions
         const shouldProcess = attempts % 3 === 0;
         const url = `/api/jobs/clip-generation?jobId=${encodeURIComponent(jobId)}${shouldProcess ? '&process=true' : ''}`;
-        
+
         const pollResponse = await fetch(url);
 
         if (!pollResponse.ok) {
@@ -113,11 +113,12 @@ export async function generateCreatureClip(
           if (job.result) {
             const clip: CreatureClip = {
               videoUrl: job.result.videoUrl,
-              thumbnailUrl: job.result.thumbnailUrl || '',
-              frames: job.result.frames || [],
               duration: job.result.duration || 4000,
               loop: action === 'swimIdle' || action === 'swimFast',
               frameRate: job.result.frameRate || 24,
+              // Optional fields - only include if present
+              ...(job.result.thumbnailUrl && { thumbnailUrl: job.result.thumbnailUrl }),
+              ...(job.result.frames?.length && { frames: job.result.frames }),
             };
 
             return {

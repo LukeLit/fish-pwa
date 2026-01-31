@@ -8,8 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { put } from '@vercel/blob';
-import { createJob, updateJob, getJob, generateJobId } from '@/lib/jobs/job-store';
+import { createJob, updateJob, getJob, generateJobId, getJobsByStatus } from '@/lib/jobs/job-store';
 import { uploadAsset } from '@/lib/storage/blob-storage';
+import { canGenerateVideo, recordVideoGeneration } from '@/lib/jobs/spending-tracker';
 import type { ClipGenerationJob } from '@/lib/jobs/types';
 import type { ClipAction } from '@/lib/game/types';
 
@@ -34,14 +35,14 @@ async function backupOperationId(
       timestamp: new Date().toISOString(),
       recovered: false,
     };
-    
+
     const backupPath = `operations/${jobId}.json`;
     await put(backupPath, JSON.stringify(backup, null, 2), {
       access: 'public',
       contentType: 'application/json',
       allowOverwrite: true,
     });
-    
+
     console.log(`[ClipJob] BACKUP: Operation ID saved to ${backupPath}`);
     console.log(`[ClipJob] BACKUP: operationId=${operationId}`);
   } catch (backupError) {
@@ -117,6 +118,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // CHECK 1: Prevent duplicate jobs for same creature+action
+    const existingJobs = await getJobsByStatus('processing');
+    const duplicateJob = existingJobs.find(
+      (job) =>
+        job.type === 'clip_generation' &&
+        (job as ClipGenerationJob).input.creatureId === creatureId &&
+        (job as ClipGenerationJob).input.action === action
+    );
+
+    if (duplicateJob) {
+      console.log(`[ClipJob] Duplicate job detected for ${creatureId}/${action}, returning existing job ${duplicateJob.id}`);
+      return NextResponse.json({
+        success: true,
+        jobId: duplicateJob.id,
+        status: 'processing',
+        message: 'Job already in progress for this creature/action. Returning existing job.',
+        duplicate: true,
+      });
+    }
+
+    // CHECK 2: Enforce daily spending limit
+    const spendingCheck = await canGenerateVideo();
+    if (!spendingCheck.allowed) {
+      console.log(`[ClipJob] Daily spending limit reached: ${spendingCheck.reason}`);
+      return NextResponse.json(
+        {
+          error: 'Daily limit reached',
+          message: spendingCheck.reason,
+          remaining: spendingCheck.remaining,
+        },
+        { status: 429 }
+      );
+    }
+
+    console.log(`[ClipJob] Spending check passed. ${spendingCheck.remaining} videos remaining today.`);
+
     // Build the prompt first (before creating job)
     const actionConfig = ACTION_PROMPTS[action];
     let prompt = actionConfig.prompt;
@@ -189,6 +226,9 @@ export async function POST(request: NextRequest) {
       // CRITICAL: Immediately backup the operation ID before doing ANYTHING else
       // This ensures we can recover the video even if everything else fails
       await backupOperationId(operation.name, jobId, creatureId, action, spriteUrl);
+
+      // Record this video generation for spending tracking
+      await recordVideoGeneration();
 
       // Create job record with operation ID already set (single write - no race condition)
       const job = await createJob<ClipGenerationJob>({
@@ -487,8 +527,6 @@ async function doProcessClipJob(
           progressMessage: 'Clip generation complete!',
           result: {
             videoUrl: videoResult.url,
-            thumbnailUrl: '', // TODO: Generate thumbnail
-            frames: [], // TODO: Extract frames
             duration: 4000, // Default 4 seconds
             frameRate: 24,
           },

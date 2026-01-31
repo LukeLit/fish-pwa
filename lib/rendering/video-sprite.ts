@@ -106,7 +106,8 @@ export class VideoSprite {
       video.crossOrigin = 'anonymous';
       video.muted = true;
       video.playsInline = true;
-      video.loop = clip.loop;
+      // Default loop based on action type if not specified
+      video.loop = clip.loop ?? (action === 'swimIdle' || action === 'swimFast');
       video.preload = 'auto';
 
       video.onloadeddata = () => {

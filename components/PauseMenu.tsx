@@ -9,6 +9,8 @@ import FishEditOverlay, { type FishData } from './FishEditOverlay';
 import FishLibraryPanel from './FishLibraryPanel';
 import BackgroundLibraryPanel from './BackgroundLibraryPanel';
 import BackgroundEditOverlay from './BackgroundEditOverlay';
+import GenerationSettingsPanel from './GenerationSettingsPanel';
+import JobsPanel from './JobsPanel';
 import type { BackgroundAsset } from '@/lib/game/types';
 
 interface PlayerStats {
@@ -69,7 +71,7 @@ interface PauseMenuProps {
   onBackToMenu?: () => void;
 }
 
-type TabId = 'stats' | 'library' | 'backgrounds' | 'scene';
+type TabId = 'stats' | 'library' | 'backgrounds' | 'scene' | 'settings' | 'jobs';
 
 export default function PauseMenu({
   isOpen,
@@ -224,6 +226,8 @@ export default function PauseMenu({
     { id: 'library', label: 'Fish', show: true },
     { id: 'backgrounds', label: 'Backgrounds', show: mode === 'editor' },
     { id: 'scene', label: 'Scene', show: mode === 'editor' },
+    { id: 'settings', label: 'Settings', show: mode === 'editor' },
+    { id: 'jobs', label: 'Jobs', show: mode === 'editor' },
   ];
 
   const visibleTabs = tabs.filter(t => t.show);
@@ -618,6 +622,20 @@ export default function PauseMenu({
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Settings Tab (Editor Mode Only) */}
+        {activeTab === 'settings' && mode === 'editor' && (
+          <div className="h-full overflow-y-auto">
+            <GenerationSettingsPanel />
+          </div>
+        )}
+
+        {/* Jobs Tab (Editor Mode Only) */}
+        {activeTab === 'jobs' && mode === 'editor' && (
+          <div className="h-full overflow-y-auto">
+            <JobsPanel />
           </div>
         )}
       </div>

@@ -77,11 +77,33 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Default: cache-first for other requests
+  // Default: network-first for pages, with cache fallback
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
+    fetch(event.request)
+      .then((response) => {
+        // Cache successful page responses
+        if (response.ok && event.request.method === 'GET') {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return response;
+      })
+      .catch(async () => {
+        // Network failed - try cache
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        // No cache either - return offline page or error
+        console.warn('[SW] Network and cache both failed for:', event.request.url);
+        return new Response('Offline - page not cached', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain' }
+        });
+      })
   );
 });
 

@@ -40,8 +40,8 @@ export interface ClipGenerationJob extends Job {
   // Result when complete
   result?: {
     videoUrl: string;
-    thumbnailUrl: string;
-    frames: string[];
+    thumbnailUrl?: string;  // Optional - can use sprite as fallback
+    frames?: string[];      // Optional - rarely needed
     duration: number;
     frameRate: number;
   };

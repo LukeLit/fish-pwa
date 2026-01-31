@@ -152,13 +152,17 @@ export interface MutationMetadata {
 
 /**
  * Creature Clip - Single animation clip data
+ * 
+ * Simplified: Only videoUrl is required. The main goal is generating
+ * short clips consistent with the fish art. Frames are optional and
+ * can be extracted client-side if needed for fallback rendering.
  */
 export interface CreatureClip {
-  videoUrl: string;           // Full video URL for high LOD playback
-  frames: string[];           // Pre-extracted frame URLs for fallback/medium LOD
-  thumbnailUrl: string;       // Single frame for lowest LOD / preview
+  videoUrl: string;           // Full video URL - primary playback method
+  thumbnailUrl?: string;      // Optional thumbnail (can use sprite as fallback)
+  frames?: string[];          // Optional pre-extracted frames (rarely needed)
   duration: number;           // Clip duration in milliseconds
-  loop: boolean;              // Whether clip loops (swimIdle: yes, bite: no)
+  loop?: boolean;             // Whether clip loops (default based on action type)
   frameRate?: number;         // Original frame rate (default: 24)
 }
 
