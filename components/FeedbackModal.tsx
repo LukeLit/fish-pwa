@@ -5,6 +5,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Z_LAYERS } from '@/lib/ui/z-layers';
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!feedback.trim()) {
       return;
     }
@@ -45,7 +46,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
       setSubmitStatus('success');
       setFeedback('');
-      
+
       // Close modal after 2 seconds
       setTimeout(() => {
         onClose();
@@ -76,7 +77,8 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+      style={{ zIndex: Z_LAYERS.MODAL_BACKDROP }}
       onClick={handleClose}
     >
       <div

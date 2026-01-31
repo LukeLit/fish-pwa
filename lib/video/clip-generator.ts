@@ -25,6 +25,67 @@ export interface ClipGenerationResult {
 export type ProgressCallback = (progress: ClipGenerationProgress) => void;
 
 /**
+ * Video generation settings from localStorage
+ */
+export interface VideoGenerationSettings {
+  selectedVideoModel: string;
+  videoDuration: number;
+  videoResolution: string;
+  videoAspectRatio: string;
+  negativePrompt: string;
+  enableDirectMode: boolean;
+}
+
+/**
+ * Get the provider from a model ID
+ */
+export function getProviderFromModel(modelId: string): 'fal' | 'veo' {
+  return modelId.startsWith('fal/') ? 'fal' : 'veo';
+}
+
+/**
+ * Get the Fal model key from full model ID (e.g., 'fal/wan-2.1' -> 'wan-2.1')
+ */
+export function getFalModelKey(modelId: string): string {
+  return modelId.replace('fal/', '');
+}
+
+/**
+ * Get saved video generation settings from localStorage
+ */
+export function getVideoGenerationSettings(): VideoGenerationSettings {
+  const defaults: VideoGenerationSettings = {
+    selectedVideoModel: 'fal/wan-2.1', // Default to cheapest Fal model
+    videoDuration: 5,
+    videoResolution: '720p',
+    videoAspectRatio: '1:1', // Square for fish sprites
+    negativePrompt: 'blurry, distorted, low quality, text, watermark',
+    enableDirectMode: false,
+  };
+
+  if (typeof window === 'undefined') return defaults;
+
+  try {
+    const savedSettings = localStorage.getItem('generationSettings');
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings);
+      return {
+        selectedVideoModel: settings.selectedVideoModel || defaults.selectedVideoModel,
+        videoDuration: settings.videoDuration || defaults.videoDuration,
+        videoResolution: settings.videoResolution || defaults.videoResolution,
+        videoAspectRatio: settings.videoAspectRatio || defaults.videoAspectRatio,
+        negativePrompt: settings.negativePrompt ?? defaults.negativePrompt,
+        enableDirectMode: settings.enableDirectMode ?? defaults.enableDirectMode,
+      };
+    }
+  } catch {
+    // Ignore parse errors
+  }
+
+  return defaults;
+}
+
+/**
  * Start a clip generation job and poll for completion
  * Uses the job system for reliability across sessions
  * 
@@ -46,9 +107,13 @@ export async function generateCreatureClip(
     onProgress?.({ stage, message, progress, jobId });
   };
 
+  // Get user's video generation settings
+  const videoSettings = getVideoGenerationSettings();
+  const provider = getProviderFromModel(videoSettings.selectedVideoModel);
+
   try {
     // Stage 1: Start the job
-    report('starting', `Starting ${action} clip generation job...`);
+    report('starting', `Starting ${action} clip generation job (${provider})...`);
 
     const startResponse = await fetch('/api/jobs/clip-generation', {
       method: 'POST',
@@ -58,6 +123,13 @@ export async function generateCreatureClip(
         action,
         spriteUrl,
         description,
+        // Pass video generation settings
+        model: videoSettings.selectedVideoModel,
+        provider, // 'fal' or 'veo'
+        durationSeconds: videoSettings.videoDuration,
+        resolution: videoSettings.videoResolution,
+        aspectRatio: videoSettings.videoAspectRatio,
+        negativePrompt: videoSettings.negativePrompt,
       }),
     });
 

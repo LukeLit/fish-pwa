@@ -45,7 +45,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { creatureId, action, spriteUrl, description } = body;
+    const {
+      creatureId,
+      action,
+      spriteUrl,
+      description,
+      // Video generation settings (with defaults)
+      model = 'veo-3.1-fast-generate-preview',
+      durationSeconds = 4,
+      resolution = '720p',
+      aspectRatio = '16:9',
+      negativePrompt = 'blurry, distorted, low quality, text, watermark',
+    } = body;
 
     // Validate required fields
     if (!creatureId || !action || !spriteUrl) {
@@ -61,6 +72,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Validate video settings
+    const validDurations = [4, 6, 8];
+    const validResolutions = ['720p', '1080p'];
+    const validAspectRatios = ['16:9', '9:16'];
+
+    const finalDuration = validDurations.includes(durationSeconds) ? durationSeconds : 4;
+    const finalResolution = validResolutions.includes(resolution) ? resolution : '720p';
+    const finalAspectRatio = validAspectRatios.includes(aspectRatio) ? aspectRatio : '16:9';
+
+    // 1080p only available for 8s videos
+    const effectiveResolution = (finalResolution === '1080p' && finalDuration !== 8) ? '720p' : finalResolution;
+
+    console.log(`[DirectClip] Video settings: model=${model}, duration=${finalDuration}s, resolution=${effectiveResolution}, aspectRatio=${finalAspectRatio}`);
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -136,15 +161,22 @@ export async function POST(request: NextRequest) {
 
     // Start video generation with image-to-video
     // Using the 'image' parameter makes the sprite the first frame
-    console.log('[DirectClip] Starting Gemini video generation with image-to-video...');
+    console.log(`[DirectClip] Starting Gemini video generation with image-to-video (${finalDuration}s, ${effectiveResolution}, ${finalAspectRatio})...`);
     const requestConfig: any = {
-      model: 'veo-3.1-generate-preview',
+      model: model,
       prompt,
       // Use 'image' parameter for image-to-video generation
       // This animates FROM the actual sprite as the first frame
       image: {
         imageBytes: imageBytes,
         mimeType: imageMimeType,
+      },
+      // Video configuration from user settings
+      config: {
+        aspectRatio: finalAspectRatio,
+        durationSeconds: finalDuration,
+        resolution: effectiveResolution,
+        ...(negativePrompt && { negativePrompt }),
       },
     };
 
@@ -270,7 +302,7 @@ export async function POST(request: NextRequest) {
         const clip: CreatureClip = {
           videoUrl: blobResult.url,
           thumbnailUrl: spriteUrl, // Use sprite as thumbnail
-          duration: 5000, // 5 seconds in milliseconds
+          duration: finalDuration * 1000, // Convert seconds to milliseconds
           loop: shouldLoop,
         };
 

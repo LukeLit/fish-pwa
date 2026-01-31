@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
 import type { CreatureClips, ClipAction } from '@/lib/game/types';
 import { generateCreatureClip, type ClipGenerationProgress } from '@/lib/video/clip-generator';
+import { Z_LAYERS } from '@/lib/ui/z-layers';
 
 /**
  * Minimum time between clip generation requests (ms)
@@ -2055,7 +2056,8 @@ function ClipPreviewModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+      style={{ zIndex: Z_LAYERS.MODAL_BACKDROP }}
       onClick={onClose}
     >
       <div

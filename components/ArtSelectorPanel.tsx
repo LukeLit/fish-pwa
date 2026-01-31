@@ -4,6 +4,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Z_LAYERS } from '@/lib/ui/z-layers';
 
 interface Asset {
   filename: string;
@@ -33,7 +34,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
       setError(null);
       const response = await fetch(`/api/list-assets?type=${type}`);
       const result = await response.json();
-      
+
       if (result.success) {
         setAssets(result.assets || []);
       } else {
@@ -58,7 +59,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center" style={{ zIndex: Z_LAYERS.SELECTOR_BACKDROP }}>
         <div className="bg-gray-900 rounded-lg p-8 max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
           <div className="text-gray-400">Loading {type === 'fish' ? 'fish sprites' : 'backgrounds'}...</div>
         </div>
@@ -68,7 +69,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
 
   if (error) {
     return (
-      <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center" style={{ zIndex: Z_LAYERS.SELECTOR_BACKDROP }}>
         <div className="bg-gray-900 rounded-lg p-8 max-w-4xl w-full mx-4">
           <div className="text-red-400 mb-4">{error}</div>
           <div className="flex gap-2">
@@ -91,7 +92,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4" style={{ zIndex: Z_LAYERS.SELECTOR_BACKDROP }}>
       <div className="bg-gray-900 rounded-lg max-w-5xl w-full max-h-[85vh] overflow-hidden flex flex-col border border-gray-700">
         {/* Header */}
         <div className="p-4 border-b border-gray-700 flex items-center justify-between">
@@ -120,16 +121,15 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
               {assets.map((asset) => {
                 const isSelected = selectedUrl === asset.url;
                 const isVideo = asset.filename.toLowerCase().endsWith('.mp4');
-                
+
                 return (
                   <button
                     key={asset.url}
                     onClick={() => setSelectedUrl(asset.url)}
-                    className={`relative rounded-lg overflow-hidden border-2 transition-all ${
-                      isSelected 
-                        ? 'border-blue-500 ring-2 ring-blue-500/50' 
-                        : 'border-gray-700 hover:border-gray-500'
-                    }`}
+                    className={`relative rounded-lg overflow-hidden border-2 transition-all ${isSelected
+                      ? 'border-blue-500 ring-2 ring-blue-500/50'
+                      : 'border-gray-700 hover:border-gray-500'
+                      }`}
                   >
                     {/* Thumbnail */}
                     <div className="aspect-video bg-gray-800 flex items-center justify-center">
@@ -147,12 +147,12 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
                         />
                       )}
                     </div>
-                    
+
                     {/* Filename */}
                     <div className="p-2 bg-gray-800/90">
                       <p className="text-xs text-gray-300 truncate">{asset.filename}</p>
                     </div>
-                    
+
                     {/* Selected Indicator */}
                     {isSelected && (
                       <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
@@ -161,7 +161,7 @@ export default function ArtSelectorPanel({ type, onSelect, onCancel }: ArtSelect
                         </svg>
                       </div>
                     )}
-                    
+
                     {/* Video Badge */}
                     {isVideo && (
                       <div className="absolute top-2 left-2 bg-purple-600 text-white text-xs px-2 py-0.5 rounded">

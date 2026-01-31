@@ -3,16 +3,28 @@
  * 
  * Start and process clip generation jobs using the job system.
  * This provides better reliability than direct polling from the client.
+ * 
+ * Supports multiple providers:
+ * - Google Veo (veo-3.1-*)
+ * - Fal.ai (fal/wan-2.1, fal/kling-*)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { fal } from '@fal-ai/client';
 import { put } from '@vercel/blob';
 import { createJob, updateJob, getJob, generateJobId, getJobsByStatus } from '@/lib/jobs/job-store';
 import { uploadAsset } from '@/lib/storage/blob-storage';
 import { canGenerateVideo, recordVideoGeneration } from '@/lib/jobs/spending-tracker';
 import type { ClipGenerationJob } from '@/lib/jobs/types';
 import type { ClipAction } from '@/lib/game/types';
+
+// Fal model configurations
+const FAL_MODELS: Record<string, { id: string; name: string }> = {
+  'wan-2.1': { id: 'fal-ai/wan-i2v', name: 'Wan 2.1' },
+  'kling-2.1-standard': { id: 'fal-ai/kling-video/v2.1/standard/image-to-video', name: 'Kling 2.1 Std' },
+  'kling-2.1-pro': { id: 'fal-ai/kling-video/v2.1/pro/image-to-video', name: 'Kling 2.1 Pro' },
+};
 
 /**
  * Immediately backup operation ID to blob storage
@@ -93,7 +105,19 @@ const ACTION_PROMPTS: Record<string, { prompt: string; loop: boolean }> = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { creatureId, action, spriteUrl, description } = body;
+    const {
+      creatureId,
+      action,
+      spriteUrl,
+      description,
+      // Video generation settings (with defaults)
+      model = 'fal/wan-2.1',
+      provider: providedProvider,
+      durationSeconds = 5,
+      resolution = '720p',
+      aspectRatio = '1:1',
+      negativePrompt = 'blurry, distorted, low quality, text, watermark',
+    } = body;
 
     // Validate inputs
     if (!creatureId || !action || !spriteUrl) {
@@ -110,12 +134,108 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY not configured' },
-        { status: 500 }
-      );
+    // Determine provider from model ID
+    const isFalModel = model.startsWith('fal/');
+    const provider = providedProvider || (isFalModel ? 'fal' : 'veo');
+    const falModelKey = isFalModel ? model.replace('fal/', '') : null;
+
+    // Model-specific configurations
+    const MODEL_CONFIG: Record<string, {
+      validDurations: number[];
+      validResolutions: string[];
+      validAspectRatios: string[];
+      defaultDuration: number;
+      defaultAspectRatio: string;
+    }> = {
+      'wan-2.1': {
+        validDurations: [5, 6],
+        validResolutions: ['480p', '720p'],
+        validAspectRatios: ['auto', '1:1', '16:9', '9:16'],
+        defaultDuration: 5,
+        defaultAspectRatio: '1:1',
+      },
+      'kling-2.1-standard': {
+        validDurations: [5, 10],
+        validResolutions: ['480p', '720p'],
+        validAspectRatios: [], // Uses input image aspect
+        defaultDuration: 5,
+        defaultAspectRatio: 'auto',
+      },
+      'kling-2.1-pro': {
+        validDurations: [5, 10],
+        validResolutions: ['480p', '720p'],
+        validAspectRatios: ['1:1', '16:9', '9:16'],
+        defaultDuration: 5,
+        defaultAspectRatio: '1:1',
+      },
+    };
+
+    // Validate video settings based on provider and model
+    let finalDuration: number;
+    let finalResolution: string;
+    let finalAspectRatio: string;
+
+    if (provider === 'fal') {
+      const config = MODEL_CONFIG[falModelKey || 'wan-2.1'];
+
+      // Duration validation
+      if (config.validDurations.includes(durationSeconds)) {
+        finalDuration = durationSeconds;
+      } else {
+        // Find closest valid duration
+        finalDuration = config.validDurations.reduce((prev, curr) =>
+          Math.abs(curr - durationSeconds) < Math.abs(prev - durationSeconds) ? curr : prev
+        );
+      }
+
+      finalResolution = config.validResolutions.includes(resolution) ? resolution : '720p';
+
+      // Aspect ratio: only set if model supports it
+      if (config.validAspectRatios.length === 0) {
+        finalAspectRatio = 'auto'; // Model uses input image aspect
+      } else if (config.validAspectRatios.includes(aspectRatio)) {
+        finalAspectRatio = aspectRatio;
+      } else {
+        finalAspectRatio = config.defaultAspectRatio;
+      }
+    } else {
+      // Veo settings: no 1:1, 4-8s duration
+      const validDurations = [4, 6, 8];
+      const validResolutions = ['720p', '1080p'];
+      const validAspectRatios = ['16:9', '9:16'];
+
+      finalDuration = validDurations.includes(durationSeconds) ? durationSeconds : 4;
+      finalResolution = validResolutions.includes(resolution) ? resolution : '720p';
+      finalAspectRatio = validAspectRatios.includes(aspectRatio) ? aspectRatio : '16:9';
+
+      // 1080p only available for 8s videos on Veo
+      if (finalResolution === '1080p' && finalDuration !== 8) {
+        finalResolution = '720p';
+      }
+    }
+
+    console.log(`[ClipJob] Provider: ${provider}, Model: ${model}`);
+    console.log(`[ClipJob] Video settings: duration=${finalDuration}s, resolution=${finalResolution}, aspectRatio=${finalAspectRatio}`);
+
+    // Check API keys based on provider
+    if (provider === 'fal') {
+      const falApiKey = process.env.FAL_KEY || process.env.FAL_API_KEY;
+      if (!falApiKey) {
+        return NextResponse.json(
+          { error: 'FAL_KEY not configured. Add FAL_KEY to your environment variables.' },
+          { status: 500 }
+        );
+      }
+      // Configure Fal client
+      fal.config({ credentials: falApiKey });
+    } else {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json(
+          { error: 'GEMINI_API_KEY not configured' },
+          { status: 500 }
+        );
+      }
     }
 
     // CHECK 1: Prevent duplicate jobs for same creature+action
@@ -199,54 +319,195 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Start video generation BEFORE creating job (to get operation ID first)
-    const ai = new GoogleGenAI({ apiKey });
-
+    // Start video generation based on provider
     try {
-      // Use image-to-video: pass the sprite as the starting frame
-      // This ensures the generated video animates FROM the actual sprite
-      const requestConfig: any = {
-        model: 'veo-3.1-generate-preview',
-        prompt,
-        // Use 'image' parameter for image-to-video generation
-        // This makes the sprite the first frame that gets animated
-        image: {
-          imageBytes: imageBytes,
-          mimeType: imageMimeType,
-        },
-      };
-      console.log(`[ClipJob] Calling Gemini video API with image-to-video...`);
-      const operation = await ai.models.generateVideos(requestConfig);
-      console.log(`[ClipJob] Gemini response: operation name=${operation?.name}`);
+      let operationId: string;
+      let videoUrl: string | null = null;
 
-      if (!operation?.name) {
-        throw new Error('Gemini API did not return an operation name');
+      if (provider === 'fal') {
+        // ========== FAL.AI VIDEO GENERATION ==========
+        console.log(`[ClipJob] Using Fal.ai provider with model: ${falModelKey}`);
+
+        const falModel = falModelKey ? FAL_MODELS[falModelKey] : null;
+        if (!falModel) {
+          throw new Error(`Unknown Fal model: ${falModelKey}`);
+        }
+
+        // For Fal, we can use the sprite URL directly (no need to convert to base64)
+        let falInput: any;
+
+        if (falModelKey === 'wan-2.1') {
+          // Wan 2.1 specific parameters
+          // Duration is controlled by num_frames (81-100 at 16fps = ~5-6s)
+          const numFrames = Math.min(100, Math.max(81, finalDuration * 16));
+          falInput = {
+            prompt,
+            image_url: spriteUrl,
+            negative_prompt: negativePrompt,
+            aspect_ratio: finalAspectRatio, // Wan supports: auto, 1:1, 16:9, 9:16
+            resolution: finalResolution,
+            num_frames: numFrames,
+            frames_per_second: 16,
+            enable_safety_checker: true,
+            acceleration: 'regular',
+          };
+        } else if (falModelKey === 'kling-2.1-standard') {
+          // Kling 2.1 Standard - does NOT support aspect_ratio for image-to-video
+          // It uses the input image's aspect ratio
+          falInput = {
+            prompt,
+            image_url: spriteUrl,
+            negative_prompt: negativePrompt,
+            duration: String(finalDuration <= 5 ? 5 : 10) as '5' | '10',
+            cfg_scale: 0.5,
+          };
+        } else {
+          // Kling 2.1 Pro - supports aspect_ratio
+          falInput = {
+            prompt,
+            image_url: spriteUrl,
+            negative_prompt: negativePrompt,
+            duration: String(finalDuration <= 5 ? 5 : 10) as '5' | '10',
+            aspect_ratio: finalAspectRatio as '1:1' | '16:9' | '9:16',
+            cfg_scale: 0.5,
+          };
+        }
+
+        console.log(`[ClipJob] Calling Fal API: ${falModel.id}...`);
+
+        const result = await fal.subscribe(falModel.id, {
+          input: falInput,
+          logs: true,
+          onQueueUpdate: (update) => {
+            if (update.status === 'IN_PROGRESS') {
+              console.log(`[ClipJob] Fal progress: ${update.logs?.map((log: any) => log.message).join(', ') || 'generating...'}`);
+            }
+          },
+        });
+
+        if (!result?.data?.video?.url) {
+          throw new Error('Fal API did not return a video URL');
+        }
+
+        // For Fal, we get the video URL directly (no polling needed)
+        videoUrl = result.data.video.url;
+        operationId = `fal-${result.requestId}`;
+        console.log(`[ClipJob] Fal video generated: ${videoUrl}`);
+
+        // Record spending
+        await recordVideoGeneration();
+
+        // Download the video from Fal and upload to our blob storage
+        console.log(`[ClipJob] Downloading Fal video and uploading to blob storage...`);
+        const videoResponse = await fetch(videoUrl!);
+        if (!videoResponse.ok) {
+          throw new Error(`Failed to download Fal video: ${videoResponse.status}`);
+        }
+        const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+
+        const videoPath = `creatures/${creatureId}/clips/${action}.mp4`;
+        const videoResult = await uploadAsset(videoPath, videoBuffer, 'video/mp4');
+        console.log(`[ClipJob] Video uploaded to: ${videoResult.url}`);
+
+        // Create completed job directly (Fal is synchronous)
+        const job = await createJob<ClipGenerationJob>({
+          id: jobId,
+          type: 'clip_generation',
+          status: 'completed',
+          progress: 100,
+          progressMessage: 'Clip generation complete!',
+          input: {
+            creatureId,
+            action,
+            spriteUrl,
+            description,
+          },
+          operationId,
+          result: {
+            videoUrl: videoResult.url,
+            duration: finalDuration * 1000,
+            frameRate: 24,
+          },
+          metadata: {
+            durationSeconds: finalDuration,
+            resolution: finalResolution,
+            aspectRatio: finalAspectRatio,
+            model: model,
+            provider: 'fal',
+          },
+        } as any);
+
+        return NextResponse.json({
+          success: true,
+          jobId,
+          status: 'completed',
+          videoUrl: videoResult.url,
+          message: `Clip generated successfully with ${falModel.name}`,
+        });
+
+      } else {
+        // ========== GOOGLE VEO VIDEO GENERATION ==========
+        const apiKey = process.env.GEMINI_API_KEY!;
+        const ai = new GoogleGenAI({ apiKey });
+
+        // Use image-to-video: pass the sprite as the starting frame
+        const requestConfig: any = {
+          model: model,
+          prompt,
+          image: {
+            imageBytes: imageBytes,
+            mimeType: imageMimeType,
+          },
+          config: {
+            aspectRatio: finalAspectRatio,
+            durationSeconds: finalDuration,
+            resolution: finalResolution,
+            ...(negativePrompt && { negativePrompt }),
+          },
+        };
+
+        console.log(`[ClipJob] Calling Gemini video API with image-to-video (${finalDuration}s, ${finalResolution}, ${finalAspectRatio})...`);
+        const operation = await ai.models.generateVideos(requestConfig);
+        console.log(`[ClipJob] Gemini response: operation name=${operation?.name}`);
+
+        if (!operation?.name) {
+          throw new Error('Gemini API did not return an operation name');
+        }
+
+        operationId = operation.name;
+
+        // CRITICAL: Immediately backup the operation ID
+        await backupOperationId(operationId, jobId, creatureId, action, spriteUrl);
+
+        // Record this video generation for spending tracking
+        await recordVideoGeneration();
       }
 
-      // CRITICAL: Immediately backup the operation ID before doing ANYTHING else
-      // This ensures we can recover the video even if everything else fails
-      await backupOperationId(operation.name, jobId, creatureId, action, spriteUrl);
-
-      // Record this video generation for spending tracking
-      await recordVideoGeneration();
-
-      // Create job record with operation ID already set (single write - no race condition)
+      // Create job record for Veo (async polling required)
       const job = await createJob<ClipGenerationJob>({
         id: jobId,
         type: 'clip_generation',
         status: 'processing',
         progress: 10,
-        progressMessage: 'Video generation started...',
+        progressMessage: `Video generation started (${finalDuration}s, ${finalResolution})...`,
         input: {
           creatureId,
           action,
           spriteUrl,
           description,
         },
-        operationId: operation.name,
-      });
+        operationId,
+        // Store video settings for result
+        metadata: {
+          durationSeconds: finalDuration,
+          resolution: finalResolution,
+          aspectRatio: finalAspectRatio,
+          model: model,
+          provider: 'veo',
+        },
+      } as any);
 
-      console.log(`[ClipJob] Job ${jobId} created with operation: ${operation.name}`);
+      console.log(`[ClipJob] Job ${jobId} created with operation: ${operationId}`);
 
       return NextResponse.json({
         success: true,
@@ -521,13 +782,17 @@ async function doProcessClipJob(
         // TODO: Extract frames (would need client-side or different server-side approach)
         // For now, just save the video and mark complete
 
+        // Get duration from job metadata or default to 4 seconds
+        const jobMetadata = (job as any).metadata;
+        const durationMs = (jobMetadata?.durationSeconds || 4) * 1000;
+
         const result = await updateJob<ClipGenerationJob>(job.id, {
           status: 'completed',
           progress: 100,
           progressMessage: 'Clip generation complete!',
           result: {
             videoUrl: videoResult.url,
-            duration: 4000, // Default 4 seconds
+            duration: durationMs,
             frameRate: 24,
           },
         });

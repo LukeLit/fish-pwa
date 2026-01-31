@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import FeedbackButton from './FeedbackButton';
+import { Z_LAYERS } from '@/lib/ui/z-layers';
 
 interface SettingsDrawerProps {
   /** Whether this is in game mode (shows different options) */
@@ -64,10 +65,11 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
 
   return (
     <>
-      {/* Menu Button */}
+      {/* Menu Button - Positioned absolutely in top-right */}
       <button
         onClick={() => setIsOpen(true)}
-        className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
+        className="absolute top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
+        style={{ zIndex: Z_LAYERS.CONTROLS }}
         title="Settings Menu"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -78,12 +80,14 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
       {/* Backdrop + Drawer */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          style={{ zIndex: Z_LAYERS.DRAWER_BACKDROP }}
           onClick={handleBackdropClick}
         >
           {/* Drawer Panel */}
           <div
             className="absolute top-0 right-0 h-full w-72 bg-gray-900 border-l border-gray-700 shadow-2xl flex flex-col animate-slide-in-right"
+            style={{ zIndex: Z_LAYERS.DRAWER }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

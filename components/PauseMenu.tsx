@@ -12,6 +12,7 @@ import BackgroundEditOverlay from './BackgroundEditOverlay';
 import GenerationSettingsPanel from './GenerationSettingsPanel';
 import JobsPanel from './JobsPanel';
 import type { BackgroundAsset } from '@/lib/game/types';
+import { Z_LAYERS } from '@/lib/ui/z-layers';
 
 interface PlayerStats {
   size: number;
@@ -234,8 +235,8 @@ export default function PauseMenu({
 
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md z-50 flex flex-col border-t border-gray-700"
-      style={{ height: '50%', maxHeight: '600px' }}
+      className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md flex flex-col border-t border-gray-700"
+      style={{ height: '50%', maxHeight: '600px', zIndex: Z_LAYERS.PANEL }}
     >
       {/* Action Bar - Only shown when editing a fish (TOP position) */}
       {editingFish && selectedFish && (

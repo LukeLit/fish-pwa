@@ -19,15 +19,46 @@ interface SpendingStatus {
 
 // Available image generation models
 const IMAGE_MODELS = [
-  { id: 'google/imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast', provider: 'Google', cost: '$' },
-  { id: 'google/imagen-4.0-generate-001', name: 'Imagen 4', provider: 'Google', cost: '$$' },
-  { id: 'bfl/flux-2-pro', name: 'Flux 2 Pro', provider: 'Black Forest Labs', cost: '$$' },
+  { id: 'google/imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast', provider: 'Google', cost: '$0.02' },
+  { id: 'google/imagen-4.0-generate-001', name: 'Imagen 4', provider: 'Google', cost: '$0.04' },
+  { id: 'bfl/flux-2-pro', name: 'Flux 2 Pro', provider: 'Black Forest Labs', cost: '$0.05' },
 ];
 
-// Available video generation models
+// Available video generation models with per-second pricing
+// Organized by provider with feature support
+// aspectRatios: which ratios the model supports (empty = uses input image aspect)
 const VIDEO_MODELS = [
-  { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', provider: 'Google', cost: '$$$$' },
-  { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', provider: 'Google', cost: '$$$' },
+  // Fal.ai models
+  { id: 'fal/wan-2.1', name: 'Wan 2.1', provider: 'Fal.ai', costPerSecond: 0.05, aspectRatios: ['auto', '1:1', '16:9', '9:16'], minDuration: 5, maxDuration: 6 },
+  { id: 'fal/kling-2.1-standard', name: 'Kling 2.1 Std', provider: 'Fal.ai', costPerSecond: 0.05, aspectRatios: [], minDuration: 5, maxDuration: 10 }, // Uses input image aspect
+  { id: 'fal/kling-2.1-pro', name: 'Kling 2.1 Pro', provider: 'Fal.ai', costPerSecond: 0.09, aspectRatios: ['1:1', '16:9', '9:16'], minDuration: 5, maxDuration: 10 },
+  // Google Veo models - higher quality, no 1:1 support
+  { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', provider: 'Google', costPerSecond: 0.15, aspectRatios: ['16:9', '9:16'], minDuration: 4, maxDuration: 8 },
+  { id: 'veo-3.1-generate-preview', name: 'Veo 3.1 Standard', provider: 'Google', costPerSecond: 0.40, aspectRatios: ['16:9', '9:16'], minDuration: 4, maxDuration: 8 },
+];
+
+// Video duration options - filtered dynamically based on model
+const DURATION_OPTIONS = [
+  { value: 4, label: '4s' },
+  { value: 5, label: '5s' },
+  { value: 6, label: '6s' },
+  { value: 8, label: '8s' },
+  { value: 10, label: '10s' },
+];
+
+// Resolution options
+const RESOLUTION_OPTIONS = [
+  { value: '480p', label: '480p', description: 'fastest' },
+  { value: '720p', label: '720p', description: 'default' },
+  { value: '1080p', label: '1080p', description: 'Veo 8s only' },
+];
+
+// Aspect ratio options
+const ASPECT_RATIO_OPTIONS = [
+  { value: 'auto', label: 'Auto', description: 'from input image' },
+  { value: '1:1', label: '1:1', description: 'square' },
+  { value: '16:9', label: '16:9', description: 'landscape' },
+  { value: '9:16', label: '9:16', description: 'portrait' },
 ];
 
 export default function GenerationSettingsPanel() {
@@ -35,12 +66,28 @@ export default function GenerationSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Local state for settings (would be saved to localStorage or server)
+  // Local state for settings (saved to localStorage)
   const [dailyVideoLimit, setDailyVideoLimit] = useState(10);
   const [selectedImageModel, setSelectedImageModel] = useState('google/imagen-4.0-fast-generate-001');
-  const [selectedVideoModel, setSelectedVideoModel] = useState('veo-3.1-generate-preview');
+  const [selectedVideoModel, setSelectedVideoModel] = useState('fal/wan-2.1'); // Default to cheapest
   const [enableVideoGeneration, setEnableVideoGeneration] = useState(true);
   const [enableDirectMode, setEnableDirectMode] = useState(false);
+
+  // Video configuration
+  const [videoDuration, setVideoDuration] = useState(5); // Default 5s for Fal
+  const [videoResolution, setVideoResolution] = useState('720p');
+  const [videoAspectRatio, setVideoAspectRatio] = useState('1:1'); // Square for fish!
+  const [negativePrompt, setNegativePrompt] = useState('blurry, distorted, low quality, text, watermark');
+
+  // Calculate cost estimate based on current settings
+  const selectedModel = VIDEO_MODELS.find(m => m.id === selectedVideoModel);
+  const estimatedCostPerVideo = selectedModel ? (selectedModel.costPerSecond * videoDuration) : 0;
+
+  // Get supported aspect ratios for current model
+  const supportedAspectRatios = selectedModel?.aspectRatios ?? [];
+  const modelSupportsAspectRatio = supportedAspectRatios.length > 0;
+  const modelSupports1to1 = supportedAspectRatios.includes('1:1');
+  const isFalModel = selectedVideoModel.startsWith('fal/');
 
   // Load spending status
   useEffect(() => {
@@ -79,6 +126,10 @@ export default function GenerationSettingsPanel() {
         if (settings.selectedVideoModel) setSelectedVideoModel(settings.selectedVideoModel);
         if (settings.enableVideoGeneration !== undefined) setEnableVideoGeneration(settings.enableVideoGeneration);
         if (settings.enableDirectMode !== undefined) setEnableDirectMode(settings.enableDirectMode);
+        if (settings.videoDuration) setVideoDuration(settings.videoDuration);
+        if (settings.videoResolution) setVideoResolution(settings.videoResolution);
+        if (settings.videoAspectRatio) setVideoAspectRatio(settings.videoAspectRatio);
+        if (settings.negativePrompt !== undefined) setNegativePrompt(settings.negativePrompt);
       } catch {
         // Ignore parse errors
       }
@@ -92,13 +143,17 @@ export default function GenerationSettingsPanel() {
       selectedVideoModel,
       enableVideoGeneration,
       enableDirectMode,
+      videoDuration,
+      videoResolution,
+      videoAspectRatio,
+      negativePrompt,
     };
     localStorage.setItem('generationSettings', JSON.stringify(settings));
   };
 
   useEffect(() => {
     saveSettings();
-  }, [selectedImageModel, selectedVideoModel, enableVideoGeneration, enableDirectMode]);
+  }, [selectedImageModel, selectedVideoModel, enableVideoGeneration, enableDirectMode, videoDuration, videoResolution, videoAspectRatio, negativePrompt]);
 
   return (
     <div className="px-4 pb-4 pt-2 space-y-6">
@@ -127,8 +182,8 @@ export default function GenerationSettingsPanel() {
             <div className="relative h-4 bg-gray-700 rounded-full overflow-hidden">
               <div
                 className={`absolute inset-y-0 left-0 rounded-full transition-all ${spendingStatus.percentUsed >= 90 ? 'bg-red-500' :
-                    spendingStatus.percentUsed >= 70 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                  spendingStatus.percentUsed >= 70 ? 'bg-yellow-500' :
+                    'bg-green-500'
                   }`}
                 style={{ width: `${Math.min(100, spendingStatus.percentUsed)}%` }}
               />
@@ -140,8 +195,8 @@ export default function GenerationSettingsPanel() {
                 {spendingStatus.today.videoGenerations} / {spendingStatus.limit} videos today
               </span>
               <span className={`font-bold ${spendingStatus.remaining > 5 ? 'text-green-400' :
-                  spendingStatus.remaining > 2 ? 'text-yellow-400' :
-                    'text-red-400'
+                spendingStatus.remaining > 2 ? 'text-yellow-400' :
+                  'text-red-400'
                 }`}>
                 {spendingStatus.remaining} remaining
               </span>
@@ -149,7 +204,7 @@ export default function GenerationSettingsPanel() {
 
             {/* Cost estimate */}
             <p className="text-xs text-gray-500">
-              ~${(spendingStatus.today.videoGenerations * 4).toFixed(0)} spent today (est. $4/video)
+              ~${(spendingStatus.today.videoGenerations * estimatedCostPerVideo).toFixed(2)} spent today (est. ${estimatedCostPerVideo.toFixed(2)}/video)
             </p>
           </div>
         ) : null}
@@ -169,9 +224,9 @@ export default function GenerationSettingsPanel() {
           className="w-full"
         />
         <div className="flex justify-between text-xs text-gray-400 mt-1">
-          <span>1 (~$4)</span>
-          <span>25 (~$100)</span>
-          <span>50 (~$200)</span>
+          <span>1 (~${estimatedCostPerVideo.toFixed(2)})</span>
+          <span>25 (~${(25 * estimatedCostPerVideo).toFixed(0)})</span>
+          <span>50 (~${(50 * estimatedCostPerVideo).toFixed(0)})</span>
         </div>
         <p className="text-xs text-gray-500 mt-2">
           Set via <code className="bg-gray-800 px-1 rounded">DAILY_VIDEO_LIMIT</code> env var on server
@@ -212,22 +267,208 @@ export default function GenerationSettingsPanel() {
         </h3>
 
         {enableVideoGeneration && (
-          <>
-            <label className="block text-sm text-gray-400 mb-2">Model</label>
-            <select
-              value={selectedVideoModel}
-              onChange={(e) => setSelectedVideoModel(e.target.value)}
-              className="w-full bg-gray-800 text-white border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-            >
-              {VIDEO_MODELS.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name} ({model.provider}) - {model.cost}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-4">
+            {/* Cost Estimate Card */}
+            <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-300">Estimated cost per video:</span>
+                <span className="text-lg font-bold text-green-400">${estimatedCostPerVideo.toFixed(2)}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedModel?.name} @ ${selectedModel?.costPerSecond.toFixed(2)}/sec × {videoDuration}s
+              </p>
+            </div>
+
+            {/* Model Selection */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Model</label>
+              <select
+                value={selectedVideoModel}
+                onChange={(e) => {
+                  const newModel = e.target.value;
+                  setSelectedVideoModel(newModel);
+                  // Auto-adjust settings for model compatibility
+                  const model = VIDEO_MODELS.find(m => m.id === newModel);
+                  if (model) {
+                    // Adjust aspect ratio based on model support
+                    const ratios = model.aspectRatios;
+                    if (ratios.length === 0) {
+                      // Model uses input image aspect (Kling Standard)
+                      setVideoAspectRatio('auto');
+                    } else if (!ratios.includes(videoAspectRatio)) {
+                      // Current ratio not supported, pick first available
+                      setVideoAspectRatio(ratios.includes('1:1') ? '1:1' : ratios[0]);
+                    }
+                    // Adjust duration if outside model's supported range
+                    if (videoDuration < model.minDuration) {
+                      setVideoDuration(model.minDuration);
+                    } else if (videoDuration > model.maxDuration) {
+                      setVideoDuration(model.maxDuration);
+                    }
+                    // Reset 1080p resolution when switching to Fal (not supported)
+                    if (model.id.startsWith('fal/') && videoResolution === '1080p') {
+                      setVideoResolution('720p');
+                    }
+                  }
+                }}
+                className="w-full bg-gray-800 text-white border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <optgroup label="Fal.ai (cheaper, 1:1 support)">
+                  {VIDEO_MODELS.filter(m => m.id.startsWith('fal/')).map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} - ${model.costPerSecond.toFixed(2)}/sec
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Google Veo (higher quality)">
+                  {VIDEO_MODELS.filter(m => !m.id.startsWith('fal/')).map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} - ${model.costPerSecond.toFixed(2)}/sec
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedModel?.id === 'fal/wan-2.1' && 'Wan 2.1: 1:1 square support, 5-6s, cheapest'}
+                {selectedModel?.id === 'fal/kling-2.1-standard' && 'Kling Std: Uses input image aspect ratio, 5-10s'}
+                {selectedModel?.id === 'fal/kling-2.1-pro' && 'Kling Pro: 1:1 square support, 5-10s, higher quality'}
+                {!isFalModel && 'Google Veo: 4-8s duration, 16:9 or 9:16 only'}
+              </p>
+            </div>
+
+            {/* Duration Selection */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Duration</label>
+              <div className="grid grid-cols-3 gap-2">
+                {DURATION_OPTIONS.map((opt) => {
+                  const minDur = selectedModel?.minDuration ?? 4;
+                  const maxDur = selectedModel?.maxDuration ?? 10;
+                  const disabled = opt.value < minDur || opt.value > maxDur;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        if (disabled) return;
+                        setVideoDuration(opt.value);
+                        // Reset resolution to 720p if duration isn't 8s (Veo 1080p constraint)
+                        if (opt.value !== 8 && videoResolution === '1080p' && !isFalModel) {
+                          setVideoResolution('720p');
+                        }
+                      }}
+                      disabled={disabled}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${videoDuration === opt.value
+                        ? 'bg-blue-600 text-white'
+                        : disabled
+                          ? 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                        }`}
+                      title={disabled ? `${selectedModel?.name} supports ${minDur}-${maxDur}s` : ''}
+                    >
+                      {opt.value}s
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {selectedModel?.name} supports {selectedModel?.minDuration}-{selectedModel?.maxDuration}s duration.
+              </p>
+            </div>
+
+            {/* Resolution Selection */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Resolution</label>
+              <div className="grid grid-cols-2 gap-2">
+                {RESOLUTION_OPTIONS.map((opt) => {
+                  // 1080p: Veo only, 8s only
+                  const is1080p = opt.value === '1080p';
+                  const disabled = is1080p && (isFalModel || videoDuration !== 8);
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => !disabled && setVideoResolution(opt.value)}
+                      disabled={disabled}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${videoResolution === opt.value
+                        ? 'bg-blue-600 text-white'
+                        : disabled
+                          ? 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                        }`}
+                      title={disabled ? (isFalModel ? '1080p requires Google Veo' : '1080p requires 8s duration') : ''}
+                    >
+                      {opt.value}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {isFalModel ? 'Fal.ai supports 480p and 720p' : '1080p available with Veo at 8s duration'}
+              </p>
+            </div>
+
+            {/* Aspect Ratio Selection */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Aspect Ratio</label>
+              {!modelSupportsAspectRatio ? (
+                <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+                  <p className="text-sm text-gray-300">
+                    <span className="text-yellow-400">Auto</span> - {selectedModel?.name} uses the input image&apos;s aspect ratio
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use a square sprite for square output
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    {ASPECT_RATIO_OPTIONS.map((opt) => {
+                      const supported = supportedAspectRatios.includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => supported && setVideoAspectRatio(opt.value)}
+                          disabled={!supported}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${videoAspectRatio === opt.value
+                            ? 'bg-blue-600 text-white'
+                            : !supported
+                              ? 'bg-gray-800/50 text-gray-600 cursor-not-allowed'
+                              : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                            }`}
+                          title={!supported ? `${selectedModel?.name} doesn't support ${opt.value}` : opt.description}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {videoAspectRatio === '1:1' && modelSupports1to1 && (
+                    <p className="text-xs text-green-500/80 mt-2">
+                      Square output - perfect for fish sprites!
+                    </p>
+                  )}
+                  {!modelSupports1to1 && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      {selectedModel?.name} supports: {supportedAspectRatios.join(', ')}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Negative Prompt */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Negative Prompt</label>
+              <textarea
+                value={negativePrompt}
+                onChange={(e) => setNegativePrompt(e.target.value)}
+                placeholder="Things to avoid in the video..."
+                rows={2}
+                className="w-full bg-gray-800 text-white border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Elements to exclude from generated videos</p>
+            </div>
 
             {/* Direct Mode Toggle */}
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer pt-2">
               <input
                 type="checkbox"
                 checked={enableDirectMode}
@@ -236,10 +477,10 @@ export default function GenerationSettingsPanel() {
               />
               <span className="text-sm text-white">Use Direct Mode (bypasses job queue)</span>
             </label>
-            <p className="text-xs text-gray-500 mt-1 ml-6">
+            <p className="text-xs text-gray-500 ml-6">
               Direct mode is faster for testing but doesn't support background processing.
             </p>
-          </>
+          </div>
         )}
       </div>
 
@@ -248,7 +489,14 @@ export default function GenerationSettingsPanel() {
         <h3 className="text-sm font-bold text-white mb-3">API Status</h3>
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400">Gemini API (Video)</span>
+            <span className="text-gray-400">Fal.ai (Video)</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-green-400">Connected</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-400">Google Veo (Video)</span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-green-500" />
               <span className="text-green-400">Connected</span>

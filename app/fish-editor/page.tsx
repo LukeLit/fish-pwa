@@ -13,6 +13,7 @@ import { type FishData } from '@/components/FishEditOverlay';
 import PauseMenu from '@/components/PauseMenu';
 import ArtSelectorPanel from '@/components/ArtSelectorPanel';
 import SettingsDrawer from '@/components/SettingsDrawer';
+import { Z_LAYERS } from '@/lib/ui/z-layers';
 
 // Constants
 const DEFAULT_ZOOM = 1.0;
@@ -476,8 +477,8 @@ export default function FishEditorPage() {
 
   return (
     <div className="relative w-full h-screen bg-black flex flex-col overflow-hidden">
-      {/* Top Right Icon Buttons */}
-      <div className="absolute top-4 right-4 z-40 flex gap-2">
+      {/* Top Right Icon Buttons - offset right to make room for menu button */}
+      <div className="absolute top-4 right-16 flex gap-2" style={{ zIndex: Z_LAYERS.CONTROLS }}>
         {/* Refresh Textures Icon */}
         <button
           onClick={() => {
@@ -507,15 +508,16 @@ export default function FishEditorPage() {
             </svg>
           )}
         </button>
-        {/* Settings Menu */}
-        <SettingsDrawer mode="editor" />
       </div>
+
+      {/* Settings Drawer - Rendered at page level to avoid stacking context issues */}
+      <SettingsDrawer mode="editor" />
 
       {/* Fish Name Bar with Prev/Next - Docked above the Pause Menu */}
       {paused && selectedFish && (
         <div
-          className="absolute left-0 right-0 z-40 flex items-center justify-between px-4 py-2"
-          style={{ bottom: '50%' }}
+          className="absolute left-0 right-0 flex items-center justify-between px-4 py-2"
+          style={{ bottom: '50%', zIndex: Z_LAYERS.CONTROLS }}
         >
           {/* Previous Arrow */}
           <button
@@ -677,7 +679,7 @@ export default function FishEditorPage() {
 
       {/* Bottom Right Edit Button - Hidden when pause menu is open */}
       {!paused && (
-        <div className="absolute bottom-20 right-4 z-40">
+        <div className="absolute bottom-20 right-4" style={{ zIndex: Z_LAYERS.CONTROLS }}>
           <button
             onClick={() => setPaused(true)}
             className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-4 py-2 rounded-lg shadow-lg border-2 border-cyan-400/50 font-bold uppercase tracking-wider transition-all hover:scale-105 flex items-center gap-2"
