@@ -35,15 +35,9 @@ export async function POST(request: NextRequest) {
 
     let spriteUrl: string | undefined;
 
-    // CACHE FIX: Delete existing sprite and metadata files first to invalidate CDN cache
+    // CACHE FIX: Delete existing metadata file to invalidate CDN cache
+    // NOTE: Only delete sprite when uploading a new one (handled below)
     try {
-      // Find and delete existing sprite
-      const existingSprites = await list({ prefix: `assets/creatures/${creatureId}.png` });
-      for (const blob of existingSprites.blobs) {
-        console.log('[SaveCreature] Deleting existing sprite:', blob.url);
-        await del(blob.url);
-      }
-
       // Find and delete existing metadata
       const existingMetadata = await list({ prefix: `assets/creatures/${creatureId}.json` });
       for (const blob of existingMetadata.blobs) {

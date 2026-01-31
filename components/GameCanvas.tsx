@@ -345,8 +345,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
       </div>
 
-      {/* Pause Button + Settings Menu */}
-      <div className="absolute top-4 right-4 z-40 flex gap-2">
+      {/* Pause Button - offset right to make room for settings menu button */}
+      <div className="absolute top-4 right-16 z-40 flex gap-2">
         <button
           onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
           className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
@@ -362,9 +362,10 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             </svg>
           )}
         </button>
-        {/* Settings Menu */}
-        <SettingsDrawer mode="game" />
       </div>
+
+      {/* Settings Menu - Rendered at page level to avoid stacking context issues */}
+      <SettingsDrawer mode="game" />
 
       <FishEditorCanvas
         background={selectedBackground}

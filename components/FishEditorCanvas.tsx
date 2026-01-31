@@ -127,9 +127,15 @@ export default function FishEditorCanvas({
 
   // Zoom control constants and refs
   const MIN_ZOOM = 0.5;
-  const MAX_ZOOM = 3.0;
+  const MAX_ZOOM = 5.0;
   const pinchRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
 
+  // Camera pan refs for edit/paused mode
+  const cameraPanRef = useRef({ x: 0, y: 0 });
+  const dragStartRef = useRef<{ x: number; y: number; camX: number; camY: number } | null>(null);
+  const isDraggingRef = useRef(false);
+  // Track effective camera position used in rendering (for button click detection)
+  const effectiveCameraRef = useRef({ x: 0, y: 0 });
 
   // Update refs when props change
   useEffect(() => { chromaToleranceRef.current = chromaTolerance }, [chromaTolerance])
@@ -142,7 +148,14 @@ export default function FishEditorCanvas({
   useEffect(() => { editModeRef.current = editMode }, [editMode])
   useEffect(() => { selectedFishIdRef.current = selectedFishId }, [selectedFishId])
   useEffect(() => { fishDataRef.current = fishData }, [fishData])
-  useEffect(() => { pausedRef.current = paused }, [paused])
+  useEffect(() => {
+    pausedRef.current = paused;
+    // When entering paused mode, initialize camera pan to current player position
+    if (paused) {
+      const player = playerRef.current;
+      cameraPanRef.current = { x: player.x, y: player.y };
+    }
+  }, [paused])
   useEffect(() => { showEditButtonsRef.current = showEditButtons }, [showEditButtons])
 
   // Shared spawn logic for player and AI
@@ -184,8 +197,12 @@ export default function FishEditorCanvas({
       return;
     }
 
-    const canvas = canvasRef.current;
-    const pos = canvas ? { x: Math.random() * canvas.width, y: Math.random() * canvas.height } : { x: 400, y: 300 };
+    // Spawn within world bounds instead of canvas dimensions
+    const bounds = worldBoundsRef.current;
+    const pos = {
+      x: bounds.minX + Math.random() * (bounds.maxX - bounds.minX),
+      y: bounds.minY + Math.random() * (bounds.maxY - bounds.minY),
+    };
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -373,11 +390,14 @@ export default function FishEditorCanvas({
     const y = (clientY - rect.top) * scaleY;
 
     // Check if click is on an edit button
-    const currentZoom = zoomRef.current;
+    const currentZoom = animatedZoomRef.current;
+    const cam = effectiveCameraRef.current;
+
     for (const [fishId, pos] of editButtonPositionsRef.current.entries()) {
-      // Calculate button position in screen space (same as rendering)
-      const screenX = pos.x * currentZoom;
-      const screenY = pos.y * currentZoom - pos.size * currentZoom / 2 - 24 - 5;
+      // Calculate button position in screen space (same formula as rendering)
+      // screenPos = (worldPos - cameraPos) * zoom + canvas.center
+      const screenX = (pos.x - cam.x) * currentZoom + canvas.width / 2;
+      const screenY = (pos.y - cam.y) * currentZoom + canvas.height / 2 - pos.size * currentZoom / 2 - 24 - 5;
       const buttonSize = 24;
 
       const dx = x - screenX;
@@ -405,9 +425,71 @@ export default function FishEditorCanvas({
       if (checkEditButtonClick(touch.clientX, touch.clientY)) {
         e.stopPropagation();
         e.preventDefault();
+        return;
+      }
+      // Start camera pan drag in paused mode (but NOT when editing a specific fish)
+      // When a fish is selected for editing, camera locks to that fish
+      if (pausedRef.current && !selectedFishIdRef.current) {
+        dragStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          camX: cameraPanRef.current.x,
+          camY: cameraPanRef.current.y,
+        };
+        isDraggingRef.current = true;
       }
     }
   }, [checkEditButtonClick]);
+
+  // Camera pan handlers for paused mode (disabled when editing a specific fish)
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Only enable pan in paused mode when NOT editing a specific fish
+    // When a fish is selected, camera locks to that fish
+    if (pausedRef.current && !selectedFishIdRef.current) {
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        camX: cameraPanRef.current.x,
+        camY: cameraPanRef.current.y,
+      };
+      isDraggingRef.current = true;
+    }
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDraggingRef.current || !dragStartRef.current) return;
+
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    const currentZoom = animatedZoomRef.current;
+
+    // Update camera pan (invert direction for natural drag feel, scale by zoom)
+    cameraPanRef.current.x = dragStartRef.current.camX - dx / currentZoom;
+    cameraPanRef.current.y = dragStartRef.current.camY - dy / currentZoom;
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isDraggingRef.current = false;
+    dragStartRef.current = null;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDraggingRef.current || !dragStartRef.current || e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragStartRef.current.x;
+    const dy = touch.clientY - dragStartRef.current.y;
+    const currentZoom = animatedZoomRef.current;
+
+    // Update camera pan (invert direction for natural drag feel, scale by zoom)
+    cameraPanRef.current.x = dragStartRef.current.camX - dx / currentZoom;
+    cameraPanRef.current.y = dragStartRef.current.camY - dy / currentZoom;
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    isDraggingRef.current = false;
+    dragStartRef.current = null;
+  }, []);
 
   useEffect(() => {
     setIsClient(true);
@@ -1304,17 +1386,20 @@ export default function FishEditorCanvas({
         }
       }
 
-      // Game mode: constrain to world bounds, else wrap around screen
-      if (gameMode) {
-        // Constrain player to world bounds
-        const bounds = worldBoundsRef.current;
-        player.x = Math.max(bounds.minX, Math.min(bounds.maxX, player.x));
-        player.y = Math.max(bounds.minY, Math.min(bounds.maxY, player.y));
+      // Constrain player to world bounds (unified for all modes)
+      const bounds = worldBoundsRef.current;
+      player.x = Math.max(bounds.minX, Math.min(bounds.maxX, player.x));
+      player.y = Math.max(bounds.minY, Math.min(bounds.maxY, player.y));
 
-        // Update camera to follow player
+      // Camera follow: in play mode (not edit, not paused), follow player
+      // In edit/paused mode, camera is controlled by pan (handled elsewhere)
+      if (!currentEditMode && !isPaused) {
         cameraRef.current.x = player.x;
         cameraRef.current.y = player.y;
+      }
 
+      // Game mode specific: update score and report stats
+      if (gameMode) {
         // Update score based on size
         scoreRef.current = Math.floor((player.size - player.baseSize) * 10);
 
@@ -1329,12 +1414,6 @@ export default function FishEditorCanvas({
             timeSurvived,
           });
         }
-      } else {
-        // Wrap around screen (editor mode)
-        if (player.x < 0) player.x = canvas.width;
-        if (player.x > canvas.width) player.x = 0;
-        if (player.y < 0) player.y = canvas.height;
-        if (player.y > canvas.height) player.y = 0;
       }
 
       // Update AI fish (lock movement in edit mode or when paused)
@@ -1371,24 +1450,15 @@ export default function FishEditorCanvas({
         const fishSpeed = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
         fish.animTime += 0.04 + Math.min(0.04, (fishSpeed / 1.5) * 0.04);
 
-        // Game mode: keep fish in bounds, else wrap around
-        if (gameMode) {
-          const bounds = worldBoundsRef.current;
-          // Bounce off edges
-          if (fish.x < bounds.minX || fish.x > bounds.maxX) {
-            fish.vx = -fish.vx;
-            fish.x = Math.max(bounds.minX, Math.min(bounds.maxX, fish.x));
-          }
-          if (fish.y < bounds.minY || fish.y > bounds.maxY) {
-            fish.vy = -fish.vy;
-            fish.y = Math.max(bounds.minY, Math.min(bounds.maxY, fish.y));
-          }
-        } else {
-          // Wrap around (editor mode)
-          if (fish.x < 0) fish.x = canvas.width;
-          if (fish.x > canvas.width) fish.x = 0;
-          if (fish.y < 0) fish.y = canvas.height;
-          if (fish.y > canvas.height) fish.y = 0;
+        // Keep fish in world bounds (unified for all modes) - bounce off edges
+        const bounds = worldBoundsRef.current;
+        if (fish.x < bounds.minX || fish.x > bounds.maxX) {
+          fish.vx = -fish.vx;
+          fish.x = Math.max(bounds.minX, Math.min(bounds.maxX, fish.x));
+        }
+        if (fish.y < bounds.minY || fish.y > bounds.maxY) {
+          fish.vy = -fish.vy;
+          fish.y = Math.max(bounds.minY, Math.min(bounds.maxY, fish.y));
         }
 
         // Occasional direction change
@@ -1470,91 +1540,66 @@ export default function FishEditorCanvas({
       // Determine if we're using edit mode camera
       const usingEditCamera = useEditModeCamera || (isAnimating && targetZoomRef.current !== zoomRef.current);
 
+      // Calculate effective camera position BEFORE drawing (used for background parallax and transforms)
+      let effectiveCamX = 0;
+      let effectiveCamY = 0;
+
+      if (currentEditMode || isPaused) {
+        if (usingEditCamera) {
+          effectiveCamX = cameraX;
+          effectiveCamY = cameraY;
+        } else {
+          // Free pan mode
+          effectiveCamX = cameraPanRef.current.x;
+          effectiveCamY = cameraPanRef.current.y;
+        }
+      } else {
+        // Play mode: follow player
+        effectiveCamX = cameraRef.current.x;
+        effectiveCamY = cameraRef.current.y;
+      }
+
+      // Store for click detection
+      effectiveCameraRef.current = { x: effectiveCamX, y: effectiveCamY };
+
       // Draw background BEFORE camera translation (so it stays in place)
-      // For edit mode, we want the background to fill the view centered on the fish
+      // Use same parallax logic as game mode - background moves with camera but slower
       if (backgroundImageRef.current) {
         ctx.save();
         ctx.filter = 'blur(6px)';
 
-        if (gameMode) {
-          // Parallax background - moves opposite to camera but slower
-          // parallaxFactor 0 = fixed to screen, 1 = moves with world
-          const camera = cameraRef.current;
-          const parallaxFactor = 0.15; // Reduced from 0.3 to prevent edge showing
-          const bgScale = 1.3; // Scale up to provide buffer for parallax
+        // Unified parallax background logic (same as game mode)
+        // Uses effectiveCameraRef which tracks the actual camera position in all modes
+        const parallaxFactor = 0.15;
+        const bgScale = 1.3; // Scale up to provide buffer for parallax
 
-          // Calculate scaling to maintain aspect ratio (cover mode)
-          const img = backgroundImageRef.current;
-          const imgAspect = img.width / img.height;
-          const screenAspect = scaledWidth / scaledHeight;
+        // Calculate scaling to maintain aspect ratio (cover mode)
+        const img = backgroundImageRef.current;
+        const imgAspect = img.width / img.height;
+        const screenAspect = scaledWidth / scaledHeight;
 
-          let drawWidth, drawHeight;
-          if (imgAspect > screenAspect) {
-            drawHeight = scaledHeight * bgScale;
-            drawWidth = drawHeight * imgAspect;
-          } else {
-            drawWidth = scaledWidth * bgScale;
-            drawHeight = drawWidth / imgAspect;
-          }
-
-          // Center background, then offset by camera * parallaxFactor
-          // Clamp the offset to prevent showing edges
-          const maxOffsetX = (drawWidth - scaledWidth) / 2;
-          const maxOffsetY = (drawHeight - scaledHeight) / 2;
-          const rawOffsetX = camera.x * parallaxFactor;
-          const rawOffsetY = camera.y * parallaxFactor;
-          const clampedOffsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, rawOffsetX));
-          const clampedOffsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, rawOffsetY));
-
-          const bgX = (scaledWidth - drawWidth) / 2 - clampedOffsetX;
-          const bgY = (scaledHeight - drawHeight) / 2 - clampedOffsetY;
-
-          ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
-        } else if (usingEditCamera) {
-          // Edit mode with camera - draw background centered on fish position
-          const img = backgroundImageRef.current;
-          const imgAspect = img.width / img.height;
-          const screenAspect = scaledWidth / scaledHeight;
-
-          // Scale background to cover view with some extra for parallax effect
-          let drawWidth, drawHeight;
-          if (imgAspect > screenAspect) {
-            drawHeight = scaledHeight * 1.3;
-            drawWidth = drawHeight * imgAspect;
-          } else {
-            drawWidth = scaledWidth * 1.3;
-            drawHeight = drawWidth / imgAspect;
-          }
-
-          // Center background with parallax offset
-          const parallaxFactor = 0.3;
-          const bgX = (scaledWidth - drawWidth) / 2 - cameraX * parallaxFactor;
-          const bgY = (scaledHeight - drawHeight) / 2 - cameraY * parallaxFactor;
-
-          ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
+        let drawWidth, drawHeight;
+        if (imgAspect > screenAspect) {
+          drawHeight = scaledHeight * bgScale;
+          drawWidth = drawHeight * imgAspect;
         } else {
-          // Editor mode - cover mode background (maintain aspect ratio, center)
-          const img = backgroundImageRef.current;
-          const imgAspect = img.width / img.height;
-          const screenAspect = scaledWidth / scaledHeight;
-
-          let drawWidth, drawHeight;
-          if (imgAspect > screenAspect) {
-            // Image is wider - fit to height
-            drawHeight = scaledHeight;
-            drawWidth = scaledHeight * imgAspect;
-          } else {
-            // Image is taller - fit to width
-            drawWidth = scaledWidth;
-            drawHeight = scaledWidth / imgAspect;
-          }
-
-          // Center the background
-          const bgX = (scaledWidth - drawWidth) / 2;
-          const bgY = (scaledHeight - drawHeight) / 2;
-
-          ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
+          drawWidth = scaledWidth * bgScale;
+          drawHeight = drawWidth / imgAspect;
         }
+
+        // Center background, then offset by camera * parallaxFactor
+        // Clamp the offset to prevent showing edges
+        const maxOffsetX = (drawWidth - scaledWidth) / 2;
+        const maxOffsetY = (drawHeight - scaledHeight) / 2;
+        const rawOffsetX = effectiveCamX * parallaxFactor;
+        const rawOffsetY = effectiveCamY * parallaxFactor;
+        const clampedOffsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, rawOffsetX));
+        const clampedOffsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, rawOffsetY));
+
+        const bgX = (scaledWidth - drawWidth) / 2 - clampedOffsetX;
+        const bgY = (scaledHeight - drawHeight) / 2 - clampedOffsetY;
+
+        ctx.drawImage(backgroundImageRef.current, bgX, bgY, drawWidth, drawHeight);
         ctx.restore();
 
         // Add subtle vignette effect for polished look (both modes)
@@ -1594,35 +1639,28 @@ export default function FishEditorCanvas({
           ctx.restore();
         }
       } else {
-        // Default gradient background - need to account for camera offset in edit mode
-        if (usingEditCamera) {
-          const topAreaCenterY = scaledHeight * 0.25;
-          // Draw a larger gradient that covers the view even with camera offset
-          const offsetX = scaledWidth / 2 - cameraX;
-          const offsetY = topAreaCenterY - cameraY;
-          const gradient = ctx.createLinearGradient(-offsetX, -offsetY, -offsetX, scaledHeight - offsetY);
-          gradient.addColorStop(0, '#1e40af');
-          gradient.addColorStop(1, '#1e3a8a');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(-offsetX, -offsetY, scaledWidth * 2, scaledHeight * 2);
-        } else {
-          const gradient = ctx.createLinearGradient(0, 0, 0, scaledHeight);
-          gradient.addColorStop(0, '#1e40af');
-          gradient.addColorStop(1, '#1e3a8a');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(0, 0, scaledWidth, scaledHeight);
-        }
+        // Default gradient background - account for camera offset
+        // Draw a larger gradient that covers the view even with camera movement
+        const offsetX = scaledWidth / 2 - effectiveCamX;
+        const offsetY = scaledHeight / 2 - effectiveCamY;
+        const gradient = ctx.createLinearGradient(-offsetX, -offsetY, -offsetX, scaledHeight - offsetY);
+        gradient.addColorStop(0, '#1e40af');
+        gradient.addColorStop(1, '#1e3a8a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-offsetX - scaledWidth, -offsetY - scaledHeight, scaledWidth * 3, scaledHeight * 3);
       }
 
       // Apply camera transform AFTER background is drawn
-      if (gameMode) {
-        // In game mode, always center on player (don't use edit mode camera)
-        const camera = cameraRef.current;
-        ctx.translate(scaledWidth / 2 - camera.x, scaledHeight / 2 - camera.y);
-      } else if (usingEditCamera) {
-        // Edit mode: Position fish in top area (center horizontally, top 25% vertically)
-        const topAreaCenterY = scaledHeight * 0.25;
-        ctx.translate(scaledWidth / 2 - cameraX, topAreaCenterY - cameraY);
+      // Uses effectiveCamX/effectiveCamY calculated earlier
+      if (currentEditMode || isPaused) {
+        if (usingEditCamera) {
+          const topAreaCenterY = scaledHeight / 2;
+          ctx.translate(scaledWidth / 2 - effectiveCamX, topAreaCenterY - effectiveCamY);
+        } else {
+          ctx.translate(scaledWidth / 2 - effectiveCamX, scaledHeight / 2 - effectiveCamY);
+        }
+      } else {
+        ctx.translate(scaledWidth / 2 - effectiveCamX, scaledHeight / 2 - effectiveCamY);
       }
 
       // Draw AI fish with LOD based on screen-space size
@@ -1842,12 +1880,14 @@ export default function FishEditorCanvas({
         ctx.restore();
       }
 
-      // Draw edit buttons on fish (in screen space)
+      // Draw edit buttons on fish (in screen space, accounting for camera)
       if (showEditButtonsRef.current && !currentEditMode && onEditFish) {
+        const cam = effectiveCameraRef.current;
         buttonPositions.forEach((pos, fishId) => {
-          // Calculate screen position - buttons are drawn after all transforms are restored
-          const screenX = pos.x * currentZoom;
-          const screenY = pos.y * currentZoom;
+          // Calculate screen position accounting for camera offset
+          // Formula: screenPos = (worldPos - cameraPos) * zoom + canvas.center
+          const screenX = (pos.x - cam.x) * currentZoom + canvas.width / 2;
+          const screenY = (pos.y - cam.y) * currentZoom + canvas.height / 2;
 
           // Draw edit button above fish
           const buttonSize = 24;
@@ -1967,8 +2007,8 @@ export default function FishEditorCanvas({
       }
       // Note: Editor mode UI removed - will be added to proper HUD later
 
-      // Draw paused indicator (centered, semi-transparent)
-      if (isPaused) {
+      // Draw paused indicator (centered, semi-transparent) - only in game mode
+      if (isPaused && gameMode) {
         ctx.save();
         // Dim overlay
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
@@ -2020,8 +2060,14 @@ export default function FishEditorCanvas({
         ref={canvasRef}
         className="w-full h-full block"
         onClick={handleCanvasClick}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
         onTouchStart={handleCanvasTouchStart}
-        style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1 }}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1, cursor: (paused && !selectedFishId) ? 'grab' : 'default' }}
       />
       <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
         <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />

@@ -2,7 +2,8 @@
  * List saved fish sprites and backgrounds from Vercel Blob Storage
  * 
  * Query params:
- * - type: 'fish' | 'background' (default: 'fish')
+ * - type: 'fish' | 'background' | 'creature' (default: 'fish')
+ * - prefix: custom prefix to list (overrides type)
  * - includeMetadata: 'true' to fetch and include full metadata for backgrounds
  */
 
@@ -14,9 +15,16 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'fish';
+    const customPrefix = searchParams.get('prefix');
     const includeMetadata = searchParams.get('includeMetadata') === 'true';
+    const includeJson = searchParams.get('includeJson') === 'true';
 
-    const prefix = type === 'background' ? 'backgrounds/' : 'fish/';
+    // Support custom prefix for batch scripts, otherwise use type-based prefix
+    const prefix = customPrefix || (
+      type === 'background' ? 'backgrounds/'
+        : type === 'creature' ? 'creatures/'
+          : 'fish/'
+    );
 
     // List assets from Vercel Blob Storage
     const blobAssets = await listAssets(prefix);
@@ -92,13 +100,16 @@ export async function GET(request: NextRequest) {
 
     // Default behavior: simple asset list
     const assets = blobAssets
-      .filter(blob => !blob.pathname.endsWith('.json')) // Exclude metadata files from simple list
+      .filter(blob => includeJson || !blob.pathname.endsWith('.json')) // Exclude metadata files unless includeJson=true
       .map((blob) => {
         const filename = blob.pathname.split('/').pop() || '';
         return {
           filename,
+          pathname: blob.pathname, // Include full pathname for batch scripts
           url: blob.url,
+          size: blob.size,
           timestamp: blob.uploadedAt.getTime().toString(),
+          uploadedAt: blob.uploadedAt.toISOString(),
         };
       });
 

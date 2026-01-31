@@ -30,6 +30,7 @@ const DELAY_MS = parseInt(process.env.BATCH_DELAY_MS || '500', 10);
 interface BlobAsset {
   url: string;
   pathname: string;
+  filename?: string;
   size: number;
   uploadedAt: string;
 }
@@ -187,14 +188,24 @@ async function main() {
   console.log(`Found ${creatureAssets.length} assets in creatures/`);
 
   // Combine and tag with directory for upload path
+  // Filter out any assets without valid pathname
   const allAssets = [
-    ...fishAssets.map(a => ({ ...a, directory: 'fish' as const })),
-    ...creatureAssets.map(a => ({ ...a, directory: 'creatures' as const })),
+    ...fishAssets.filter(a => a.pathname).map(a => ({ ...a, directory: 'fish' as const })),
+    ...creatureAssets.filter(a => a.pathname).map(a => ({ ...a, directory: 'creatures' as const })),
   ];
-  console.log(`Total: ${allAssets.length} assets`);
+  console.log(`Total: ${allAssets.length} assets with valid pathnames`);
 
-  // 2. Filter to only original sprites (not variants)
-  const originals = allAssets.filter(asset => !isVariant(asset.pathname));
+  // Debug: show first asset structure
+  if (allAssets.length > 0) {
+    console.log('Sample asset structure:', JSON.stringify(allAssets[0], null, 2));
+  }
+
+  // 2. Filter to only original sprites (not variants) and only PNG files
+  const originals = allAssets.filter(asset =>
+    asset.pathname &&
+    asset.pathname.endsWith('.png') &&
+    !isVariant(asset.pathname)
+  );
   console.log(`Found ${originals.length} original sprites (excluding variants)`);
 
   // 3. Build a set of existing variants for quick lookup

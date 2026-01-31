@@ -978,7 +978,7 @@ export default function FishEditOverlay({
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-4">
           {/* Details Tab */}
           {activeTab === 'details' && (
             <>
@@ -996,7 +996,7 @@ export default function FishEditOverlay({
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mb-2">Modular prompt segments that compose the creature's visual description</p>
-                <div className="space-y-2 bg-gray-900/50 p-3 rounded border border-gray-700 max-h-64 overflow-y-auto">
+                <div className="space-y-2 bg-gray-900/50 p-3 rounded border border-gray-700">
                   {editedFish.descriptionChunks && editedFish.descriptionChunks.length > 0 ? (
                     editedFish.descriptionChunks.map((chunk, index) => (
                       <div key={index} className="flex items-center gap-2 bg-gray-800 p-2 rounded">
@@ -1062,7 +1062,7 @@ export default function FishEditOverlay({
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-bold text-white">Composed AI Prompt</label>
                   </div>
-                  <div className="bg-gray-900 border border-gray-700 rounded p-3 text-xs font-mono text-gray-300 max-h-32 overflow-y-auto">
+                  <div className="bg-gray-900 border border-gray-700 rounded p-3 text-xs font-mono text-gray-300">
                     {composedPrompt || 'No prompt available'}
                   </div>
                   <p className="text-xs text-gray-400 mt-1">

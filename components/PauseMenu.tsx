@@ -11,6 +11,7 @@ import BackgroundLibraryPanel from './BackgroundLibraryPanel';
 import BackgroundEditOverlay from './BackgroundEditOverlay';
 import GenerationSettingsPanel from './GenerationSettingsPanel';
 import JobsPanel from './JobsPanel';
+import { Accordion } from './ui';
 import type { BackgroundAsset } from '@/lib/game/types';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
 
@@ -72,7 +73,7 @@ interface PauseMenuProps {
   onBackToMenu?: () => void;
 }
 
-type TabId = 'stats' | 'library' | 'backgrounds' | 'scene' | 'settings' | 'jobs';
+type TabId = 'stats' | 'library' | 'backgrounds' | 'settings' | 'jobs';
 
 export default function PauseMenu({
   isOpen,
@@ -226,7 +227,6 @@ export default function PauseMenu({
     { id: 'stats', label: 'Stats', show: mode === 'game' },
     { id: 'library', label: 'Fish', show: true },
     { id: 'backgrounds', label: 'Backgrounds', show: mode === 'editor' },
-    { id: 'scene', label: 'Scene', show: mode === 'editor' },
     { id: 'settings', label: 'Settings', show: mode === 'editor' },
     { id: 'jobs', label: 'Jobs', show: mode === 'editor' },
   ];
@@ -397,7 +397,7 @@ export default function PauseMenu({
       <div className="flex-1 overflow-hidden">
         {/* Stats Tab (Game Mode Only) */}
         {activeTab === 'stats' && mode === 'game' && (
-          <div className="h-full overflow-y-auto p-4">
+          <div className="h-full overflow-y-auto scrollbar-hide p-4">
             <div className="max-w-md mx-auto space-y-4">
               <h2 className="text-xl font-bold text-white mb-4">Current Run Stats</h2>
 
@@ -477,7 +477,7 @@ export default function PauseMenu({
 
         {/* Library Tab - Shows fish list or inline editor */}
         {activeTab === 'library' && (
-          <div className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto scrollbar-hide">
             {!editingFish ? (
               <FishLibraryPanel
                 onSelectFish={handleSelectFishFromLibrary}
@@ -509,7 +509,7 @@ export default function PauseMenu({
 
         {/* Backgrounds Tab (Editor Mode Only) */}
         {activeTab === 'backgrounds' && mode === 'editor' && (
-          <div className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto scrollbar-hide">
             {!editingBackground ? (
               <BackgroundLibraryPanel
                 onSelectBackground={handleSelectBackgroundFromLibrary}
@@ -529,115 +529,112 @@ export default function PauseMenu({
           </div>
         )}
 
-        {/* Scene Tab (Editor Mode Only) */}
-        {activeTab === 'scene' && mode === 'editor' && sceneSettings && (
-          <div className="h-full overflow-y-auto px-4 pb-4 pt-2">
-            <div className="space-y-4">
-              {/* Scene controls header */}
-              <div>
-                <h2 className="text-lg font-bold text-white mb-1">Scene Controls</h2>
-                <p className="text-xs text-gray-400">Adjust canvas display settings</p>
-              </div>
-
-              {/* Zoom */}
-              <div>
-                <label className="block text-sm font-bold text-white mb-2">
-                  Zoom: {sceneSettings.zoom.toFixed(1)}x
-                </label>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="3"
-                  step="0.1"
-                  value={sceneSettings.zoom}
-                  onChange={(e) => onZoomChange?.(parseFloat(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Chroma Tolerance */}
-              <div>
-                <label className="block text-sm font-bold text-white mb-2">
-                  Background Removal: {sceneSettings.chromaTolerance}
-                </label>
-                <input
-                  type="range"
-                  min="10"
-                  max="150"
-                  value={sceneSettings.chromaTolerance}
-                  onChange={(e) => onChromaToleranceChange?.(parseInt(e.target.value))}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>Less</span>
-                  <span>More</span>
-                </div>
-              </div>
-
-              {/* Water Distortion */}
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={sceneSettings.enableWaterDistortion}
-                    onChange={(e) => onWaterDistortionChange?.(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-sm font-bold text-white">Enable Water Distortion</span>
-                </label>
-              </div>
-
-              {/* Deformation Intensity */}
-              {sceneSettings.enableWaterDistortion && (
-                <div>
-                  <label className="block text-sm font-bold text-white mb-2">
-                    Distortion Intensity: {sceneSettings.deformationIntensity.toFixed(1)}
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="5"
-                    step="0.1"
-                    value={sceneSettings.deformationIntensity}
-                    onChange={(e) => onDeformationIntensityChange?.(parseFloat(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-              )}
-
-              {/* Clear fish */}
-              <div className="border-t border-gray-700 pt-4">
-                <button
-                  onClick={onClearFish}
-                  className="w-full bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
-                >
-                  Clear All Fish ({sceneSettings.spawnedFishCount})
-                </button>
-              </div>
-
-              {/* Back to menu */}
-              <div>
-                <button
-                  onClick={onBackToMenu}
-                  className="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
-                >
-                  ← Back to Menu
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Settings Tab (Editor Mode Only) */}
+        {/* Settings Tab (Editor Mode Only) - Merged with Scene Controls */}
         {activeTab === 'settings' && mode === 'editor' && (
-          <div className="h-full overflow-y-auto">
-            <GenerationSettingsPanel />
+          <div className="h-full overflow-y-auto scrollbar-hide px-4 pb-4 pt-2 space-y-2">
+            {/* Scene Controls Accordion */}
+            {sceneSettings && (
+              <Accordion title="Scene Controls" defaultOpen={true} showBorder={false}>
+                <div className="space-y-4">
+                  {/* Zoom */}
+                  <div>
+                    <label className="block text-sm font-bold text-white mb-2">
+                      Zoom: {sceneSettings.zoom.toFixed(1)}x
+                    </label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="5"
+                      step="0.1"
+                      value={sceneSettings.zoom}
+                      onChange={(e) => onZoomChange?.(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Chroma Tolerance */}
+                  <div>
+                    <label className="block text-sm font-bold text-white mb-2">
+                      Background Removal: {sceneSettings.chromaTolerance}
+                    </label>
+                    <input
+                      type="range"
+                      min="10"
+                      max="150"
+                      value={sceneSettings.chromaTolerance}
+                      onChange={(e) => onChromaToleranceChange?.(parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>Less</span>
+                      <span>More</span>
+                    </div>
+                  </div>
+
+                  {/* Water Distortion */}
+                  <div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sceneSettings.enableWaterDistortion}
+                        onChange={(e) => onWaterDistortionChange?.(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-bold text-white">Enable Water Distortion</span>
+                    </label>
+                  </div>
+
+                  {/* Deformation Intensity */}
+                  {sceneSettings.enableWaterDistortion && (
+                    <div>
+                      <label className="block text-sm font-bold text-white mb-2">
+                        Distortion Intensity: {sceneSettings.deformationIntensity.toFixed(1)}
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="5"
+                        step="0.1"
+                        value={sceneSettings.deformationIntensity}
+                        onChange={(e) => onDeformationIntensityChange?.(parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+
+                  {/* Clear fish */}
+                  <div className="pt-2">
+                    <button
+                      onClick={onClearFish}
+                      className="w-full bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                    >
+                      Clear All Fish ({sceneSettings.spawnedFishCount})
+                    </button>
+                  </div>
+                </div>
+              </Accordion>
+            )}
+
+            {/* Generation Settings Accordion */}
+            <Accordion title="Generation Settings" defaultOpen={false}>
+              <GenerationSettingsPanel />
+            </Accordion>
+
+            {/* Navigation */}
+            <div className="pt-4">
+              <button
+                onClick={onBackToMenu}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+              >
+                ← Back to Menu
+              </button>
+            </div>
           </div>
         )}
 
         {/* Jobs Tab (Editor Mode Only) */}
         {activeTab === 'jobs' && mode === 'editor' && (
-          <div className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto scrollbar-hide">
             <JobsPanel />
           </div>
         )}

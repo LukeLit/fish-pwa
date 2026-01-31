@@ -242,8 +242,8 @@ export default function JobsPanel() {
             key={f}
             onClick={() => setFilter(f)}
             className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${filter === f
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-400 hover:text-white'
+              ? 'bg-gray-700 text-white'
+              : 'text-gray-400 hover:text-white'
               }`}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -274,7 +274,7 @@ export default function JobsPanel() {
       )}
 
       {/* Jobs List */}
-      <div className="space-y-2 max-h-64 overflow-y-auto">
+      <div className="space-y-2">
         {loading ? (
           <div className="text-gray-400 text-sm text-center py-8">Loading jobs...</div>
         ) : error ? (

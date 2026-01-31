@@ -290,3 +290,16 @@ body {
 .animate-scale-in {
   animation: scale-in 0.3s ease-out forwards;
 }
+
+/* Hide scrollbars while maintaining scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  /* IE/Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+  /* Chrome/Safari/Opera */
+}

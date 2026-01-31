@@ -167,7 +167,7 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
   return (
     <div className="h-full flex flex-col">
       {/* Fish list */}
-      <div className="flex-1 overflow-y-auto px-4 py-2">
+      <div className="flex-1 overflow-y-auto scrollbar-hide px-4 py-2">
         <div className="space-y-2">
           {/* Add New Creature Button */}
           <button
