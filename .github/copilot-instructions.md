@@ -231,6 +231,31 @@ Key design documents to reference:
 5. **Don't forget error boundaries** - wrap client components
 6. **Don't bypass type safety** - avoid `any` and maintain strict types
 
+## Critical: Think Before Suggesting
+
+**Before suggesting alternative approaches or tools, STOP and consider:**
+
+1. **Does the alternative actually solve the problem?** Think through the full use case:
+   - Players generate NEW fish dynamically (mutations, fusions)
+   - Animations must work for any generated sprite automatically
+   - No human intervention is acceptable for player-generated content
+
+2. **Will it produce consistent results?** 
+   - Text-to-image for animation frames = inconsistent fish appearance between frames (BAD)
+   - Image-to-video with sprite reference = maintains visual consistency (GOOD)
+   - Manual animation tools (Spine/Rive) = requires human work per fish (IMPOSSIBLE for UGC)
+
+3. **Is the cost justified for what it achieves?**
+   - Video generation (Veo) IS expensive but IS the right tool for animating AI-generated sprites
+   - The problem isn't the approach - it's broken implementations
+
+4. **Test expensive operations thoroughly before deployment:**
+   - Test the COMPLETE flow end-to-end locally before using production APIs
+   - For paid APIs, verify: authentication, download, storage - every step
+   - Add safeguards (operation ID backups, recovery endpoints) BEFORE running expensive operations
+
+**Don't suggest half-baked alternatives that sound cheaper but don't actually work.**
+
 ## Testing & Debugging
 
 - Use Fish Editor for asset generation testing
