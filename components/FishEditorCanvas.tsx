@@ -48,6 +48,7 @@ export interface PlayerGameStats {
 interface FishEditorCanvasProps {
   background: string | null;
   playerFishSprite: string | null;
+  playerCreature?: Creature; // Full player creature data (for clips, etc.)
   spawnedFish: Creature[] | Array<{ id: string; sprite: string; type: string }>;
   chromaTolerance?: number;
   zoom?: number;
@@ -87,6 +88,7 @@ function isCreature(fish: Creature | { id: string; sprite: string; type: string 
 export default function FishEditorCanvas({
   background,
   playerFishSprite,
+  playerCreature,
   spawnedFish,
   chromaTolerance = 50,
   zoom = 1,
@@ -215,17 +217,21 @@ export default function FishEditorCanvas({
         fishListRef.current[existingIndex] = {
           ...aiFish,
           sprite: processedSprite,
-          // Preserve spawn animation state if exists
+          // Preserve spawn/despawn animation state if exists
           spawnTime: fishListRef.current[existingIndex].spawnTime,
+          despawnTime: fishListRef.current[existingIndex].despawnTime,
           opacity: fishListRef.current[existingIndex].opacity,
+          lifecycleState: fishListRef.current[existingIndex].lifecycleState || 'active',
         };
       } else {
         fishListRef.current.push({
           ...aiFish,
           sprite: processedSprite,
-          // Spawn animation
+          // Spawn/despawn animation
           spawnTime: performance.now(),
+          despawnTime: undefined,
           opacity: 0,
+          lifecycleState: 'spawning' as FishLifecycleState,
         });
       }
     };
@@ -263,6 +269,7 @@ export default function FishEditorCanvas({
   const gameStartTimeRef = useRef<number>(0);
   const gameOverFiredRef = useRef<boolean>(false);
   const levelCompleteFiredRef = useRef<boolean>(false);
+  const levelEndingRef = useRef<boolean>(false); // True while fish are animating out at level end
   const scoreRef = useRef<number>(0);
   const fishEatenRef = useRef<number>(0);
   const essenceCollectedRef = useRef<number>(0);
@@ -317,6 +324,9 @@ export default function FishEditorCanvas({
     radius: number;
   }>>([]);
 
+  /** Fish lifecycle state for spawn/despawn animations */
+  type FishLifecycleState = 'spawning' | 'active' | 'despawning' | 'removed';
+
   const fishListRef = useRef<Array<{
     id: string;
     x: number;
@@ -330,9 +340,11 @@ export default function FishEditorCanvas({
     verticalTilt: number;
     animTime: number;
     creatureData?: Creature;
-    // Spawn animation properties
-    spawnTime?: number; // When fish spawned (for fade-in)
-    opacity?: number;   // Current opacity (0-1)
+    // Spawn/despawn animation properties
+    spawnTime?: number;      // When fish spawned (for fade-in)
+    despawnTime?: number;    // When despawn started (for fade-out)
+    opacity?: number;        // Current opacity (0-1)
+    lifecycleState: FishLifecycleState; // Current lifecycle state
     // Video clip animation
     clips?: CreatureClips;
     videoSprite?: VideoSprite;
@@ -374,6 +386,73 @@ export default function FishEditorCanvas({
     targetZoomRef.current = newZoom;
     setZoomSliderValue(newZoom);
   }, []);
+
+  // ============================================================================
+  // Despawn Animation Helpers
+  // ============================================================================
+
+  /**
+   * Trigger despawn animation for a single fish by ID
+   */
+  const triggerDespawn = useCallback((fishId: string) => {
+    const fish = fishListRef.current.find(f => f.id === fishId);
+    if (fish && fish.lifecycleState !== 'despawning' && fish.lifecycleState !== 'removed') {
+      fish.despawnTime = performance.now();
+      fish.lifecycleState = 'despawning';
+    }
+  }, []);
+
+  /**
+   * Trigger despawn animation for all fish, optionally excluding specific IDs
+   * @param excludeIds - Set of fish IDs to exclude from despawning (e.g., player, selected fish)
+   */
+  const triggerDespawnAll = useCallback((excludeIds?: Set<string>) => {
+    const now = performance.now();
+    fishListRef.current.forEach(fish => {
+      if (!excludeIds?.has(fish.id) && fish.lifecycleState !== 'despawning' && fish.lifecycleState !== 'removed') {
+        fish.despawnTime = now;
+        fish.lifecycleState = 'despawning';
+      }
+    });
+  }, []);
+
+  /**
+   * Re-spawn (animate back in) all fish that were despawned or removed
+   * Uses staggered timing for visual effect
+   */
+  const triggerRespawnAll = useCallback(() => {
+    const now = performance.now();
+    fishListRef.current.forEach((fish, index) => {
+      if (fish.lifecycleState === 'despawning' || fish.lifecycleState === 'removed') {
+        // Stagger respawn for visual effect
+        fish.despawnTime = undefined;
+        fish.spawnTime = now + index * 100;
+        fish.opacity = 0;
+        fish.lifecycleState = 'spawning';
+      }
+    });
+  }, []);
+
+  // ============================================================================
+  // Edit Mode Animation - Animate fish out/in when entering/exiting edit mode
+  // ============================================================================
+
+  // Track previous editMode to detect transitions
+  const prevEditModeRef = useRef<boolean>(editMode);
+
+  // Animate fish out when entering edit mode, back in when exiting
+  useEffect(() => {
+    const wasEditMode = prevEditModeRef.current;
+    prevEditModeRef.current = editMode;
+
+    if (editMode && !wasEditMode && selectedFishId) {
+      // Entering edit mode: animate out all fish except selected one and player
+      triggerDespawnAll(new Set([selectedFishId, 'player']));
+    } else if (!editMode && wasEditMode) {
+      // Exiting edit mode: animate all fish back in
+      triggerRespawnAll();
+    }
+  }, [editMode, selectedFishId, triggerDespawnAll, triggerRespawnAll]);
 
   // Handle canvas clicks/touches for edit buttons
   const checkEditButtonClick = useCallback((clientX: number, clientY: number) => {
@@ -538,6 +617,16 @@ export default function FishEditorCanvas({
       img.src = playerFishSprite.split('?')[0];
     }
   }, [playerFishSprite]);
+
+  // Initialize player clip state machine when playerCreature has clips
+  useEffect(() => {
+    if (playerCreature?.clips) {
+      const availableActions = Object.keys(playerCreature.clips) as ClipAction[];
+      if (availableActions.length > 0) {
+        clipStateManagerRef.current.getStateMachine('player', availableActions);
+      }
+    }
+  }, [playerCreature]);
 
   // Update fish sizes from fishData
   useEffect(() => {
@@ -720,7 +809,7 @@ export default function FishEditorCanvas({
       let resolution: 'high' | 'medium' | 'low' = 'high';
 
       if (options?.spriteResolutions) {
-        finalUrl = getSpriteUrl({ sprite: spriteUrl, spriteResolutions: options.spriteResolutions }, screenSize);
+        finalUrl = getSpriteUrl({ sprite: spriteUrl, spriteResolutions: options.spriteResolutions }, screenSize, fishId);
         resolution = getResolutionKey(screenSize);
       }
 
@@ -873,9 +962,11 @@ export default function FishEditorCanvas({
             animTime: Math.random() * Math.PI * 2,
             // Store creature metadata if available
             creatureData,
-            // Spawn animation - staggered to reduce initial load
+            // Spawn/despawn animation
             spawnTime: performance.now() + staggerDelay,
+            despawnTime: undefined,
             opacity: 0,
+            lifecycleState: 'spawning' as FishLifecycleState,
             // Video clip animation
             clips,
             videoSprite,
@@ -1045,12 +1136,31 @@ export default function FishEditorCanvas({
       // Check game timer in game mode (only when not paused)
       if (gameMode && !levelCompleteFiredRef.current && !gameOverFiredRef.current && !isPaused) {
         const elapsed = Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current;
-        if (elapsed >= levelDuration) {
-          levelCompleteFiredRef.current = true;
-          if (onLevelComplete) {
-            onLevelComplete(scoreRef.current);
+        if (elapsed >= levelDuration && !levelEndingRef.current) {
+          // Start level ending animation - despawn all AI fish
+          levelEndingRef.current = true;
+          const now = performance.now();
+          fishListRef.current.forEach(fish => {
+            if (fish.lifecycleState !== 'despawning' && fish.lifecycleState !== 'removed') {
+              fish.despawnTime = now;
+              fish.lifecycleState = 'despawning';
+            }
+          });
+        }
+
+        // Check if level ending animation is complete (all fish removed or despawned)
+        if (levelEndingRef.current) {
+          const allDespawned = fishListRef.current.every(
+            fish => fish.lifecycleState === 'removed' || (fish.opacity !== undefined && fish.opacity <= 0)
+          );
+          if (allDespawned || fishListRef.current.length === 0) {
+            levelCompleteFiredRef.current = true;
+            levelEndingRef.current = false;
+            if (onLevelComplete) {
+              onLevelComplete(scoreRef.current);
+            }
+            return; // Stop game loop
           }
-          return; // Stop game loop
         }
 
         // Sync essence collected from run state (updated by engine)
@@ -1130,6 +1240,9 @@ export default function FishEditorCanvas({
 
         // Check starvation death
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
+          // Trigger death animation on player
+          clipStateManagerRef.current.processEvent('player', { type: 'death' });
+
           gameOverFiredRef.current = true;
           if (onGameOver) {
             const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
@@ -1179,6 +1292,9 @@ export default function FishEditorCanvas({
           // In game mode, check if player can eat this fish or gets eaten
           if (gameMode) {
             if (fish.size > player.size * 1.2) {
+              // Trigger death animation on player before game over
+              clipStateManagerRef.current.processEvent('player', { type: 'death' });
+
               // Player is eaten by larger fish - GAME OVER
               if (!gameOverFiredRef.current) {
                 gameOverFiredRef.current = true;
@@ -1216,6 +1332,9 @@ export default function FishEditorCanvas({
               player.chompEndTime = now + 280;
               const eatX = (fish.x + player.x) * 0.5;
               const eatY = (fish.y + player.y) * 0.5;
+
+              // Trigger bite animation on player (if clip state machine exists)
+              clipStateManagerRef.current.processEvent('player', { type: 'bite' });
 
               // Haptic feedback
               if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -1287,6 +1406,9 @@ export default function FishEditorCanvas({
             player.chompEndTime = now + 280;
             const eatX = (fish.x + player.x) * 0.5;
             const eatY = (fish.y + player.y) * 0.5;
+
+            // Trigger bite animation on player (if clip state machine exists)
+            clipStateManagerRef.current.processEvent('player', { type: 'bite' });
 
             // Haptic feedback
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -1376,9 +1498,11 @@ export default function FishEditorCanvas({
               verticalTilt: 0,
               animTime: Math.random() * Math.PI * 2,
               creatureData: isCreature(creature) ? creature : undefined,
-              // Spawn animation
+              // Spawn/despawn animation
               spawnTime: now,
+              despawnTime: undefined,
               opacity: 0,
+              lifecycleState: 'spawning' as FishLifecycleState,
             };
             fishListRef.current.push(newFish);
           }
@@ -1418,13 +1542,27 @@ export default function FishEditorCanvas({
 
       // Update AI fish (lock movement in edit mode or when paused)
       fishListRef.current.forEach((fish) => {
-        // Update spawn fade-in opacity (handles staggered spawn times)
-        if (fish.spawnTime !== undefined) {
+        // Update opacity based on lifecycle state (spawn fade-in or despawn fade-out)
+        if (fish.despawnTime !== undefined) {
+          // Despawning: fade out from 1 to 0
+          const elapsed = now - fish.despawnTime;
+          fish.opacity = Math.max(0, 1 - elapsed / SPAWN_FADE_DURATION);
+          if (fish.opacity <= 0) {
+            fish.lifecycleState = 'removed';
+          }
+        } else if (fish.spawnTime !== undefined) {
+          // Spawning: fade in from 0 to 1
           const elapsed = now - fish.spawnTime;
           // Clamp to 0-1 range (negative elapsed = fish hasn't "spawned" yet)
           fish.opacity = Math.max(0, Math.min(1, elapsed / SPAWN_FADE_DURATION));
+          if (fish.opacity >= 1 && fish.lifecycleState === 'spawning') {
+            fish.lifecycleState = 'active';
+          }
         } else {
           fish.opacity = 1; // Legacy fish without spawnTime
+          if (!fish.lifecycleState) {
+            fish.lifecycleState = 'active';
+          }
         }
 
         if (!currentEditMode && !isPaused) {
@@ -1467,6 +1605,9 @@ export default function FishEditorCanvas({
           fish.vy = (Math.random() - 0.5) * 2;
         }
       });
+
+      // Clean up fish that have finished despawning
+      fishListRef.current = fishListRef.current.filter(f => f.lifecycleState !== 'removed');
 
       // Update water effect time
       waterTimeRef.current += 0.01;

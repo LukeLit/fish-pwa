@@ -33,6 +33,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   // Game state - using simplified state for now
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
+  const [playerCreature, setPlayerCreature] = useState<Creature | null>(null);
   const [spawnedFish, setSpawnedFish] = useState<Creature[]>([]);
   const [levelDuration, setLevelDuration] = useState<number>(60000);
   const [currentLevel, setCurrentLevel] = useState<string>('1-1');
@@ -154,6 +155,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           if (blobCreature?.sprite) {
             playerSprite = blobCreature.sprite;
 
+            // Store full creature for clip state machine
+            setPlayerCreature(blobCreature);
+
             // Set player fish data for pause menu
             setPlayerFishData({
               id: blobCreature.id,
@@ -195,6 +199,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             getCreature(selectedFishId) || getCreature(DEFAULT_STARTER_FISH_ID);
           if (fallbackCreature?.sprite) {
             playerSprite = fallbackCreature.sprite;
+            // Store full creature for clip state machine
+            setPlayerCreature(fallbackCreature);
           } else {
             // Last resort: use whatever sprite is already in run state
             playerSprite = currentRunState.fishState.sprite;
@@ -370,6 +376,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       <FishEditorCanvas
         background={selectedBackground}
         playerFishSprite={playerFishSprite}
+        playerCreature={playerCreature || undefined}
         spawnedFish={spawnedFish}
         chromaTolerance={50}
         zoom={1}

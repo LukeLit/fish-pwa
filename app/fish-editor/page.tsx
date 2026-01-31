@@ -14,6 +14,7 @@ import PauseMenu from '@/components/PauseMenu';
 import ArtSelectorPanel from '@/components/ArtSelectorPanel';
 import SettingsDrawer from '@/components/SettingsDrawer';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
+import { setMipmapDebug, isMipmapDebugEnabled, SPRITE_RESOLUTION_THRESHOLDS } from '@/lib/rendering/fish-renderer';
 
 // Constants
 const DEFAULT_ZOOM = 1.0;
@@ -38,6 +39,16 @@ export default function FishEditorPage() {
   const [artSelectorCallback, setArtSelectorCallback] = useState<((url: string, filename: string) => void) | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
+  const [sizeOverride, setSizeOverride] = useState<number | null>(null);
+  const [mipmapDebug, setMipmapDebugState] = useState(false);
+
+  // Helper to get resolution tier from size
+  const getResolutionTier = useCallback((size: number, currentZoom: number): 'high' | 'medium' | 'low' => {
+    const screenSize = size * currentZoom;
+    if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.HIGH) return 'high';
+    if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) return 'medium';
+    return 'low';
+  }, []);
 
   // Handle Escape key for pause toggle - uses callback form to access current state
   useEffect(() => {
@@ -298,6 +309,7 @@ export default function FishEditorPage() {
 
     // Enter edit mode for this fish
     setSelectedFishId(fish.id);
+    setSizeOverride(null); // Reset size override when selecting new fish
     setEditMode(true);
     setZoom(MAX_EDIT_ZOOM); // Zoom in to max when entering fish edit mode
   };
@@ -432,6 +444,7 @@ export default function FishEditorPage() {
     const currentIndex = fishIds.indexOf(selectedFishId);
     if (currentIndex > 0) {
       setSelectedFishId(fishIds[currentIndex - 1]);
+      setSizeOverride(null); // Reset size override when changing fish
     }
   };
 
@@ -441,6 +454,7 @@ export default function FishEditorPage() {
     const currentIndex = fishIds.indexOf(selectedFishId);
     if (currentIndex < fishIds.length - 1) {
       setSelectedFishId(fishIds[currentIndex + 1]);
+      setSizeOverride(null); // Reset size override when changing fish
     }
   };
 
@@ -621,8 +635,8 @@ export default function FishEditorPage() {
       {/* Canvas - Full screen, but fish will be positioned in top area during edit mode */}
       {/* Mobile: explicit height above panel, Desktop: left margin for side drawer */}
       <div className={`relative transition-all duration-200 ${paused
-          ? 'h-[35vh] lg:h-auto lg:flex-1 lg:ml-[420px]'
-          : 'flex-1'
+        ? 'h-[35vh] lg:h-auto lg:flex-1 lg:ml-[420px]'
+        : 'flex-1'
         }`}>
         <FishEditorCanvas
           background={selectedBackground}
@@ -694,6 +708,114 @@ export default function FishEditorPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
             </svg>
             Edit
+          </button>
+        </div>
+      )}
+
+      {/* Size Slider Panel - Right side when editing a fish */}
+      {paused && selectedFish && (
+        <div
+          className="absolute right-4 top-1/2 -translate-y-1/2 bg-gray-900/95 backdrop-blur-sm rounded-lg p-3 border border-gray-700 shadow-xl w-16 flex flex-col items-center gap-3"
+          style={{ zIndex: Z_LAYERS.CONTROLS }}
+        >
+          {/* Size Label */}
+          <div className="text-xs text-gray-400 font-medium">SIZE</div>
+
+          {/* Vertical Slider */}
+          <div className="relative h-48 w-6 flex items-center justify-center">
+            <input
+              type="range"
+              min="20"
+              max="300"
+              value={sizeOverride ?? selectedFish.stats?.size ?? 60}
+              onChange={(e) => {
+                const newSize = parseInt(e.target.value);
+                const oldSize = sizeOverride ?? selectedFish.stats?.size ?? 60;
+
+                // Check if we're crossing a resolution threshold
+                const oldTier = getResolutionTier(oldSize, zoom);
+                const newTier = getResolutionTier(newSize, zoom);
+
+                setSizeOverride(newSize);
+
+                // Update the fish data
+                if (selectedFish) {
+                  const updatedFish = {
+                    ...selectedFish,
+                    stats: { ...selectedFish.stats, size: newSize }
+                  };
+                  handleSaveFish(updatedFish);
+                }
+
+                // If resolution tier changed, trigger sprite refresh
+                if (oldTier !== newTier) {
+                  console.log(`[Mipmap] Size slider crossed threshold: ${oldTier} -> ${newTier} (size: ${oldSize} -> ${newSize}, screen: ${Math.round(newSize * zoom)}px)`);
+                  // Dispatch refresh event to reload sprites at new resolution
+                  window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+                }
+              }}
+              className="absolute h-48 w-6 cursor-pointer appearance-none bg-transparent
+                [writing-mode:vertical-lr] [direction:rtl]
+                [&::-webkit-slider-runnable-track]:w-2 [&::-webkit-slider-runnable-track]:h-full 
+                [&::-webkit-slider-runnable-track]:bg-gray-700 [&::-webkit-slider-runnable-track]:rounded-full
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
+                [&::-webkit-slider-thumb]:bg-cyan-500 [&::-webkit-slider-thumb]:rounded-full 
+                [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg
+                [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white
+                [&::-moz-range-track]:w-2 [&::-moz-range-track]:h-full 
+                [&::-moz-range-track]:bg-gray-700 [&::-moz-range-track]:rounded-full
+                [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 
+                [&::-moz-range-thumb]:bg-cyan-500 [&::-moz-range-thumb]:rounded-full 
+                [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-2 
+                [&::-moz-range-thumb]:border-white"
+              title={`Fish size: ${sizeOverride ?? selectedFish.stats?.size ?? 60}px`}
+            />
+          </div>
+
+          {/* Size Value */}
+          <div className="text-sm text-white font-mono">
+            {sizeOverride ?? selectedFish.stats?.size ?? 60}
+          </div>
+
+          {/* Screen Size (calculated) */}
+          <div className="text-xs text-gray-500 text-center">
+            <div>screen:</div>
+            <div className="text-cyan-400 font-mono">
+              {Math.round((sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom)}px
+            </div>
+          </div>
+
+          {/* Resolution indicator */}
+          <div className="text-xs text-center">
+            <div className="text-gray-500">mipmap:</div>
+            <div className={`font-bold ${(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
+                ? 'text-green-400'
+                : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
+                  ? 'text-yellow-400'
+                  : 'text-red-400'
+              }`}>
+              {(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
+                ? 'HIGH'
+                : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
+                  ? 'MED'
+                  : 'LOW'}
+            </div>
+          </div>
+
+          {/* Mipmap Debug Toggle */}
+          <button
+            onClick={() => {
+              const newState = !mipmapDebug;
+              setMipmapDebugState(newState);
+              setMipmapDebug(newState);
+            }}
+            className={`text-xs px-2 py-1 rounded transition-colors ${mipmapDebug
+                ? 'bg-cyan-600 text-white'
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              }`}
+            title="Toggle mipmap debug logging in console"
+          >
+            {mipmapDebug ? 'DEBUG' : 'debug'}
           </button>
         </div>
       )}

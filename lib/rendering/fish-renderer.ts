@@ -105,6 +105,24 @@ export const SPRITE_RESOLUTION_THRESHOLDS = {
   // < 40px: use 128px sprite
 };
 
+// Debug flag for mipmap logging - set to true to see resolution swaps in console
+let MIPMAP_DEBUG = false;
+let lastLoggedResolution: Map<string, string> = new Map();
+
+/** Enable/disable mipmap debug logging */
+export function setMipmapDebug(enabled: boolean): void {
+  MIPMAP_DEBUG = enabled;
+  if (!enabled) {
+    lastLoggedResolution.clear();
+  }
+  console.log(`[Mipmap] Debug logging ${enabled ? 'ENABLED' : 'DISABLED'}`);
+}
+
+/** Check if mipmap debug is enabled */
+export function isMipmapDebugEnabled(): boolean {
+  return MIPMAP_DEBUG;
+}
+
 /**
  * Get the appropriate sprite URL based on screen-space size
  * 
@@ -113,11 +131,13 @@ export const SPRITE_RESOLUTION_THRESHOLDS = {
  * 
  * @param creature - Object with sprite URL and optional resolution variants
  * @param screenSize - Size of fish in screen pixels (fish.size * zoom)
+ * @param creatureId - Optional ID for debug logging
  * @returns URL of the appropriate sprite resolution
  */
 export function getSpriteUrl(
   creature: { sprite: string; spriteResolutions?: SpriteResolutions },
-  screenSize: number
+  screenSize: number,
+  creatureId?: string
 ): string {
   // Fall back to original sprite if no resolution variants available
   if (!creature.spriteResolutions) {
@@ -125,13 +145,30 @@ export function getSpriteUrl(
   }
 
   // Select resolution based on screen size
+  let resolution: 'high' | 'medium' | 'low';
+  let url: string;
+
   if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.HIGH) {
-    return creature.spriteResolutions.high;
+    resolution = 'high';
+    url = creature.spriteResolutions.high;
+  } else if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) {
+    resolution = 'medium';
+    url = creature.spriteResolutions.medium;
+  } else {
+    resolution = 'low';
+    url = creature.spriteResolutions.low;
   }
-  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) {
-    return creature.spriteResolutions.medium;
+
+  // Debug logging - only log when resolution changes for a creature
+  if (MIPMAP_DEBUG && creatureId) {
+    const lastRes = lastLoggedResolution.get(creatureId);
+    if (lastRes !== resolution) {
+      console.log(`[Mipmap] ${creatureId}: ${lastRes || 'none'} -> ${resolution} (screenSize: ${screenSize.toFixed(1)}px)`);
+      lastLoggedResolution.set(creatureId, resolution);
+    }
   }
-  return creature.spriteResolutions.low;
+
+  return url;
 }
 
 /**
