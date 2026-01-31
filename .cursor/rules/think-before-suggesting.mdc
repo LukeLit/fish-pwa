@@ -1,0 +1,33 @@
+---
+description: Think through suggestions before making them - especially for expensive operations
+alwaysApply: true
+---
+
+# Think Before Suggesting Alternatives
+
+Before suggesting alternative approaches or tools, STOP and verify:
+
+## 1. Does it actually solve the problem?
+
+For this game, players generate NEW fish dynamically (mutations, fusions). Any animation system must:
+- Work automatically for any generated sprite
+- Require zero human intervention
+- Maintain visual consistency
+
+## 2. Will it produce consistent results?
+
+- ❌ Text-to-image for animation frames = different fish in each frame
+- ❌ Manual tools (Spine/Rive) = requires human work per fish  
+- ✅ Image-to-video (Veo) = animates the actual sprite consistently
+
+## 3. Test expensive APIs thoroughly BEFORE deployment
+
+For paid APIs like Veo (~$4/video):
+1. Test the COMPLETE flow locally first
+2. Verify every step: auth, download, storage
+3. Add safeguards (operation backups, recovery endpoints) BEFORE running
+4. Don't iterate on production with real money
+
+## 4. Don't suggest half-baked alternatives
+
+If an alternative sounds cheaper but doesn't actually work for the use case, don't suggest it. The right expensive tool beats the wrong cheap tool.
