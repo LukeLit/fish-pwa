@@ -5,6 +5,7 @@
  * - Wan 2.1: Cheapest, supports 1:1 square
  * - Kling 2.1 Standard: Good quality, supports 1:1 square
  * - Kling 2.1 Pro: Higher quality
+ * - Grok Imagine: xAI model, wide aspect ratio support
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -39,6 +40,14 @@ const FAL_MODELS = {
     supportedAspectRatios: ['16:9', '9:16', '1:1'],
     supportedDurations: [5, 10],
     defaultDuration: 5,
+  },
+  'grok-imagine': {
+    id: 'xai/grok-imagine-video/image-to-video',
+    name: 'Grok Imagine Video',
+    costPerSecond: 0.05, // + $0.002 image input
+    supportedAspectRatios: ['auto', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16'],
+    supportedResolutions: ['480p', '720p'],
+    defaultDuration: 6,
   },
 } as const;
 
@@ -123,6 +132,23 @@ export async function POST(request: NextRequest) {
           frames_per_second: 16,
           enable_safety_checker: true,
           acceleration: 'regular',
+        },
+        logs: true,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            console.log(`[FalVideo] Processing: ${update.logs?.map((log: any) => log.message).join(', ') || 'generating...'}`);
+          }
+        },
+      });
+    } else if (model === 'grok-imagine') {
+      // Grok Imagine Video parameters (no negative_prompt support)
+      result = await fal.subscribe(modelConfig.id, {
+        input: {
+          prompt,
+          image_url: imageUrl,
+          duration: duration || 6,
+          aspect_ratio: aspectRatio || 'auto',
+          resolution: resolution || '720p',
         },
         logs: true,
         onQueueUpdate: (update) => {

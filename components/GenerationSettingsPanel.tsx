@@ -32,6 +32,7 @@ const VIDEO_MODELS = [
   { id: 'fal/wan-2.1', name: 'Wan 2.1', provider: 'Fal.ai', costPerSecond: 0.05, aspectRatios: ['auto', '1:1', '16:9', '9:16'], minDuration: 5, maxDuration: 6 },
   { id: 'fal/kling-2.1-standard', name: 'Kling 2.1 Std', provider: 'Fal.ai', costPerSecond: 0.05, aspectRatios: [], minDuration: 5, maxDuration: 10 }, // Uses input image aspect
   { id: 'fal/kling-2.1-pro', name: 'Kling 2.1 Pro', provider: 'Fal.ai', costPerSecond: 0.09, aspectRatios: ['1:1', '16:9', '9:16'], minDuration: 5, maxDuration: 10 },
+  { id: 'fal/grok-imagine', name: 'Grok Imagine', provider: 'Fal.ai (xAI)', costPerSecond: 0.05, aspectRatios: ['auto', '1:1', '16:9', '9:16', '4:3', '3:4'], minDuration: 6, maxDuration: 6 },
   // Google Veo models - higher quality, no 1:1 support
   { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', provider: 'Google', costPerSecond: 0.15, aspectRatios: ['16:9', '9:16'], minDuration: 4, maxDuration: 8 },
   { id: 'veo-3.1-generate-preview', name: 'Veo 3.1 Standard', provider: 'Google', costPerSecond: 0.40, aspectRatios: ['16:9', '9:16'], minDuration: 4, maxDuration: 8 },
@@ -396,6 +397,7 @@ export default function GenerationSettingsPanel() {
                 {selectedModel?.id === 'fal/wan-2.1' && 'Wan 2.1: 1:1 square support, 5-6s, cheapest'}
                 {selectedModel?.id === 'fal/kling-2.1-standard' && 'Kling Std: Uses input image aspect ratio, 5-10s'}
                 {selectedModel?.id === 'fal/kling-2.1-pro' && 'Kling Pro: 1:1 square support, 5-10s, higher quality'}
+                {selectedModel?.id === 'fal/grok-imagine' && 'Grok Imagine: xAI model, wide aspect ratio support, 6s'}
                 {!isFalModel && 'Google Veo: 4-8s duration, 16:9 or 9:16 only'}
               </p>
             </div>

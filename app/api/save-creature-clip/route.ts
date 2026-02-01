@@ -13,11 +13,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadAsset, downloadGameData, uploadGameData } from '@/lib/storage/blob-storage';
-import type { Creature, CreatureClip, ClipAction } from '@/lib/game/types';
+import type { Creature, CreatureClip, ClipAction, GrowthStage, GrowthStageClips } from '@/lib/game/types';
 
 interface SaveClipRequest {
   creatureId: string;
   action: ClipAction;
+  growthStage?: GrowthStage;   // Which growth stage this clip is for (default: 'adult')
   videoDataUrl: string;        // Base64 data URL of the video
   frames: Array<{
     index: number;
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
     const {
       creatureId,
       action,
+      growthStage = 'adult',
       videoDataUrl,
       frames,
       thumbnailDataUrl,
@@ -65,28 +67,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[SaveClip] Saving ${action} clip for creature ${creatureId}`);
+    console.log(`[SaveClip] Saving ${action} clip for creature ${creatureId} (${growthStage})`);
     console.log(`[SaveClip] Video size: ${Math.round(videoDataUrl.length / 1024)}KB`);
     console.log(`[SaveClip] Frames: ${frames.length}`);
 
-    // Upload video
-    const videoPath = `creatures/${creatureId}/clips/${action}.mp4`;
+    // Upload video - include growth stage in path
+    const videoPath = `creatures/${creatureId}/clips/${growthStage}/${action}.mp4`;
     const { buffer: videoBuffer, mimeType: videoMime } = dataUrlToBuffer(videoDataUrl);
     const videoResult = await uploadAsset(videoPath, videoBuffer, videoMime);
     console.log(`[SaveClip] Video uploaded: ${videoResult.url}`);
 
-    // Upload frames
+    // Upload frames - include growth stage in path
     const frameUrls: string[] = [];
     for (const frame of frames) {
-      const framePath = `creatures/${creatureId}/clips/${action}_frames/frame_${String(frame.index).padStart(4, '0')}.png`;
+      const framePath = `creatures/${creatureId}/clips/${growthStage}/${action}_frames/frame_${String(frame.index).padStart(4, '0')}.png`;
       const { buffer: frameBuffer, mimeType: frameMime } = dataUrlToBuffer(frame.dataUrl);
       const frameResult = await uploadAsset(framePath, frameBuffer, frameMime);
       frameUrls.push(frameResult.url);
     }
     console.log(`[SaveClip] Uploaded ${frameUrls.length} frames`);
 
-    // Upload thumbnail (use first frame if not provided separately)
-    const thumbnailPath = `creatures/${creatureId}/clips/${action}_thumb.png`;
+    // Upload thumbnail (use first frame if not provided separately) - include growth stage
+    const thumbnailPath = `creatures/${creatureId}/clips/${growthStage}/${action}_thumb.png`;
     const thumbnailSource = thumbnailDataUrl || frames[0].dataUrl;
     const { buffer: thumbBuffer, mimeType: thumbMime } = dataUrlToBuffer(thumbnailSource);
     const thumbnailResult = await uploadAsset(thumbnailPath, thumbBuffer, thumbMime);
@@ -102,21 +104,28 @@ export async function POST(request: NextRequest) {
       frameRate,
     };
 
-    // Update creature metadata with clip
+    // Update creature metadata with clip - organized by growth stage
     try {
       // Load existing creature data
       const creatures = await downloadGameData<Record<string, Creature>>('creatures', {});
 
       if (creatures[creatureId]) {
-        // Update creature with new clip
+        // Initialize clips structure if needed
         if (!creatures[creatureId].clips) {
           creatures[creatureId].clips = {};
         }
-        creatures[creatureId].clips![action] = clipData;
+        
+        // Initialize growth stage clips if needed
+        if (!creatures[creatureId].clips![growthStage]) {
+          creatures[creatureId].clips![growthStage] = {};
+        }
+        
+        // Store clip under the correct growth stage
+        creatures[creatureId].clips![growthStage]![action] = clipData;
 
         // Save updated creature data
         await uploadGameData('creatures', creatures);
-        console.log(`[SaveClip] Updated creature ${creatureId} metadata with ${action} clip`);
+        console.log(`[SaveClip] Updated creature ${creatureId} metadata with ${action} clip for ${growthStage}`);
       } else {
         console.warn(`[SaveClip] Creature ${creatureId} not found in database, clip saved but metadata not updated`);
       }

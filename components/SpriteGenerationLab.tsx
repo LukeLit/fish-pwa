@@ -139,18 +139,18 @@ export default function SpriteGenerationLab({
   const getEssenceColorDirectives = useCallback((): string => {
     const essenceRecord = getEssenceRecord();
     const entries = Object.entries(essenceRecord).sort((a, b) => b[1] - a[1]); // Sort by yield, highest first
-    
+
     if (entries.length === 0) return '';
-    
+
     const colorDirectives: string[] = [];
-    
+
     // Primary essence = dominant color
     const [primaryType] = entries[0];
     const primaryEssence = ESSENCE_TYPES[primaryType];
     if (primaryEssence) {
       colorDirectives.push(`PRIMARY/DOMINANT COLOR: ${primaryEssence.color} (${primaryEssence.name} essence) - use this for the main body color`);
     }
-    
+
     // Secondary/tertiary essences = accent colors
     for (let i = 1; i < entries.length && i < 3; i++) {
       const [type] = entries[i];
@@ -160,7 +160,7 @@ export default function SpriteGenerationLab({
         colorDirectives.push(`${i === 1 ? 'SECONDARY' : 'TERTIARY'} ACCENT: ${essence.color} (${essence.name} essence) - use for ${placement}`);
       }
     }
-    
+
     return colorDirectives.length > 0
       ? `\n\nCOLOR PALETTE (MUST use these exact colors):\n${colorDirectives.join('\n')}`
       : '';
@@ -170,25 +170,25 @@ export default function SpriteGenerationLab({
   const buildSpeciesIdentity = useCallback((): string => {
     const chunks = descriptionChunks.length > 0 ? descriptionChunks : (fish.descriptionChunks || []);
     const motif = visualMotif || fish.visualMotif || '';
-    
+
     const details: string[] = [];
-    
+
     // Add fish name for identity
     if (fish.name) {
       details.push(`Species: "${fish.name}"`);
     }
-    
+
     // Add visual motif as the core design
     if (motif) {
       details.push(`Design theme: ${motif}`);
     }
-    
+
     // List key descriptive features
     if (chunks.length > 0) {
       details.push(`Required features: ${chunks.join(', ')}`);
     }
-    
-    return details.length > 0 
+
+    return details.length > 0
       ? `\n\nSPECIES IDENTITY (this specific fish):\n${details.join('\n')}`
       : '';
   }, [fish.name, fish.descriptionChunks, descriptionChunks, visualMotif, fish.visualMotif]);
@@ -213,12 +213,12 @@ export default function SpriteGenerationLab({
 
     // Build the full prompt
     let fullPrompt = basePrompt;
-    
+
     // Add color directives
     if (colorDirectives) {
       fullPrompt += colorDirectives;
     }
-    
+
     // Add species identity
     if (speciesIdentity) {
       fullPrompt += speciesIdentity;
@@ -469,10 +469,10 @@ export default function SpriteGenerationLab({
   // Preview sprites in canvas without uploading
   const handlePreview = () => {
     if (!onPreview) return;
-    
+
     // Build preview fish data using data URLs directly
     const previewGrowthSprites: GrowthSprites = {};
-    
+
     for (const stage of ['juvenile', 'adult', 'elder'] as const) {
       if (sprites[stage]) {
         previewGrowthSprites[stage] = {
@@ -481,18 +481,18 @@ export default function SpriteGenerationLab({
         };
       }
     }
-    
+
     // Build updated fish with preview sprites
     const previewFish: FishData = {
       ...fish,
       growthSprites: previewGrowthSprites,
     };
-    
+
     // Update main sprite to adult if available
     if (sprites.adult) {
       previewFish.sprite = sprites.adult;
     }
-    
+
     onPreview(previewFish);
     setGenerationStatus('Preview updated! Check the canvas.');
   };
@@ -556,7 +556,7 @@ export default function SpriteGenerationLab({
         growthSprites,
         updatedAt: Date.now(), // Mark as updated for cache invalidation
       };
-      
+
       // Update main sprite to match adult if it was uploaded
       if (growthSprites.adult) {
         updatedFish.sprite = growthSprites.adult.sprite;
@@ -565,7 +565,7 @@ export default function SpriteGenerationLab({
 
       // Step 3: Save creature metadata to persist the new sprite URLs
       setUploadStatus('Saving creature metadata...');
-      
+
       const saveFormData = new FormData();
       saveFormData.append('creatureId', fish.id);
       saveFormData.append('metadata', JSON.stringify(updatedFish));
@@ -591,7 +591,7 @@ export default function SpriteGenerationLab({
       // Step 4: Clear local storage after successful save
       await deleteEntry(fish.id);
       setLastSaved(null);
-      
+
       // Update sprite sources to reflect they're now uploaded
       setSpriteSources(prev => {
         const updated = { ...prev };
@@ -747,8 +747,8 @@ export default function SpriteGenerationLab({
                       {/* Source badge */}
                       {spriteSources[stage] && (
                         <span className={`absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded font-medium ${spriteSources[stage] === 'local'
-                            ? 'bg-yellow-600/90 text-yellow-100'
-                            : 'bg-green-600/90 text-green-100'
+                          ? 'bg-yellow-600/90 text-yellow-100'
+                          : 'bg-green-600/90 text-green-100'
                           }`}>
                           {spriteSources[stage] === 'local' ? 'Local' : 'Uploaded'}
                         </span>
@@ -764,10 +764,10 @@ export default function SpriteGenerationLab({
                   onClick={() => generateSprite(stage)}
                   disabled={isGenerating}
                   className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${generatingStage === stage
-                      ? 'bg-blue-600/50 text-blue-300 cursor-wait'
-                      : sprites[stage]
-                        ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30'
-                        : 'bg-blue-600 hover:bg-blue-500 text-white'
+                    ? 'bg-blue-600/50 text-blue-300 cursor-wait'
+                    : sprites[stage]
+                      ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white'
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {generatingStage === stage ? (
@@ -838,7 +838,7 @@ export default function SpriteGenerationLab({
               const essenceRecord = getEssenceRecord();
               const entries = Object.entries(essenceRecord).sort((a, b) => b[1] - a[1]);
               if (entries.length === 0) return null;
-              
+
               return (
                 <div>
                   <label className="block text-xs text-gray-400 mb-2">Essence Colors (auto-derived from fish data)</label>

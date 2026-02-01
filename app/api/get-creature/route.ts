@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     });
 
     const spriteUrl = spriteBlobs.length > 0 ? spriteBlobs[0].url : null;
-    
+
     // Add cache-busting timestamp to sprite URLs using updatedAt or current time
     const timestamp = metadata.updatedAt || Date.now();
     const addCacheBuster = (url: string | null | undefined) => {
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       ...metadata,
       sprite: addCacheBuster(spriteUrl || metadata.sprite),
     };
-    
+
     // Also cache-bust growth sprite URLs if present
     if (creature.growthSprites) {
       for (const stage of ['juvenile', 'adult', 'elder'] as const) {
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
         }
       }
     }
-    
+
     // Cache-bust main sprite resolutions too
     if (creature.spriteResolutions) {
       if (creature.spriteResolutions.high) creature.spriteResolutions.high = addCacheBuster(creature.spriteResolutions.high)!;

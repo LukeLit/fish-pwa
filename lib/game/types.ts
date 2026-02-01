@@ -185,6 +185,17 @@ export interface CreatureClips {
 export type ClipAction = keyof CreatureClips;
 
 /**
+ * Growth Stage Clips - Clips organized by growth stage
+ * Each growth stage (juvenile, adult, elder) can have its own set of animation clips
+ * generated from the appropriate growth stage sprite.
+ */
+export interface GrowthStageClips {
+  juvenile?: CreatureClips;   // Clips using juvenile sprite
+  adult?: CreatureClips;      // Clips using adult/base sprite
+  elder?: CreatureClips;      // Clips using elder sprite
+}
+
+/**
  * Sprite Resolution Variants - Multi-resolution sprites for optimal rendering
  * 
  * Provides different resolution versions of the same sprite to optimize
@@ -274,8 +285,12 @@ export interface Creature extends BaseFishData {
     maxDepth?: number; // Optional maximum depth
   };
 
-  // Animation clips (optional - falls back to sprite + deformation if not present)
-  clips?: CreatureClips;
+  // Animation clips organized by growth stage
+  // Each stage (juvenile, adult, elder) can have its own clips generated from the corresponding sprite
+  clips?: GrowthStageClips;
+  
+  // Legacy: flat clips structure for backward compatibility (deprecated, will be migrated to clips)
+  legacyClips?: CreatureClips;
 
   // Timestamps for sync tracking
   createdAt?: number;  // Unix timestamp (ms) when creature was first created

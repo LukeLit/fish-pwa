@@ -6,7 +6,7 @@
  * 
  * Supports multiple providers:
  * - Google Veo (veo-3.1-*)
- * - Fal.ai (fal/wan-2.1, fal/kling-*)
+ * - Fal.ai (fal/wan-2.1, fal/kling-*, fal/grok-imagine)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -24,6 +24,7 @@ const FAL_MODELS: Record<string, { id: string; name: string }> = {
   'wan-2.1': { id: 'fal-ai/wan-i2v', name: 'Wan 2.1' },
   'kling-2.1-standard': { id: 'fal-ai/kling-video/v2.1/standard/image-to-video', name: 'Kling 2.1 Std' },
   'kling-2.1-pro': { id: 'fal-ai/kling-video/v2.1/pro/image-to-video', name: 'Kling 2.1 Pro' },
+  'grok-imagine': { id: 'xai/grok-imagine-video/image-to-video', name: 'Grok Imagine' },
 };
 
 /**
@@ -110,6 +111,7 @@ export async function POST(request: NextRequest) {
       action,
       spriteUrl,
       description,
+      growthStage = 'adult', // Which growth stage this clip is for
       // Video generation settings (with defaults)
       model = 'fal/wan-2.1',
       provider: providedProvider,
@@ -166,6 +168,13 @@ export async function POST(request: NextRequest) {
         validResolutions: ['480p', '720p'],
         validAspectRatios: ['1:1', '16:9', '9:16'],
         defaultDuration: 5,
+        defaultAspectRatio: '1:1',
+      },
+      'grok-imagine': {
+        validDurations: [6],
+        validResolutions: ['480p', '720p'],
+        validAspectRatios: ['auto', '1:1', '16:9', '9:16', '4:3', '3:4'],
+        defaultDuration: 6,
         defaultAspectRatio: '1:1',
       },
     };
@@ -361,6 +370,15 @@ export async function POST(request: NextRequest) {
             duration: String(finalDuration <= 5 ? 5 : 10) as '5' | '10',
             cfg_scale: 0.5,
           };
+        } else if (falModelKey === 'grok-imagine') {
+          // Grok Imagine Video - xAI model via fal.ai (no negative_prompt support)
+          falInput = {
+            prompt,
+            image_url: spriteUrl,
+            duration: finalDuration || 6,
+            aspect_ratio: finalAspectRatio || 'auto',
+            resolution: finalResolution || '720p',
+          };
         } else {
           // Kling 2.1 Pro - supports aspect_ratio
           falInput = {
@@ -405,7 +423,7 @@ export async function POST(request: NextRequest) {
         }
         const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
 
-        const videoPath = `creatures/${creatureId}/clips/${action}.mp4`;
+        const videoPath = `creatures/${creatureId}/clips/${growthStage}/${action}.mp4`;
         const videoResult = await uploadAsset(videoPath, videoBuffer, 'video/mp4');
         console.log(`[ClipJob] Video uploaded to: ${videoResult.url}`);
 
@@ -421,6 +439,7 @@ export async function POST(request: NextRequest) {
             action,
             spriteUrl,
             description,
+            growthStage,
           },
           operationId,
           result: {
@@ -495,6 +514,7 @@ export async function POST(request: NextRequest) {
           action,
           spriteUrl,
           description,
+          growthStage,
         },
         operationId,
         // Store video settings for result
@@ -531,6 +551,7 @@ export async function POST(request: NextRequest) {
           action,
           spriteUrl,
           description,
+          growthStage,
         },
         error: genError.message || 'Failed to start video generation',
       });
@@ -774,7 +795,7 @@ async function doProcessClipJob(
           throw new Error('Failed to download video after all attempts');
         }
 
-        const videoPath = `creatures/${job.input.creatureId}/clips/${job.input.action}.mp4`;
+        const videoPath = `creatures/${job.input.creatureId}/clips/${job.input.growthStage || 'adult'}/${job.input.action}.mp4`;
         const videoResult = await uploadAsset(videoPath, videoBuffer, 'video/mp4');
 
         console.log(`[ClipJob] Video saved for ${job.id}: ${videoResult.url}`);

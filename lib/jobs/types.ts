@@ -34,6 +34,7 @@ export interface ClipGenerationJob extends Job {
     action: string;
     spriteUrl: string;
     description?: string;
+    growthStage?: 'juvenile' | 'adult' | 'elder'; // Which growth stage this clip is for
   };
   // Google operation ID for polling
   operationId?: string;

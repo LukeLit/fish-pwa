@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     // Add cache-busting timestamp to URLs
     const timestamp = Date.now();
     const addCacheBuster = (url: string) => `${url}?t=${timestamp}`;
-    
+
     const spriteResolutions: SpriteResolutions = {
       high: addCacheBuster(highResult.url),
       medium: addCacheBuster(mediumResult.url),

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
 
     const duration = Math.round(performance.now() - startTime);
-    devLog(`Request completed in ${duration}ms`, { 
+    devLog(`Request completed in ${duration}ms`, {
       total: filteredCreatures.length,
       hasTimestamps: filteredCreatures.some(c => c.updatedAt),
     });
@@ -146,7 +146,7 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
     for (const result of results) {
       if (result.status === 'fulfilled' && result.value) {
         const creature = result.value;
-        
+
         // Add cache-busting timestamp using updatedAt or current time
         const timestamp = creature.updatedAt || Date.now();
         const addCacheBuster = (url: string | null | undefined) => {
@@ -154,19 +154,19 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
           if (url.includes('?')) return url; // Already has params
           return `${url}?t=${timestamp}`;
         };
-        
+
         // Cache-bust main sprite
         if (creature.sprite) {
           creature.sprite = addCacheBuster(creature.sprite)!;
         }
-        
+
         // Cache-bust sprite resolutions
         if (creature.spriteResolutions) {
           if (creature.spriteResolutions.high) creature.spriteResolutions.high = addCacheBuster(creature.spriteResolutions.high)!;
           if (creature.spriteResolutions.medium) creature.spriteResolutions.medium = addCacheBuster(creature.spriteResolutions.medium)!;
           if (creature.spriteResolutions.low) creature.spriteResolutions.low = addCacheBuster(creature.spriteResolutions.low)!;
         }
-        
+
         // Cache-bust growth sprite URLs
         if (creature.growthSprites) {
           for (const stage of ['juvenile', 'adult', 'elder'] as const) {
@@ -181,7 +181,7 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
             }
           }
         }
-        
+
         creatures.push(creature);
       }
     }

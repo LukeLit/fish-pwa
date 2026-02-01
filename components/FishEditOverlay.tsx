@@ -8,8 +8,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
-import type { CreatureClips, ClipAction, GrowthSprites, SpriteResolutions } from '@/lib/game/types';
-import { generateCreatureClip, type ClipGenerationProgress } from '@/lib/video/clip-generator';
+import type { CreatureClips, ClipAction, GrowthSprites, SpriteResolutions, GrowthStageClips, GrowthStage } from '@/lib/game/types';
+import { generateCreatureClip, type ClipGenerationProgress, getSpriteForGrowthStage, getAvailableGrowthStages } from '@/lib/video/clip-generator';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
 import { devLogSave, devLogError } from '@/lib/editor/dev-logger';
 import SpriteGenerationLab from './SpriteGenerationLab';
@@ -88,8 +88,10 @@ export interface FishData {
     biomeUnlocked: string[];
     essenceSpent?: Record<string, number>;
   };
-  // Video animation clips
-  clips?: CreatureClips;
+  // Video animation clips organized by growth stage
+  clips?: GrowthStageClips;
+  // Legacy flat clips (backward compatibility)
+  legacyClips?: CreatureClips;
 
   // Multi-resolution sprites (mipmap system)
   spriteResolutions?: SpriteResolutions;
@@ -154,6 +156,7 @@ export default function FishEditOverlay({
   const [activeTab, setActiveTab] = useState<'details' | 'animation'>('details');
   const [useDirectMode, setUseDirectMode] = useState(false);
   const [previewClip, setPreviewClip] = useState<{ action: ClipAction; mode: 'video' | 'frames' } | null>(null);
+  const [selectedClipGrowthStage, setSelectedClipGrowthStage] = useState<GrowthStage>('adult');
   const [showSpriteLab, setShowSpriteLab] = useState(false);
 
   // Debounce ref to prevent rapid-fire clip generation requests
@@ -419,7 +422,7 @@ export default function FishEditOverlay({
 
       if (result.success) {
         devLogSave('Save successful', { spriteUrl: result.spriteUrl });
-        
+
         // Verify we got a sprite URL back
         if (!result.spriteUrl) {
           console.error('[FishEditOverlay] WARNING: Save succeeded but no spriteUrl returned!');
@@ -703,6 +706,15 @@ export default function FishEditOverlay({
       return;
     }
 
+    // Get the sprite URL for the selected growth stage
+    // Cast editedFish to Creature-compatible type for getSpriteForGrowthStage
+    const spriteUrl = getSpriteForGrowthStage(editedFish as any, selectedClipGrowthStage);
+    
+    if (!spriteUrl) {
+      setSaveMessage(`❌ No sprite available for ${selectedClipGrowthStage} stage. Generate growth sprites first.`);
+      return;
+    }
+
     // Debounce: prevent rapid-fire requests (protects against accidental double-clicks)
     const now = Date.now();
     const timeSinceLastRequest = now - lastClipGenerationTime.current;
@@ -714,12 +726,12 @@ export default function FishEditOverlay({
     lastClipGenerationTime.current = now;
 
     setIsGeneratingClip(true);
-    setClipGenerationStatus(`Starting ${action} clip generation...`);
+    setClipGenerationStatus(`Starting ${action} clip generation for ${selectedClipGrowthStage}...`);
 
     try {
       if (useDirectMode) {
         // Direct mode: synchronous API call without job system
-        setClipGenerationStatus(`Calling Gemini API directly for ${action}...`);
+        setClipGenerationStatus(`Calling Gemini API directly for ${action} (${selectedClipGrowthStage})...`);
 
         const response = await fetch('/api/generate-creature-clip-direct', {
           method: 'POST',
@@ -727,8 +739,9 @@ export default function FishEditOverlay({
           body: JSON.stringify({
             creatureId: editedFish.id,
             action,
-            spriteUrl: editedFish.sprite,
+            spriteUrl,
             description: editedFish.description || editedFish.name,
+            growthStage: selectedClipGrowthStage,
           }),
         });
 
@@ -739,9 +752,16 @@ export default function FishEditOverlay({
         }
 
         if (data.success && data.clip) {
-          const updatedClips: CreatureClips = {
-            ...(editedFish.clips || {}),
+          // Store clip under the correct growth stage
+          const existingStageClips = editedFish.clips?.[selectedClipGrowthStage] || {};
+          const updatedStageClips: CreatureClips = {
+            ...existingStageClips,
             [action]: data.clip,
+          };
+
+          const updatedClips: GrowthStageClips = {
+            ...(editedFish.clips || {}),
+            [selectedClipGrowthStage]: updatedStageClips,
           };
 
           const updatedFish = {
@@ -752,7 +772,7 @@ export default function FishEditOverlay({
           setEditedFish(updatedFish);
           onSave(updatedFish);
 
-          setSaveMessage(`✓ ${action} clip generated (direct mode)!`);
+          setSaveMessage(`✓ ${action} clip for ${selectedClipGrowthStage} generated (direct mode)!`);
           setClipGenerationStatus('');
         } else {
           throw new Error(data.error || 'Direct generation failed');
@@ -762,7 +782,7 @@ export default function FishEditOverlay({
         const result = await generateCreatureClip(
           editedFish.id,
           action,
-          editedFish.sprite,
+          spriteUrl,
           editedFish.description || editedFish.name,
           (progress: ClipGenerationProgress) => {
             // Update UI with progress
@@ -770,14 +790,21 @@ export default function FishEditOverlay({
             if (progress.stage === 'error') {
               setSaveMessage(`❌ ${progress.message}`);
             }
-          }
+          },
+          selectedClipGrowthStage
         );
 
         if (result.success && result.clip) {
-          // Update local fish state with new clip
-          const updatedClips: CreatureClips = {
-            ...(editedFish.clips || {}),
+          // Store clip under the correct growth stage
+          const existingStageClips = editedFish.clips?.[selectedClipGrowthStage] || {};
+          const updatedStageClips: CreatureClips = {
+            ...existingStageClips,
             [action]: result.clip,
+          };
+
+          const updatedClips: GrowthStageClips = {
+            ...(editedFish.clips || {}),
+            [selectedClipGrowthStage]: updatedStageClips,
           };
 
           const updatedFish = {
@@ -788,7 +815,7 @@ export default function FishEditOverlay({
           setEditedFish(updatedFish);
           onSave(updatedFish);
 
-          setSaveMessage(`✓ ${action} clip generated and saved!`);
+          setSaveMessage(`✓ ${action} clip for ${selectedClipGrowthStage} generated and saved!`);
           setClipGenerationStatus('');
         } else {
           setSaveMessage(`❌ ${result.error || 'Clip generation failed'}`);
@@ -1016,7 +1043,27 @@ export default function FishEditOverlay({
               : 'text-gray-400 hover:text-white'
               }`}
           >
-            Animation {editedFish.clips && Object.keys(editedFish.clips).length > 0 ? `(${Object.keys(editedFish.clips).length})` : ''}
+            Animation {editedFish.clips && Object.keys(editedFish.clips).length > 0 ? `(${(() => {
+              // Count total clips across all formats
+              const clips = editedFish.clips;
+              if (!clips) return 0;
+              const keys = Object.keys(clips);
+              const isOldFormat = keys.some(key => 
+                ['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(key)
+              );
+              if (isOldFormat) {
+                return keys.filter(k => clips[k as keyof typeof clips]).length;
+              }
+              // New format - count clips across all growth stages
+              let count = 0;
+              ['juvenile', 'adult', 'elder'].forEach(stage => {
+                const stageClips = clips[stage as keyof typeof clips];
+                if (stageClips && typeof stageClips === 'object') {
+                  count += Object.keys(stageClips).length;
+                }
+              });
+              return count;
+            })()})` : ''}
           </button>
         </div>
 
@@ -1197,29 +1244,124 @@ export default function FishEditOverlay({
                 </p>
               </div>
 
-              {/* Existing Clips */}
+              {/* Existing Clips - Organized by Growth Stage */}
               <div>
                 <h3 className="text-sm font-bold text-white mb-3">Generated Clips</h3>
                 {editedFish.clips && Object.keys(editedFish.clips).length > 0 ? (
-                  <div className="space-y-2">
-                    {(Object.keys(editedFish.clips) as ClipAction[]).map((action) => {
-                      const clip = editedFish.clips![action];
+                  <div className="space-y-4">
+                    {/* Check if clips are in old flat format (keys are action names like swimIdle) */}
+                    {(() => {
+                      const clipKeys = Object.keys(editedFish.clips || {});
+                      const isOldFormat = clipKeys.some(key => 
+                        ['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(key)
+                      );
+                      
+                      if (isOldFormat) {
+                        // Display old format clips as "Legacy (Adult)" 
+                        const legacyClips = editedFish.clips as unknown as CreatureClips;
+                        return (
+                          <div key="legacy">
+                            <h4 className="text-xs font-medium text-yellow-400 mb-2">⚠️ Legacy Clips (Pre-Growth Stage)</h4>
+                            <p className="text-xs text-gray-500 mb-2">These clips were generated before growth stage support. Re-generate to organize by stage.</p>
+                            <div className="space-y-2">
+                              {(Object.keys(legacyClips) as ClipAction[]).map((action) => {
+                                const clip = legacyClips[action];
+                                if (!clip) return null;
+                                return (
+                                  <div key={`legacy-${action}`} className="bg-gray-800 p-3 rounded-lg border border-yellow-600/30">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center gap-3">
+                                        {clip?.thumbnailUrl && (
+                                          <img
+                                            src={clip.thumbnailUrl}
+                                            alt={action}
+                                            className="w-12 h-12 object-cover rounded bg-gray-700"
+                                          />
+                                        )}
+                                        <div>
+                                          <span className="text-sm text-white font-medium capitalize">
+                                            {action.replace(/([A-Z])/g, ' $1').trim()}
+                                          </span>
+                                          <p className="text-xs text-gray-400">
+                                            {clip?.duration ? `${(clip.duration / 1000).toFixed(1)}s` : 'Unknown duration'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      {clip?.videoUrl && (
+                                        <>
+                                          <button
+                                            onClick={() => setPreviewClip({ action, mode: 'video' })}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                                            title="Preview Video"
+                                          >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                                            </svg>
+                                            Play
+                                          </button>
+                                          <a
+                                            href={clip.videoUrl}
+                                            download={`${editedFish.id}_${action}.mp4`}
+                                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                                            title="Download Video"
+                                          >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                            </svg>
+                                            Download
+                                          </a>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // New format - display by growth stage
+                      return null;
+                    })()}
+                    
+                    {/* New format clips - organized by growth stage */}
+                    {(['juvenile', 'adult', 'elder'] as GrowthStage[]).map((stage) => {
+                      const stageClips = editedFish.clips?.[stage];
+                      if (!stageClips || typeof stageClips !== 'object' || Object.keys(stageClips).length === 0) return null;
+                      // Skip if this looks like an action name (old format detected above)
+                      if (['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(stage)) return null;
+                      
+                      const stageLabels: Record<GrowthStage, string> = {
+                        juvenile: '🐣 Juvenile',
+                        adult: '🐟 Adult',
+                        elder: '🐋 Elder',
+                      };
+                      
                       return (
-                        <div key={action} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-3">
-                              {clip?.thumbnailUrl && (
-                                <img
-                                  src={clip.thumbnailUrl}
-                                  alt={action}
-                                  className="w-12 h-12 object-cover rounded bg-gray-700"
-                                />
-                              )}
-                              <div>
-                                <span className="text-sm text-white font-medium capitalize">
-                                  {action.replace(/([A-Z])/g, ' $1').trim()}
-                                </span>
-                                <p className="text-xs text-gray-400">
+                        <div key={stage}>
+                          <h4 className="text-xs font-medium text-gray-400 mb-2">{stageLabels[stage]}</h4>
+                          <div className="space-y-2">
+                            {(Object.keys(stageClips) as ClipAction[]).map((action) => {
+                              const clip = stageClips[action];
+                              return (
+                                <div key={`${stage}-${action}`} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-3">
+                                      {clip?.thumbnailUrl && (
+                                        <img
+                                          src={clip.thumbnailUrl}
+                                          alt={action}
+                                          className="w-12 h-12 object-cover rounded bg-gray-700"
+                                        />
+                                      )}
+                                      <div>
+                                        <span className="text-sm text-white font-medium capitalize">
+                                          {action.replace(/([A-Z])/g, ' $1').trim()}
+                                        </span>
+                                        <p className="text-xs text-gray-400">
                                   {clip?.frames?.length || 0} frames • {clip?.duration ? `${(clip.duration / 1000).toFixed(1)}s` : ''} • {clip?.loop ? 'Loop' : 'One-shot'}
                                 </p>
                               </div>
@@ -1267,6 +1409,10 @@ export default function FishEditOverlay({
                             )}
                           </div>
                         </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
@@ -1281,11 +1427,60 @@ export default function FishEditOverlay({
               <div className="border-t border-gray-700 pt-4">
                 <h3 className="text-sm font-bold text-white mb-2">Generate New Clips</h3>
                 <p className="text-xs text-gray-400 mb-3">
-                  Uses Veo 3.1 to generate video clips from your sprite. Each clip takes 1-2 minutes.
+                  Generate video clips from growth stage sprites. Each clip takes 1-2 minutes.
                 </p>
+                
+                {/* Growth Stage Selector */}
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-400 mb-2">
+                    Select Growth Stage for Clip Generation
+                  </label>
+                  <div className="flex gap-2">
+                    {(['juvenile', 'adult', 'elder'] as GrowthStage[]).map((stage) => {
+                      const hasSprite = stage === 'adult' 
+                        ? !!editedFish.sprite 
+                        : !!editedFish.growthSprites?.[stage]?.sprite;
+                      const stageLabels: Record<GrowthStage, string> = {
+                        juvenile: '🐣 Juvenile',
+                        adult: '🐟 Adult',
+                        elder: '🐋 Elder',
+                      };
+                      return (
+                        <button
+                          key={stage}
+                          onClick={() => setSelectedClipGrowthStage(stage)}
+                          disabled={!hasSprite}
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            selectedClipGrowthStage === stage
+                              ? 'bg-blue-600 text-white'
+                              : hasSprite
+                                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                          }`}
+                          title={hasSprite ? `Generate clips for ${stage}` : `No ${stage} sprite available`}
+                        >
+                          {stageLabels[stage]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {selectedClipGrowthStage === 'adult' 
+                      ? 'Using base sprite for adult clips' 
+                      : editedFish.growthSprites?.[selectedClipGrowthStage]?.sprite
+                        ? `Using ${selectedClipGrowthStage} growth sprite`
+                        : `No ${selectedClipGrowthStage} sprite - generate growth sprites first`
+                    }
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   {(['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death'] as ClipAction[]).map((action) => {
-                    const hasClip = editedFish.clips?.[action];
+                    // Check for clip in the selected growth stage
+                    const hasClip = editedFish.clips?.[selectedClipGrowthStage]?.[action];
+                    const spriteAvailable = selectedClipGrowthStage === 'adult' 
+                      ? !!editedFish.sprite 
+                      : !!editedFish.growthSprites?.[selectedClipGrowthStage]?.sprite;
                     const actionLabels: Record<string, string> = {
                       swimIdle: 'Swim (Idle)',
                       swimFast: 'Swim (Fast)',
@@ -1298,7 +1493,7 @@ export default function FishEditOverlay({
                       <button
                         key={action}
                         onClick={() => handleGenerateClip(action)}
-                        disabled={isGeneratingClip || !editedFish.sprite}
+                        disabled={isGeneratingClip || !spriteAvailable}
                         className={`px-3 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${hasClip
                           ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30'
                           : 'bg-blue-600 hover:bg-blue-500 text-white'
@@ -2066,14 +2261,41 @@ export default function FishEditOverlay({
       </div>
 
       {/* Clip Preview Modal */}
-      {previewClip && editedFish.clips?.[previewClip.action] && (
-        <ClipPreviewModal
-          clip={editedFish.clips[previewClip.action]!}
-          action={previewClip.action}
-          mode={previewClip.mode}
-          onClose={() => setPreviewClip(null)}
-        />
-      )}
+      {previewClip && (() => {
+        // Find the clip - check both old flat format and new growth stage format
+        const clips = editedFish.clips;
+        if (!clips) return null;
+        
+        // Check if old format (direct action keys)
+        const isOldFormat = Object.keys(clips).some(key => 
+          ['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(key)
+        );
+        
+        let clip;
+        if (isOldFormat) {
+          clip = (clips as unknown as CreatureClips)[previewClip.action];
+        } else {
+          // New format - look in all growth stages
+          for (const stage of ['juvenile', 'adult', 'elder'] as GrowthStage[]) {
+            const stageClips = clips[stage];
+            if (stageClips && stageClips[previewClip.action]) {
+              clip = stageClips[previewClip.action];
+              break;
+            }
+          }
+        }
+        
+        if (!clip) return null;
+        
+        return (
+          <ClipPreviewModal
+            clip={clip}
+            action={previewClip.action}
+            mode={previewClip.mode}
+            onClose={() => setPreviewClip(null)}
+          />
+        );
+      })()}
 
       {/* SpriteLab Modal */}
       {showSpriteLab && (

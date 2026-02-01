@@ -5,7 +5,7 @@
  * Uses the job API for reliable background processing.
  */
 
-import type { ClipAction, CreatureClip } from '@/lib/game/types';
+import type { ClipAction, CreatureClip, CreatureClips, GrowthStage, GrowthStageClips, Creature } from '@/lib/game/types';
 import type { ClipGenerationJob } from '@/lib/jobs/types';
 
 export interface ClipGenerationProgress {
@@ -94,6 +94,7 @@ export function getVideoGenerationSettings(): VideoGenerationSettings {
  * @param spriteUrl - URL of the creature's sprite (used as reference image)
  * @param description - Optional description of the creature
  * @param onProgress - Progress callback
+ * @param growthStage - Growth stage for the clip (juvenile, adult, elder) - defaults to 'adult'
  * @returns The generated clip data or job ID for tracking
  */
 export async function generateCreatureClip(
@@ -101,7 +102,8 @@ export async function generateCreatureClip(
   action: ClipAction,
   spriteUrl: string,
   description?: string,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  growthStage: GrowthStage = 'adult'
 ): Promise<ClipGenerationResult> {
   const report = (stage: ClipGenerationProgress['stage'], message: string, progress?: number, jobId?: string) => {
     onProgress?.({ stage, message, progress, jobId });
@@ -123,6 +125,7 @@ export async function generateCreatureClip(
         action,
         spriteUrl,
         description,
+        growthStage, // Which growth stage this clip is for
         // Pass video generation settings
         model: videoSettings.selectedVideoModel,
         provider, // 'fal' or 'veo'
@@ -257,7 +260,7 @@ export function hasClip(
 }
 
 /**
- * Get available clip actions that can still be generated
+ * Get available clip actions that can still be generated for a specific growth stage
  */
 export function getMissingClipActions(
   clips: Record<string, CreatureClip> | undefined | null
@@ -265,4 +268,79 @@ export function getMissingClipActions(
   const allActions: ClipAction[] = ['swimIdle', 'swimFast', 'dash', 'bite', 'takeDamage'];
   if (!clips) return allActions;
   return allActions.filter((action) => !clips[action]);
+}
+
+/**
+ * Get the sprite URL for a specific growth stage
+ * Falls back through: growthSprites[stage] -> base sprite
+ */
+export function getSpriteForGrowthStage(creature: Creature, stage: GrowthStage): string {
+  // Check for growth stage sprite
+  const growthSprite = creature.growthSprites?.[stage]?.sprite;
+  if (growthSprite) {
+    return growthSprite;
+  }
+  
+  // For adult stage, use the base sprite
+  if (stage === 'adult') {
+    return creature.sprite;
+  }
+  
+  // Fallback to base sprite if no growth stage sprite exists
+  return creature.sprite;
+}
+
+/**
+ * Get clips for a specific growth stage
+ * Handles backward compatibility with legacy flat clips structure
+ */
+export function getClipsForGrowthStage(
+  clips: GrowthStageClips | undefined | null,
+  legacyClips: CreatureClips | undefined | null,
+  stage: GrowthStage
+): CreatureClips | undefined {
+  // Try new structure first
+  if (clips?.[stage]) {
+    return clips[stage];
+  }
+  
+  // Fall back to legacy clips (treated as 'adult' clips)
+  if (stage === 'adult' && legacyClips) {
+    return legacyClips;
+  }
+  
+  return undefined;
+}
+
+/**
+ * Check if a creature has clips for a specific growth stage and action
+ */
+export function hasClipForStage(
+  clips: GrowthStageClips | undefined | null,
+  legacyClips: CreatureClips | undefined | null,
+  stage: GrowthStage,
+  action: ClipAction
+): boolean {
+  const stageClips = getClipsForGrowthStage(clips, legacyClips, stage);
+  return !!stageClips?.[action];
+}
+
+/**
+ * Get all growth stages that have sprites available
+ */
+export function getAvailableGrowthStages(creature: Creature): GrowthStage[] {
+  const stages: GrowthStage[] = [];
+  
+  // Always include adult (uses base sprite)
+  stages.push('adult');
+  
+  // Add other stages if they have sprites
+  if (creature.growthSprites?.juvenile?.sprite) {
+    stages.unshift('juvenile'); // Add at start for order
+  }
+  if (creature.growthSprites?.elder?.sprite) {
+    stages.push('elder');
+  }
+  
+  return stages;
 }
