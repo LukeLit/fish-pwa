@@ -12,7 +12,6 @@ import { fal } from '@fal-ai/client';
 interface GenerateVariationRequest {
   imageUrl: string;         // Source image URL
   prompt: string;           // Text prompt to guide the variation
-  negativePrompt?: string;  // What to avoid
   model?: string;           // Model to use (default: flux-redux)
   imageSize?: string;       // Output image size
   strength?: number;        // How much to vary from original (0-1)
@@ -47,11 +46,9 @@ export async function POST(request: NextRequest) {
       input: {
         image_url: body.imageUrl,
         prompt: body.prompt,
-        negative_prompt: body.negativePrompt || 'blurry, low quality, distorted, deformed',
         strength: body.strength ?? 0.75,
         num_inference_steps: 28,
         guidance_scale: 7.5,
-        image_size: body.imageSize || 'square_hd',
         output_format: 'png',
       },
       logs: true,
