@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
-import type { CreatureClips, ClipAction } from '@/lib/game/types';
+import type { CreatureClips, ClipAction, GrowthSprites, SpriteResolutions } from '@/lib/game/types';
 import { generateCreatureClip, type ClipGenerationProgress } from '@/lib/video/clip-generator';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
 
@@ -84,6 +84,12 @@ export interface FishData {
   };
   // Video animation clips
   clips?: CreatureClips;
+
+  // Multi-resolution sprites (mipmap system)
+  spriteResolutions?: SpriteResolutions;
+
+  // Growth stage sprites
+  growthSprites?: GrowthSprites;
 }
 
 // Type alias for updateField values to improve readability

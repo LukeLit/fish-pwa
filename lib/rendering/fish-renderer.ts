@@ -96,7 +96,7 @@ export function getSegmentsForLOD(lod: LODLevel): number {
 // Multi-Resolution Sprite Selection
 // =============================================================================
 
-import type { SpriteResolutions } from '@/lib/game/types';
+import type { SpriteResolutions, GrowthSprites, GrowthStage, GrowthSpriteData } from '@/lib/game/types';
 
 /** Thresholds for selecting sprite resolution based on screen size */
 export const SPRITE_RESOLUTION_THRESHOLDS = {
@@ -182,6 +182,128 @@ export function getResolutionKey(screenSize: number): 'high' | 'medium' | 'low' 
   if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.HIGH) return 'high';
   if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) return 'medium';
   return 'low';
+}
+
+// =============================================================================
+// Growth Stage Sprite Selection
+// =============================================================================
+
+/** Default size ranges for growth stages */
+export const DEFAULT_GROWTH_RANGES = {
+  juvenile: { min: 0, max: 60 },
+  adult: { min: 61, max: 150 },
+  elder: { min: 151, max: Infinity },
+};
+
+// Debug flag for growth stage logging
+let GROWTH_DEBUG = false;
+let lastLoggedGrowthStage: Map<string, GrowthStage> = new Map();
+
+/** Enable/disable growth stage debug logging */
+export function setGrowthDebug(enabled: boolean): void {
+  GROWTH_DEBUG = enabled;
+  if (!enabled) {
+    lastLoggedGrowthStage.clear();
+  }
+  console.log(`[Growth] Debug logging ${enabled ? 'ENABLED' : 'DISABLED'}`);
+}
+
+/** Check if growth debug is enabled */
+export function isGrowthDebugEnabled(): boolean {
+  return GROWTH_DEBUG;
+}
+
+/**
+ * Get the growth stage for a given fish size
+ * 
+ * @param fishSize - The actual size of the fish (not screen size)
+ * @param growthSprites - Optional growth sprites with custom size ranges
+ * @returns The growth stage ('juvenile', 'adult', or 'elder')
+ */
+export function getGrowthStage(fishSize: number, growthSprites?: GrowthSprites): GrowthStage {
+  // Use custom ranges from growthSprites if available, otherwise use defaults
+  const juvenileRange = growthSprites?.juvenile?.sizeRange || DEFAULT_GROWTH_RANGES.juvenile;
+  const elderRange = growthSprites?.elder?.sizeRange || DEFAULT_GROWTH_RANGES.elder;
+
+  if (fishSize <= juvenileRange.max) {
+    return 'juvenile';
+  } else if (fishSize >= elderRange.min) {
+    return 'elder';
+  }
+  return 'adult';
+}
+
+/**
+ * Get the appropriate sprite data for a growth stage
+ * Falls back to the base sprite if the stage-specific sprite isn't available
+ * 
+ * @param creature - Creature with sprite, spriteResolutions, and growthSprites
+ * @param fishSize - The actual size of the fish
+ * @param creatureId - Optional ID for debug logging
+ * @returns Object with sprite URL and optional resolutions for the growth stage
+ */
+export function getGrowthStageSprite(
+  creature: {
+    sprite: string;
+    spriteResolutions?: SpriteResolutions;
+    growthSprites?: GrowthSprites;
+  },
+  fishSize: number,
+  creatureId?: string
+): { sprite: string; spriteResolutions?: SpriteResolutions } {
+  const stage = getGrowthStage(fishSize, creature.growthSprites);
+
+  // Debug logging - only log when stage changes for a creature
+  if (GROWTH_DEBUG && creatureId) {
+    const lastStage = lastLoggedGrowthStage.get(creatureId);
+    if (lastStage !== stage) {
+      console.log(`[Growth] ${creatureId}: ${lastStage || 'none'} -> ${stage} (size: ${fishSize})`);
+      lastLoggedGrowthStage.set(creatureId, stage);
+    }
+  }
+
+  // Get the growth stage sprite data if available
+  const stageData = creature.growthSprites?.[stage];
+
+  if (stageData?.sprite) {
+    return {
+      sprite: stageData.sprite,
+      spriteResolutions: stageData.spriteResolutions,
+    };
+  }
+
+  // Fall back to base sprite
+  return {
+    sprite: creature.sprite,
+    spriteResolutions: creature.spriteResolutions,
+  };
+}
+
+/**
+ * Get the appropriate sprite URL considering both growth stage AND resolution
+ * This is the main function to use for rendering growth-aware sprites
+ * 
+ * @param creature - Creature with sprite, spriteResolutions, and growthSprites
+ * @param fishSize - The actual size of the fish (for growth stage selection)
+ * @param screenSize - The screen-space size (for resolution selection)
+ * @param creatureId - Optional ID for debug logging
+ * @returns The final sprite URL to use
+ */
+export function getGrowthAwareSpriteUrl(
+  creature: {
+    sprite: string;
+    spriteResolutions?: SpriteResolutions;
+    growthSprites?: GrowthSprites;
+  },
+  fishSize: number,
+  screenSize: number,
+  creatureId?: string
+): string {
+  // First, get the appropriate sprite for the growth stage
+  const stageSprite = getGrowthStageSprite(creature, fishSize, creatureId);
+
+  // Then, select the appropriate resolution
+  return getSpriteUrl(stageSprite, screenSize, creatureId);
 }
 
 // =============================================================================

@@ -28,10 +28,12 @@ import {
   hasUsableClips,
   getSpriteUrl,
   getResolutionKey,
+  getGrowthStage,
+  getGrowthStageSprite,
   type ClipMode,
   type RenderContext,
 } from '@/lib/rendering/fish-renderer';
-import type { SpriteResolutions } from '@/lib/game/types';
+import type { SpriteResolutions, GrowthSprites } from '@/lib/game/types';
 import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
 import { getVideoSpriteManager, type VideoSprite } from '@/lib/rendering/video-sprite';
 import { getClipStateManager } from '@/lib/game/clip-state';
@@ -291,6 +293,7 @@ export default function FishEditorCanvas({
 
   // Game state
   const playerRef = useRef({
+    id: 'player' as string, // Can be updated to actual creature ID
     x: 400,
     y: 300,
     vx: 0,
@@ -340,6 +343,7 @@ export default function FishEditorCanvas({
     verticalTilt: number;
     animTime: number;
     creatureData?: Creature;
+    currentGrowthStage?: 'juvenile' | 'adult' | 'elder'; // Track current growth stage for sprite swapping
     // Spawn/despawn animation properties
     spawnTime?: number;      // When fish spawned (for fade-in)
     despawnTime?: number;    // When despawn started (for fade-out)
@@ -433,26 +437,52 @@ export default function FishEditorCanvas({
     });
   }, []);
 
+  /**
+   * Re-spawn (animate back in) a specific fish by ID
+   * Used when switching between fish in edit mode
+   */
+  const triggerRespawnFish = useCallback((fishId: string) => {
+    const fish = fishListRef.current.find(f => f.id === fishId);
+    if (fish && (fish.lifecycleState === 'despawning' || fish.lifecycleState === 'removed')) {
+      fish.despawnTime = undefined;
+      fish.spawnTime = performance.now();
+      fish.opacity = 0;
+      fish.lifecycleState = 'spawning';
+    }
+  }, []);
+
   // ============================================================================
   // Edit Mode Animation - Animate fish out/in when entering/exiting edit mode
   // ============================================================================
 
-  // Track previous editMode to detect transitions
+  // Track previous editMode and selectedFishId to detect transitions
   const prevEditModeRef = useRef<boolean>(editMode);
+  const prevSelectedFishIdRef = useRef<string | null>(selectedFishId);
 
-  // Animate fish out when entering edit mode, back in when exiting
+  // Animate fish out when entering edit mode or switching selected fish, back in when exiting
   useEffect(() => {
     const wasEditMode = prevEditModeRef.current;
+    const prevSelectedFishId = prevSelectedFishIdRef.current;
     prevEditModeRef.current = editMode;
+    prevSelectedFishIdRef.current = selectedFishId;
 
-    if (editMode && !wasEditMode && selectedFishId) {
-      // Entering edit mode: animate out all fish except selected one and player
-      triggerDespawnAll(new Set([selectedFishId, 'player']));
+    if (editMode && selectedFishId) {
+      // Check if we just entered edit mode OR switched to a different fish while in edit mode
+      const justEnteredEditMode = !wasEditMode;
+      const switchedFishWhileEditing = wasEditMode && prevSelectedFishId !== selectedFishId;
+
+      if (justEnteredEditMode || switchedFishWhileEditing) {
+        // Animate out all fish except selected one and player
+        triggerDespawnAll(new Set([selectedFishId, 'player']));
+
+        // Also respawn the newly selected fish (in case it was previously despawned)
+        triggerRespawnFish(selectedFishId);
+      }
     } else if (!editMode && wasEditMode) {
       // Exiting edit mode: animate all fish back in
       triggerRespawnAll();
     }
-  }, [editMode, selectedFishId, triggerDespawnAll, triggerRespawnAll]);
+  }, [editMode, selectedFishId, triggerDespawnAll, triggerRespawnAll, triggerRespawnFish]);
 
   // Handle canvas clicks/touches for edit buttons
   const checkEditButtonClick = useCallback((clientX: number, clientY: number) => {
@@ -592,51 +622,77 @@ export default function FishEditorCanvas({
     img.src = background;
   }, [background]);
 
-  // Load player fish sprite
+  // Initialize player from playerCreature data AND load growth-aware sprite
   useEffect(() => {
-    if (!playerFishSprite) {
-      playerRef.current.sprite = null;
-      return;
-    }
+    if (playerCreature) {
+      // Update player ID from creature data
+      playerRef.current.id = playerCreature.id;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      // Process to remove background
-      playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
-    };
-    img.onerror = () => {
-      console.error('Failed to load player fish sprite');
-      playerRef.current.sprite = null;
-    };
-    // For HTTP(S) sprites, use clean URL to allow browser caching; for data: URLs, use as-is
-    if (playerFishSprite.startsWith('data:')) {
-      img.src = playerFishSprite;
+      // In game mode, use PLAYER_BASE_SIZE (45) for starting size
+      // In editor mode, use creature's actual size
+      const PLAYER_BASE_SIZE = 45; // Matches lib/game/spawn-fish.ts
+      const playerSize = gameMode ? PLAYER_BASE_SIZE : (playerCreature.stats?.size ?? 80);
+      playerRef.current.size = playerSize;
+      playerRef.current.baseSize = playerSize;
+
+      console.log(`[FishEditorCanvas] Initializing player: gameMode=${gameMode}, size=${playerSize}, creature.stats.size=${playerCreature.stats?.size}`);
+
+      // Initialize clip state machine if creature has clips
+      if (playerCreature.clips) {
+        const availableActions = Object.keys(playerCreature.clips) as ClipAction[];
+        if (availableActions.length > 0) {
+          clipStateManagerRef.current.getStateMachine('player', availableActions);
+        }
+      }
+
+      // Now load growth-aware sprite using the correct size
+      if (playerFishSprite) {
+        let spriteToLoad = playerFishSprite;
+        if (playerCreature.growthSprites) {
+          const growthStage = getGrowthStage(playerSize, playerCreature.growthSprites);
+          const { sprite: growthSprite } = getGrowthStageSprite(playerCreature, playerSize, 'player');
+          spriteToLoad = growthSprite;
+          console.log(`[FishEditorCanvas] Loading player sprite for ${growthStage} stage (size: ${playerSize})`);
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
+        };
+        img.onerror = () => {
+          console.error('Failed to load player fish sprite');
+          playerRef.current.sprite = null;
+        };
+        if (spriteToLoad.startsWith('data:')) {
+          img.src = spriteToLoad;
+        } else {
+          img.src = spriteToLoad.split('?')[0];
+        }
+      }
+    } else if (playerFishSprite) {
+      // No creature data, just load the base sprite
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
+      };
+      img.onerror = () => {
+        console.error('Failed to load player fish sprite');
+        playerRef.current.sprite = null;
+      };
+      if (playerFishSprite.startsWith('data:')) {
+        img.src = playerFishSprite;
+      } else {
+        img.src = playerFishSprite.split('?')[0];
+      }
     } else {
-      // Remove any existing query params to use clean URL for caching
-      img.src = playerFishSprite.split('?')[0];
+      playerRef.current.sprite = null;
     }
-  }, [playerFishSprite]);
+  }, [playerFishSprite, playerCreature, gameMode]);
 
-  // Initialize player clip state machine when playerCreature has clips
-  useEffect(() => {
-    if (playerCreature?.clips) {
-      const availableActions = Object.keys(playerCreature.clips) as ClipAction[];
-      if (availableActions.length > 0) {
-        clipStateManagerRef.current.getStateMachine('player', availableActions);
-      }
-    }
-  }, [playerCreature]);
-
-  // Update fish sizes from fishData
-  useEffect(() => {
-    fishListRef.current.forEach((fish) => {
-      const data = fishDataRef.current.get(fish.id);
-      if (data) {
-        fish.size = data.stats.size;
-      }
-    });
-  }, [fishData]);
+  // Note: Fish sizes are updated via updateFishSize events from the size slider
+  // We don't sync from fishData here to allow independent sizing of fish instances
 
   // Spawn new fish using full Creature data when available, or legacy format.
   // Also sync spawn pool and sprite cache for continuous respawn in game mode.
@@ -737,28 +793,41 @@ export default function FishEditorCanvas({
       }
     };
 
-    // 5. Reload all fish sprites
+    // 5. Reload all fish sprites (growth-aware)
     const reloadPromises: Promise<void>[] = [];
     fishListRef.current.forEach((fish) => {
-      const data = fishDataRef.current.get(fish.id);
-      const spriteUrl = data?.sprite || spawnedFish.find(f => f.id === fish.id)?.sprite;
+      // Get creature data for growth-aware sprite selection
+      const creatureData = fish.creatureData || fishDataRef.current.get(fish.id);
+      let spriteUrl = creatureData?.sprite || spawnedFish.find(f => f.id === fish.id)?.sprite;
+
+      // Select growth-stage-aware sprite based on fish's current size
+      if (creatureData?.growthSprites && spriteUrl) {
+        const { sprite: growthSprite } = getGrowthStageSprite(creatureData, fish.size, fish.id);
+        spriteUrl = growthSprite;
+      }
+
       if (spriteUrl) {
-        console.log('[FishEditorCanvas] Queuing reload for:', fish.id);
+        console.log('[FishEditorCanvas] Queuing reload for:', fish.id, 'size:', fish.size);
         reloadPromises.push(
           reloadSprite(fish.id, spriteUrl, (processedSprite) => {
             fish.sprite = processedSprite;
             spriteCacheRef.current.set(fish.id, processedSprite);
-            fishSpriteUrlsRef.current.set(fish.id, spriteUrl);
+            fishSpriteUrlsRef.current.set(fish.id, spriteUrl!);
           })
         );
       }
     });
 
-    // 6. Also reload player sprite
+    // 6. Also reload player sprite (growth-aware)
     if (playerRef.current.sprite && playerFishSprite) {
-      console.log('[FishEditorCanvas] Queuing player sprite reload');
+      let playerSpriteUrl = playerFishSprite;
+      if (playerCreature?.growthSprites) {
+        const { sprite: growthSprite } = getGrowthStageSprite(playerCreature, playerRef.current.size, 'player');
+        playerSpriteUrl = growthSprite;
+      }
+      console.log('[FishEditorCanvas] Queuing player sprite reload, size:', playerRef.current.size);
       reloadPromises.push(
-        reloadSprite('player', playerFishSprite, (processedSprite) => {
+        reloadSprite('player', playerSpriteUrl, (processedSprite) => {
           playerRef.current.sprite = processedSprite;
         })
       );
@@ -781,6 +850,116 @@ export default function FishEditorCanvas({
     window.addEventListener('refreshFishSprites', handleRefresh);
     return () => window.removeEventListener('refreshFishSprites', handleRefresh);
   }, [refreshAllSprites]);
+
+  // Helper to load a growth-stage-aware sprite
+  const loadGrowthAwareSprite = useCallback((
+    fish: { id: string; size: number; creatureData?: Creature; sprite: HTMLCanvasElement | null; currentGrowthStage?: string },
+    onLoaded: (sprite: HTMLCanvasElement) => void
+  ) => {
+    if (!fish.creatureData?.sprite) return;
+
+    // Get the appropriate sprite for this size
+    const { sprite: spriteUrl, spriteResolutions } = getGrowthStageSprite(
+      fish.creatureData,
+      fish.size,
+      fish.id
+    );
+
+    // Load the sprite
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const processedSprite = removeBackground(img, chromaToleranceRef.current);
+      onLoaded(processedSprite);
+    };
+    img.onerror = () => {
+      console.error('[FishEditorCanvas] Failed to load growth sprite:', spriteUrl);
+    };
+    img.src = spriteUrl;
+  }, []);
+
+  // Listen for fish size updates from the size slider
+  useEffect(() => {
+    const handleSizeUpdate = (e: CustomEvent<{ fishId: string; size: number }>) => {
+      const { fishId, size } = e.detail;
+
+      // Update player if that's the target
+      if (fishId === 'player' || fishId === playerRef.current.id) {
+        const oldSize = playerRef.current.size;
+        playerRef.current.size = size;
+
+        // Check if player growth stage changed
+        if (playerCreature?.growthSprites) {
+          const oldStage = getGrowthStage(oldSize, playerCreature.growthSprites);
+          const newStage = getGrowthStage(size, playerCreature.growthSprites);
+
+          if (oldStage !== newStage) {
+            console.log(`[FishEditorCanvas] Player growth stage changed: ${oldStage} -> ${newStage}`);
+            // Reload player sprite for new growth stage
+            const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, size, 'player');
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
+            };
+            img.src = spriteUrl;
+          }
+        }
+        return;
+      }
+
+      // Update fish in fishListRef
+      const fish = fishListRef.current.find(f => f.id === fishId);
+      if (fish) {
+        const oldSize = fish.size;
+        fish.size = size;
+
+        // Get creature data - check fish.creatureData first, then try fishDataRef lookup
+        // For instance IDs, we need to find the spawned fish entry to get creatureId
+        let creatureData = fish.creatureData;
+        if (!creatureData) {
+          // Try direct lookup
+          creatureData = fishDataRef.current.get(fishId);
+          // If not found, fish might have instance ID - extract creature ID from spawnedFish
+          if (!creatureData) {
+            const spawnedEntry = spawnedFish.find(f => f.id === fishId);
+            const creatureId = (spawnedEntry as { creatureId?: string })?.creatureId;
+            if (creatureId) {
+              creatureData = fishDataRef.current.get(creatureId);
+            }
+          }
+        }
+
+        // Check if growth stage changed
+        if (creatureData?.growthSprites) {
+          const oldStage = getGrowthStage(oldSize, creatureData.growthSprites);
+          const newStage = getGrowthStage(size, creatureData.growthSprites);
+
+          if (oldStage !== newStage) {
+            console.log(`[FishEditorCanvas] Fish ${fishId} growth stage changed: ${oldStage} -> ${newStage}`);
+            fish.currentGrowthStage = newStage;
+
+            // Store creature data for future lookups
+            if (!fish.creatureData) {
+              fish.creatureData = creatureData as Creature;
+            }
+
+            // Reload sprite for new growth stage
+            const { sprite: spriteUrl } = getGrowthStageSprite(creatureData, size, fishId);
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              fish.sprite = removeBackground(img, chromaToleranceRef.current);
+            };
+            img.src = spriteUrl;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('updateFishSize', handleSizeUpdate as EventListener);
+    return () => window.removeEventListener('updateFishSize', handleSizeUpdate as EventListener);
+  }, [playerCreature, loadGrowthAwareSprite]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -837,7 +1016,35 @@ export default function FishEditorCanvas({
 
       const existingFish = fishListRef.current.find((f) => f.id === fishItem.id);
       const previousSpriteUrl = fishSpriteUrlsRef.current.get(fishItem.id);
-      const currentSpriteUrl = fishItem.sprite;
+
+      // Get full creature data - either directly if it's a Creature, or look up from fishDataRef
+      let creatureForSprite: Creature | undefined;
+      if (isCreature(fishItem)) {
+        creatureForSprite = fishItem;
+      } else {
+        // Look up by direct ID first, then by creatureId if it exists
+        creatureForSprite = fishDataRef.current.get(fishItem.id);
+        if (!creatureForSprite) {
+          const creatureId = (fishItem as { creatureId?: string }).creatureId;
+          if (creatureId) {
+            creatureForSprite = fishDataRef.current.get(creatureId);
+          }
+        }
+      }
+
+      // Determine fish size for growth-aware sprite selection
+      const fishSizeForSprite = creatureForSprite?.stats?.size ||
+        (fishItem.type === 'prey' ? 60 : fishItem.type === 'predator' ? 120 : 90);
+
+      // Select growth-stage-aware sprite URL based on fish's spawn size
+      let currentSpriteUrl = fishItem.sprite;
+      let initialGrowthStage: 'juvenile' | 'adult' | 'elder' | undefined;
+      if (creatureForSprite?.growthSprites) {
+        initialGrowthStage = getGrowthStage(fishSizeForSprite, creatureForSprite.growthSprites);
+        const { sprite: growthSprite } = getGrowthStageSprite(creatureForSprite, fishSizeForSprite, fishItem.id);
+        currentSpriteUrl = growthSprite;
+        console.log(`[FishEditorCanvas] Spawning ${fishItem.id} at size ${fishSizeForSprite} with ${initialGrowthStage} sprite`);
+      }
 
       // Detect changes: URL changed OR it was a data URL and now it's a blob URL (after save)
       const wasDataUrl = previousSpriteUrl?.startsWith('data:') || false;
@@ -903,12 +1110,12 @@ export default function FishEditorCanvas({
             fishType = fishItem.type;
             creatureData = fishItem;
           } else {
-            // Legacy format - use defaults or fishData
-            const fishInfo = fishDataRef.current.get(fishItem.id);
+            // Legacy format - use creatureForSprite (already looked up) or defaults
             const defaultSize = fishItem.type === 'prey' ? 60 : fishItem.type === 'predator' ? 120 : 90;
-            fishSize = fishInfo?.stats.size ?? defaultSize;
-            baseSpeed = fishInfo?.stats.speed ?? 2;
+            fishSize = creatureForSprite?.stats?.size ?? defaultSize;
+            baseSpeed = creatureForSprite?.stats?.speed ?? 2;
             fishType = fishItem.type;
+            creatureData = creatureForSprite; // Store creature data for growth stage tracking
           }
 
           // Calculate velocity based on speed
@@ -962,6 +1169,8 @@ export default function FishEditorCanvas({
             animTime: Math.random() * Math.PI * 2,
             // Store creature metadata if available
             creatureData,
+            // Track current growth stage for sprite swapping
+            currentGrowthStage: initialGrowthStage,
             // Spawn/despawn animation
             spawnTime: performance.now() + staggerDelay,
             despawnTime: undefined,
@@ -1136,31 +1345,13 @@ export default function FishEditorCanvas({
       // Check game timer in game mode (only when not paused)
       if (gameMode && !levelCompleteFiredRef.current && !gameOverFiredRef.current && !isPaused) {
         const elapsed = Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current;
-        if (elapsed >= levelDuration && !levelEndingRef.current) {
-          // Start level ending animation - despawn all AI fish
-          levelEndingRef.current = true;
-          const now = performance.now();
-          fishListRef.current.forEach(fish => {
-            if (fish.lifecycleState !== 'despawning' && fish.lifecycleState !== 'removed') {
-              fish.despawnTime = now;
-              fish.lifecycleState = 'despawning';
-            }
-          });
-        }
-
-        // Check if level ending animation is complete (all fish removed or despawned)
-        if (levelEndingRef.current) {
-          const allDespawned = fishListRef.current.every(
-            fish => fish.lifecycleState === 'removed' || (fish.opacity !== undefined && fish.opacity <= 0)
-          );
-          if (allDespawned || fishListRef.current.length === 0) {
-            levelCompleteFiredRef.current = true;
-            levelEndingRef.current = false;
-            if (onLevelComplete) {
-              onLevelComplete(scoreRef.current);
-            }
-            return; // Stop game loop
+        if (elapsed >= levelDuration) {
+          // Level complete - end immediately
+          levelCompleteFiredRef.current = true;
+          if (onLevelComplete) {
+            onLevelComplete(scoreRef.current);
           }
+          return; // Stop game loop
         }
 
         // Sync essence collected from run state (updated by engine)
@@ -1322,7 +1513,41 @@ export default function FishEditorCanvas({
               const sizeRatio = player.size / fish.size;
               const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
               const sizeGain = fish.size * 0.15 * efficiencyMult;
+              const oldPlayerSize = player.size;
               player.size = Math.min(200, player.size + sizeGain);
+
+              // Check if player crossed a growth stage threshold
+              if (playerCreature?.growthSprites) {
+                const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
+                const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
+
+                // Log size progress periodically (every 5 size units)
+                if (Math.floor(player.size / 5) !== Math.floor(oldPlayerSize / 5)) {
+                  console.log(`[Growth] Player size: ${player.size.toFixed(1)}, stage: ${newStage}, has growthSprites:`, Object.keys(playerCreature.growthSprites));
+                }
+
+                if (oldStage !== newStage) {
+                  console.log(`[Growth] Player grew from ${oldStage} to ${newStage} (size: ${oldPlayerSize.toFixed(1)} -> ${player.size.toFixed(1)})`);
+                  // Reload sprite for new growth stage
+                  const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
+                  console.log(`[Growth] Loading new sprite: ${spriteUrl.substring(0, 80)}...`);
+                  const growthImg = new Image();
+                  growthImg.crossOrigin = 'anonymous';
+                  growthImg.onload = () => {
+                    console.log(`[Growth] Sprite loaded successfully for ${newStage}`);
+                    player.sprite = removeBackground(growthImg, chromaToleranceRef.current);
+                  };
+                  growthImg.onerror = (e) => {
+                    console.error(`[Growth] Failed to load sprite for ${newStage}:`, e);
+                  };
+                  growthImg.src = spriteUrl;
+                }
+              } else {
+                // Log if we're missing growth sprites
+                if (Math.floor(player.size / 10) !== Math.floor(oldPlayerSize / 10)) {
+                  console.log(`[Growth] Player size: ${player.size.toFixed(1)}, NO growthSprites available`);
+                }
+              }
 
               // Restore hunger based on fish size
               const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger);
@@ -1401,7 +1626,25 @@ export default function FishEditorCanvas({
             const sizeRatio = player.size / fish.size;
             const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
             const sizeGain = fish.size * 0.15 * efficiencyMult;
+            const oldPlayerSize = player.size;
             player.size = Math.min(200, player.size + sizeGain);
+
+            // Check if player crossed a growth stage threshold (editor mode)
+            if (playerCreature?.growthSprites) {
+              const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
+              const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
+              if (oldStage !== newStage) {
+                console.log(`[Growth] Player grew from ${oldStage} to ${newStage} (size: ${oldPlayerSize.toFixed(1)} -> ${player.size.toFixed(1)})`);
+                const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
+                const growthImg = new Image();
+                growthImg.crossOrigin = 'anonymous';
+                growthImg.onload = () => {
+                  player.sprite = removeBackground(growthImg, chromaToleranceRef.current);
+                };
+                growthImg.src = spriteUrl;
+              }
+            }
+
             player.chompPhase = 1;
             player.chompEndTime = now + 280;
             const eatX = (fish.x + player.x) * 0.5;
@@ -1607,7 +1850,10 @@ export default function FishEditorCanvas({
       });
 
       // Clean up fish that have finished despawning
-      fishListRef.current = fishListRef.current.filter(f => f.lifecycleState !== 'removed');
+      // Don't remove fish while in edit mode - we need them for respawn when exiting
+      if (!currentEditMode) {
+        fishListRef.current = fishListRef.current.filter(f => f.lifecycleState !== 'removed');
+      }
 
       // Update water effect time
       waterTimeRef.current += 0.01;
@@ -1626,27 +1872,31 @@ export default function FishEditorCanvas({
       let useEditModeCamera = false;
 
       const currentSelectedFishId = selectedFishIdRef.current;
-      if (currentEditMode && currentSelectedFishId) {
-        // Find selected fish (could be AI fish or player)
-        let selectedFish = fishListRef.current.find((f) => f.id === currentSelectedFishId);
+      // Follow camera when editing OR when paused with a selected fish (for navigation)
+      if ((currentEditMode || isPaused) && currentSelectedFishId) {
+        // Check if selected fish is the player
+        const isPlayerSelected = currentSelectedFishId === player.id;
+
+        // Find selected fish in the spawned fish list or use player
+        let selectedFish = isPlayerSelected ? null : fishListRef.current.find((f) => f.id === currentSelectedFishId);
         let selectedSize = 0;
         let selectedX = 0;
         let selectedY = 0;
 
-        if (selectedFish) {
-          selectedSize = selectedFish.size;
-          selectedX = selectedFish.x;
-          selectedY = selectedFish.y;
-        } else if (currentSelectedFishId === 'player') {
-          // Player fish selected
+        if (isPlayerSelected) {
+          // Use player position
           selectedSize = player.size;
           selectedX = player.x;
           selectedY = player.y;
+        } else if (selectedFish) {
+          selectedSize = selectedFish.size;
+          selectedX = selectedFish.x;
+          selectedY = selectedFish.y;
         }
 
         if (selectedSize > 0) {
           useEditModeCamera = true;
-          // Position camera to show fish in top area (center horizontally, top 25% vertically)
+          // Center camera on the selected fish
           targetCameraX = selectedX;
           targetCameraY = selectedY;
         }
@@ -1656,7 +1906,7 @@ export default function FishEditorCanvas({
       targetCameraRef.current = { x: targetCameraX, y: targetCameraY };
 
       // Smooth interpolation (lerp) for zoom and camera
-      const lerpSpeed = 0.08; // Adjust for faster/slower transitions
+      const lerpSpeed = 0.12; // Faster for snappier response while still smooth
       animatedZoomRef.current += (targetZoomRef.current - animatedZoomRef.current) * lerpSpeed;
       animatedCameraRef.current.x += (targetCameraRef.current.x - animatedCameraRef.current.x) * lerpSpeed;
       animatedCameraRef.current.y += (targetCameraRef.current.y - animatedCameraRef.current.y) * lerpSpeed;
@@ -1809,6 +2059,11 @@ export default function FishEditorCanvas({
       const renderContext: RenderContext = currentEditMode ? 'edit' : (gameMode ? 'game' : 'game');
       const buttonPositions = new Map<string, { x: number; y: number; size: number }>();
       fishListRef.current.forEach((fish) => {
+        // Skip rendering fish that are fully despawned (kept in list for potential respawn)
+        if (fish.lifecycleState === 'removed') {
+          return;
+        }
+
         const fishOpacity = fish.opacity ?? 1;
         const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
         const screenSize = fish.size * currentZoom;
@@ -1911,8 +2166,8 @@ export default function FishEditorCanvas({
         ctx.stroke();
       }
 
-      // Store player position for edit button (use special ID "player")
-      buttonPositions.set('player', { x: player.x, y: player.y, size: player.size });
+      // Store player position for edit button (use actual creature ID)
+      buttonPositions.set(player.id, { x: player.x, y: player.y, size: player.size });
 
       // Update edit button positions ref
       editButtonPositionsRef.current = buttonPositions;

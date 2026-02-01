@@ -17,13 +17,13 @@ export async function GET(request: NextRequest) {
     // Load creatures from individual blob files
     // This approach supports concurrent creation by multiple users
     const creatures = await loadCreaturesFromBlobs();
-    
+
     // Apply filters
     let filteredCreatures = creatures;
 
     if (biome) {
-      filteredCreatures = filteredCreatures.filter(c => 
-        c.biomeId === biome || 
+      filteredCreatures = filteredCreatures.filter(c =>
+        c.biomeId === biome ||
         (c.spawnRules?.canAppearIn || []).includes(biome)
       );
     }
@@ -40,6 +40,12 @@ export async function GET(request: NextRequest) {
       success: true,
       creatures: filteredCreatures,
       total: filteredCreatures.length,
+    }, {
+      headers: {
+        // Prevent caching to ensure fresh data
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
   } catch (error) {
     console.error('[ListCreatures] Error:', error);
@@ -59,7 +65,7 @@ export async function GET(request: NextRequest) {
  */
 async function loadCreaturesFromBlobs(): Promise<Creature[]> {
   const creatures: Creature[] = [];
-  
+
   try {
     // List all creature metadata files
     const { blobs } = await list({
@@ -68,7 +74,7 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
 
     // Filter for JSON files only
     const metadataBlobs = blobs.filter(blob => blob.pathname.endsWith('.json'));
-    
+
     if (metadataBlobs.length === 0) {
       console.log('[ListCreatures] No creature files found in blob storage');
       return [];
@@ -82,29 +88,29 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
             // Add cache control to avoid stale responses
             cache: 'no-store',
           });
-          
+
           if (!response.ok) {
             console.warn(`[ListCreatures] HTTP ${response.status} for ${blob.pathname}`);
             return null;
           }
-          
+
           const text = await response.text();
-          
+
           // Validate it looks like JSON before parsing
           const trimmed = text.trim();
           if (!trimmed.startsWith('{')) {
             console.warn(`[ListCreatures] Non-JSON content for ${blob.pathname}: ${trimmed.substring(0, 50)}`);
             return null;
           }
-          
+
           const creature = JSON.parse(text) as Creature;
-          
+
           // Validate the creature has required fields
           if (!creature.id) {
             console.warn(`[ListCreatures] Creature missing id: ${blob.pathname}`);
             return null;
           }
-          
+
           return creature;
         } catch (error) {
           console.warn(`[ListCreatures] Error loading ${blob.pathname}:`, error);
@@ -124,6 +130,6 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
   } catch (error) {
     console.error('[ListCreatures] Error listing blobs:', error);
   }
-  
+
   return creatures;
 }

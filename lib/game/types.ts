@@ -197,6 +197,32 @@ export interface SpriteResolutions {
 }
 
 /**
+ * Growth Stages - Different visual representations based on creature size
+ */
+export type GrowthStage = 'juvenile' | 'adult' | 'elder';
+
+/**
+ * Growth Sprite Data - Sprite and metadata for a specific growth stage
+ */
+export interface GrowthSpriteData {
+  sprite: string;                      // Sprite URL for this growth stage
+  spriteResolutions?: SpriteResolutions; // Multi-resolution variants
+  sizeRange: {
+    min: number;                       // Minimum size for this stage
+    max: number;                       // Maximum size for this stage
+  };
+}
+
+/**
+ * Growth Sprites - Collection of sprites for different growth stages
+ */
+export interface GrowthSprites {
+  juvenile?: GrowthSpriteData;         // Small/young version
+  adult?: GrowthSpriteData;            // Default/mature version (uses base sprite if not specified)
+  elder?: GrowthSpriteData;            // Large/ancient version
+}
+
+/**
  * Creature - Complete creature data structure (extends BaseFishData)
  */
 export interface Creature extends BaseFishData {
@@ -207,6 +233,7 @@ export interface Creature extends BaseFishData {
   // Visual
   biomeId: string; // Native biome ID
   spriteResolutions?: SpriteResolutions; // Multi-resolution sprite variants (optional, falls back to sprite)
+  growthSprites?: GrowthSprites; // Different sprites for growth stages (juvenile, adult, elder)
 
   // Optional size tier used by biome ecosystems and runtime scaling
   sizeTier?: 'prey' | 'mid' | 'predator' | 'boss' | string;

@@ -14,7 +14,13 @@ import PauseMenu from '@/components/PauseMenu';
 import ArtSelectorPanel from '@/components/ArtSelectorPanel';
 import SettingsDrawer from '@/components/SettingsDrawer';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
-import { setMipmapDebug, isMipmapDebugEnabled, SPRITE_RESOLUTION_THRESHOLDS } from '@/lib/rendering/fish-renderer';
+import {
+  setMipmapDebug,
+  SPRITE_RESOLUTION_THRESHOLDS,
+  getGrowthStage,
+  setGrowthDebug,
+} from '@/lib/rendering/fish-renderer';
+import type { GrowthStage, GrowthSprites } from '@/lib/game/types';
 
 // Constants
 const DEFAULT_ZOOM = 1.0;
@@ -23,8 +29,8 @@ const MAX_EDIT_ZOOM = 3.0;
 export default function FishEditorPage() {
   const router = useRouter();
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
-  const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
-  const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string }>>([]);
+  const [playerCreatureId, setPlayerCreatureId] = useState<string | null>(null); // ID of creature being controlled as player
+  const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string; creatureId?: string }>>([]);
   const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
   const [chromaTolerance, setChromaTolerance] = useState<number>(50);
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
@@ -41,6 +47,9 @@ export default function FishEditorPage() {
   const [tempName, setTempName] = useState('');
   const [sizeOverride, setSizeOverride] = useState<number | null>(null);
   const [mipmapDebug, setMipmapDebugState] = useState(false);
+  const [growthDebug, setGrowthDebugState] = useState(false);
+  const [isGeneratingGrowth, setIsGeneratingGrowth] = useState(false);
+  const [growthGenerationStatus, setGrowthGenerationStatus] = useState<string | null>(null);
 
   // Helper to get resolution tier from size
   const getResolutionTier = useCallback((size: number, currentZoom: number): 'high' | 'medium' | 'low' => {
@@ -127,15 +136,14 @@ export default function FishEditorPage() {
           });
           setFishData(newFishData);
 
-          // If we don't yet have a player sprite, pick one from the loaded creatures
-          if (!playerFishSprite) {
-            // Prefer a playable creature if available
+          // Set player creature from real data - prefer a playable creature
+          if (!playerCreatureId) {
             const creatures: FishData[] = result.creatures;
             const playable = creatures.find((c) => c.playable && c.sprite);
             const firstWithSprite = creatures.find((c) => c.sprite);
             const chosen = playable || firstWithSprite;
-            if (chosen?.sprite) {
-              setPlayerFishSprite(chosen.sprite);
+            if (chosen) {
+              setPlayerCreatureId(chosen.id);
             }
           }
 
@@ -144,14 +152,17 @@ export default function FishEditorPage() {
             const creatures: FishData[] = result.creatures;
             const preyCandidates = creatures.filter((c) => c.type === 'prey' && c.sprite);
             const pool = preyCandidates.length > 0 ? preyCandidates : creatures.filter((c) => c.sprite);
-            const defaults: { id: string; sprite: string; type: string }[] = [];
+            const defaults: { id: string; sprite: string; type: string; creatureId?: string }[] = [];
 
             for (let i = 0; i < Math.min(4, pool.length); i++) {
               const c = pool[i];
+              // Use unique instance ID so multiple fish of same species can be edited independently
+              const instanceId = `${c.id}_inst_${Date.now()}_${i}`;
               defaults.push({
-                id: c.id,
+                id: instanceId,
                 sprite: c.sprite!,
                 type: c.type,
+                creatureId: c.id, // Track original creature ID for data lookup
               });
             }
 
@@ -249,29 +260,7 @@ export default function FishEditorPage() {
     setZoom(MAX_EDIT_ZOOM); // Zoom in to max when entering fish edit mode
   };
 
-  // Initialize player fish data when player sprite is set
-  useEffect(() => {
-    if (playerFishSprite && !fishData.has('player')) {
-      const playerData: FishData = {
-        id: 'player',
-        name: 'Player Fish',
-        description: 'The main player character.',
-        type: 'prey',
-        stats: {
-          size: 80,
-          speed: 5,
-          health: 50,
-          damage: 10,
-        },
-        sprite: playerFishSprite,
-      };
-      setFishData((prev) => {
-        const newMap = new Map(prev);
-        newMap.set('player', playerData);
-        return newMap;
-      });
-    }
-  }, [playerFishSprite, fishData]);
+  // Fish editor doesn't create a synthetic player - we work with real creature data only
 
   const handleExitEditMode = () => {
     setEditMode(false);
@@ -295,41 +284,29 @@ export default function FishEditorPage() {
       return newMap;
     });
 
-    // Spawn the fish to canvas if not already spawned
+    // Create unique instance ID for this spawn
+    const instanceId = `${fish.id}_inst_${Date.now()}`;
+
+    // Spawn the fish to canvas with unique instance ID
     setSpawnedFish((prev) => {
-      const alreadySpawned = prev.some(f => f.id === fish.id);
-      if (alreadySpawned) {
-        // Update existing spawned fish with latest sprite
-        return prev.map(f => f.id === fish.id ? { ...f, sprite: fish.sprite, type: fish.type } : f);
-      } else {
-        // Spawn new fish
-        return [...prev, { id: fish.id, sprite: fish.sprite, type: fish.type }];
-      }
+      return [...prev, {
+        id: instanceId,
+        sprite: fish.sprite,
+        type: fish.type,
+        creatureId: fish.id // Track original creature ID for metadata lookup
+      }];
     });
 
-    // Enter edit mode for this fish
-    setSelectedFishId(fish.id);
+    // Enter edit mode for this fish instance
+    setSelectedFishId(instanceId);
     setSizeOverride(null); // Reset size override when selecting new fish
     setEditMode(true);
     setZoom(MAX_EDIT_ZOOM); // Zoom in to max when entering fish edit mode
   };
 
   const handleSetPlayerFish = (fish: FishData) => {
-    // Set the player fish sprite
-    setPlayerFishSprite(fish.sprite);
-
-    // Update or create player fish data
-    setFishData((prev) => {
-      const newMap = new Map(prev);
-      const playerData: FishData = {
-        ...fish,
-        id: 'player',
-        name: fish.name || 'Player Fish',
-        playable: true,
-      };
-      newMap.set('player', playerData);
-      return newMap;
-    });
+    // Set this creature as the player-controlled fish (uses real creature data)
+    setPlayerCreatureId(fish.id);
   };
 
   const handleAddNewCreature = () => {
@@ -420,64 +397,155 @@ export default function FishEditorPage() {
     setFishData((prev) => {
       const newMap = new Map(prev);
       newMap.set(fish.id, fish);
-      // If this is the player fish, update playerFishSprite to refresh preview
-      if (fish.id === 'player') {
-        setPlayerFishSprite(fish.sprite);
-      } else {
-        // Check if this fish is currently set as player
-        const playerData = newMap.get('player');
-        if (playerData && playerData.id === fish.id) {
-          setPlayerFishSprite(fish.sprite);
-        }
-      }
       return newMap;
     });
-    // Update spawned fish sprite and type if changed
+    // Update spawned fish sprite and type if changed - match by creatureId OR id
     setSpawnedFish((prev) =>
-      prev.map((f) => (f.id === fish.id ? { ...f, sprite: fish.sprite, type: fish.type } : f))
+      prev.map((f) => {
+        const matchesCreature = f.creatureId === fish.id || f.id === fish.id;
+        return matchesCreature ? { ...f, sprite: fish.sprite, type: fish.type } : f;
+      })
     );
   };
 
+  // Generate growth sprites for the selected fish
+  const handleGenerateGrowthSprites = useCallback(async () => {
+    const selectedFish = selectedFishId ? getCreatureData(selectedFishId) : null;
+    if (!selectedFish) {
+      console.error('[GrowthSprites] No fish selected');
+      return;
+    }
+
+    if (!selectedFish.sprite) {
+      console.error('[GrowthSprites] Selected fish has no sprite:', selectedFish.id);
+      alert('This fish has no sprite image. Cannot generate growth sprites.');
+      return;
+    }
+
+    console.log('[GrowthSprites] Starting generation for:', selectedFish.id, 'sprite:', selectedFish.sprite);
+    setIsGeneratingGrowth(true);
+    setGrowthGenerationStatus('Starting generation...');
+
+    try {
+      const response = await fetch('/api/generate-growth-sprites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatureId: selectedFish.id,
+          spriteUrl: selectedFish.sprite,
+          creatureName: selectedFish.name,
+          descriptionChunks: selectedFish.descriptionChunks,
+          biomeId: selectedFish.biomeId,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Generation failed: ${error}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.growthSprites) {
+        // Update the fish data with new growth sprites
+        const updatedFish: FishData = {
+          ...selectedFish,
+          growthSprites: result.growthSprites,
+        };
+
+        // Update local state
+        setFishData((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(selectedFish.id, updatedFish);
+          return newMap;
+        });
+
+        // Persist to server - keep the sprite URL intact
+        const formData = new FormData();
+        formData.append('creatureId', selectedFish.id);
+        formData.append('metadata', JSON.stringify(updatedFish));
+
+        await fetch('/api/save-creature', {
+          method: 'POST',
+          body: formData,
+        });
+
+        setGrowthGenerationStatus('Growth sprites generated!');
+      } else {
+        setGrowthGenerationStatus('Generation completed but no sprites returned');
+      }
+    } catch (error) {
+      console.error('[FishEditor] Growth sprite generation error:', error);
+      setGrowthGenerationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGeneratingGrowth(false);
+      // Clear status after a delay
+      setTimeout(() => setGrowthGenerationStatus(null), 3000);
+    }
+  }, [selectedFishId, fishData]);
+
   const handlePreviousFish = () => {
     if (!selectedFishId) return;
-    const fishIds = Array.from(fishData.keys()).sort(); // Sort for consistent ordering
-    const currentIndex = fishIds.indexOf(selectedFishId);
+    // Navigate through player + spawned fish
+    const ids = spawnedFish.map(f => f.id);
+    // Include player creature at the start if it exists
+    if (playerCreatureId && !ids.includes(playerCreatureId)) {
+      ids.unshift(playerCreatureId);
+    }
+    const currentIndex = ids.indexOf(selectedFishId);
     if (currentIndex > 0) {
-      setSelectedFishId(fishIds[currentIndex - 1]);
-      setSizeOverride(null); // Reset size override when changing fish
+      setSelectedFishId(ids[currentIndex - 1]);
+      setSizeOverride(null);
     }
   };
 
   const handleNextFish = () => {
     if (!selectedFishId) return;
-    const fishIds = Array.from(fishData.keys()).sort(); // Sort for consistent ordering
-    const currentIndex = fishIds.indexOf(selectedFishId);
-    if (currentIndex < fishIds.length - 1) {
-      setSelectedFishId(fishIds[currentIndex + 1]);
-      setSizeOverride(null); // Reset size override when changing fish
+    // Navigate through player + spawned fish
+    const ids = spawnedFish.map(f => f.id);
+    // Include player creature at the start if it exists
+    if (playerCreatureId && !ids.includes(playerCreatureId)) {
+      ids.unshift(playerCreatureId);
+    }
+    const currentIndex = ids.indexOf(selectedFishId);
+    if (currentIndex < ids.length - 1) {
+      setSelectedFishId(ids[currentIndex + 1]);
+      setSizeOverride(null);
     }
   };
 
-  // Clean up fish data when fish are removed (but preserve player fish)
-  useEffect(() => {
-    const spawnedIds = new Set(spawnedFish.map((f) => f.id));
-    setFishData((prev) => {
-      const newMap = new Map();
-      prev.forEach((data, id) => {
-        // Keep player fish and spawned fish
-        if (id === 'player' || spawnedIds.has(id)) {
-          newMap.set(id, data);
-        }
-      });
-      return newMap;
-    });
-  }, [spawnedFish]);
+  // Note: We keep all fish data loaded - no cleanup needed
+  // Fish data is the source of truth for all creatures
+  // For instance IDs (spawned fish), look up the original creature data via creatureId
+  const getCreatureData = (instanceId: string): FishData | null => {
+    // First try direct lookup (for creature IDs)
+    const direct = fishData.get(instanceId);
+    if (direct) return direct;
 
-  const selectedFish = selectedFishId ? fishData.get(selectedFishId) || null : null;
-  const fishIds = Array.from(fishData.keys()).sort(); // Sort for consistent ordering
-  const selectedIndex = selectedFishId ? fishIds.indexOf(selectedFishId) : -1;
+    // Then check if it's an instance ID with a creatureId reference
+    const spawnedEntry = spawnedFish.find(f => f.id === instanceId);
+    if (spawnedEntry?.creatureId) {
+      return fishData.get(spawnedEntry.creatureId) || null;
+    }
+
+    return null;
+  };
+
+  const selectedFish = selectedFishId ? getCreatureData(selectedFishId) : null;
+
+  // Get player creature data from real creature data
+  const playerCreature = playerCreatureId ? fishData.get(playerCreatureId) : null;
+  const playerFishSprite = playerCreature?.sprite || null;
+
+  // Navigation is through SPAWNED fish only (fish in the scene), plus player
+  const spawnedIds = spawnedFish.map(f => f.id);
+  // Include player in navigation
+  const navIds = playerCreatureId && !spawnedIds.includes(playerCreatureId)
+    ? [playerCreatureId, ...spawnedIds]
+    : spawnedIds;
+  const selectedIndex = selectedFishId ? navIds.indexOf(selectedFishId) : -1;
   const hasPrevious = selectedIndex > 0;
-  const hasNext = selectedIndex >= 0 && selectedIndex < fishIds.length - 1;
+  const hasNext = selectedIndex >= 0 && selectedIndex < navIds.length - 1;
 
   // Callback wrappers for PauseMenu
   const handlePauseMenuSelectFish = useCallback((fish: FishData) => {
@@ -641,6 +709,7 @@ export default function FishEditorPage() {
         <FishEditorCanvas
           background={selectedBackground}
           playerFishSprite={playerFishSprite}
+          playerCreature={playerCreature as any}
           spawnedFish={spawnedFish}
           chromaTolerance={chromaTolerance}
           zoom={zoom}
@@ -736,22 +805,25 @@ export default function FishEditorPage() {
                 const oldTier = getResolutionTier(oldSize, zoom);
                 const newTier = getResolutionTier(newSize, zoom);
 
+                // Check if we're crossing a growth stage threshold
+                const oldGrowthStage = getGrowthStage(oldSize, selectedFish.growthSprites);
+                const newGrowthStage = getGrowthStage(newSize, selectedFish.growthSprites);
+
                 setSizeOverride(newSize);
 
-                // Update the fish data
-                if (selectedFish) {
-                  const updatedFish = {
-                    ...selectedFish,
-                    stats: { ...selectedFish.stats, size: newSize }
-                  };
-                  handleSaveFish(updatedFish);
+                // Dispatch event to update ONLY the selected fish's size in canvas
+                // Use selectedFishId (instance ID) not selectedFish.id (creature ID)
+                if (selectedFishId) {
+                  window.dispatchEvent(new CustomEvent('updateFishSize', {
+                    detail: { fishId: selectedFishId, size: newSize }
+                  }));
                 }
 
-                // If resolution tier changed, trigger sprite refresh
-                if (oldTier !== newTier) {
+                // Log growth stage changes (sprite swap is handled by updateFishSize event)
+                if (oldGrowthStage !== newGrowthStage) {
+                  console.log(`[Growth] Size slider crossed growth stage: ${oldGrowthStage} -> ${newGrowthStage} (size: ${oldSize} -> ${newSize})`);
+                } else if (oldTier !== newTier) {
                   console.log(`[Mipmap] Size slider crossed threshold: ${oldTier} -> ${newTier} (size: ${oldSize} -> ${newSize}, screen: ${Math.round(newSize * zoom)}px)`);
-                  // Dispatch refresh event to reload sprites at new resolution
-                  window.dispatchEvent(new CustomEvent('refreshFishSprites'));
                 }
               }}
               className="absolute h-48 w-6 cursor-pointer appearance-none bg-transparent
@@ -789,10 +861,10 @@ export default function FishEditorPage() {
           <div className="text-xs text-center">
             <div className="text-gray-500">mipmap:</div>
             <div className={`font-bold ${(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
-                ? 'text-green-400'
-                : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
-                  ? 'text-yellow-400'
-                  : 'text-red-400'
+              ? 'text-green-400'
+              : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
+                ? 'text-yellow-400'
+                : 'text-red-400'
               }`}>
               {(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
                 ? 'HIGH'
@@ -810,12 +882,78 @@ export default function FishEditorPage() {
               setMipmapDebug(newState);
             }}
             className={`text-xs px-2 py-1 rounded transition-colors ${mipmapDebug
-                ? 'bg-cyan-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
               }`}
             title="Toggle mipmap debug logging in console"
           >
             {mipmapDebug ? 'DEBUG' : 'debug'}
+          </button>
+
+          {/* Divider */}
+          <div className="w-full border-t border-gray-600 my-1"></div>
+
+          {/* Growth Stage Section */}
+          <div className="text-xs text-gray-400 font-medium">GROWTH</div>
+
+          {/* Current Growth Stage */}
+          <div className="text-xs text-center">
+            <div className="text-gray-500">stage:</div>
+            <div className={`font-bold ${getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'juvenile'
+              ? 'text-blue-400'
+              : getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'elder'
+                ? 'text-purple-400'
+                : 'text-green-400'
+              }`}>
+              {getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites).toUpperCase()}
+            </div>
+          </div>
+
+          {/* Growth Sprite Status */}
+          <div className="text-xs text-center space-y-1">
+            <div className={`${selectedFish.growthSprites?.juvenile ? 'text-green-400' : 'text-gray-600'}`}>
+              {selectedFish.growthSprites?.juvenile ? '✓' : '○'} juvenile
+            </div>
+            <div className="text-green-400">✓ adult</div>
+            <div className={`${selectedFish.growthSprites?.elder ? 'text-green-400' : 'text-gray-600'}`}>
+              {selectedFish.growthSprites?.elder ? '✓' : '○'} elder
+            </div>
+          </div>
+
+          {/* Generate Growth Sprites Button */}
+          <button
+            onClick={handleGenerateGrowthSprites}
+            disabled={isGeneratingGrowth}
+            className={`text-xs px-2 py-1 rounded transition-colors ${isGeneratingGrowth
+              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+              : 'bg-purple-600 text-white hover:bg-purple-500'
+              }`}
+            title="Generate juvenile and elder sprite variants"
+          >
+            {isGeneratingGrowth ? '...' : 'GEN'}
+          </button>
+
+          {/* Growth Generation Status */}
+          {growthGenerationStatus && (
+            <div className="text-xs text-center text-yellow-400 max-w-full break-words">
+              {growthGenerationStatus}
+            </div>
+          )}
+
+          {/* Growth Debug Toggle */}
+          <button
+            onClick={() => {
+              const newState = !growthDebug;
+              setGrowthDebugState(newState);
+              setGrowthDebug(newState);
+            }}
+            className={`text-xs px-2 py-1 rounded transition-colors ${growthDebug
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              }`}
+            title="Toggle growth stage debug logging in console"
+          >
+            {growthDebug ? 'DEBUG' : 'debug'}
           </button>
         </div>
       )}
