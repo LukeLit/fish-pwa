@@ -465,10 +465,21 @@ export default function FishEditorPage() {
         formData.append('creatureId', selectedFish.id);
         formData.append('metadata', JSON.stringify(updatedFish));
 
-        await fetch('/api/save-creature', {
+        console.log('[GrowthSprites] Saving metadata with growthSprites:', Object.keys(result.growthSprites));
+
+        const saveResponse = await fetch('/api/save-creature', {
           method: 'POST',
           body: formData,
         });
+
+        if (!saveResponse.ok) {
+          const errorText = await saveResponse.text();
+          console.error('[GrowthSprites] Save failed:', errorText);
+          throw new Error(`Failed to save: ${errorText}`);
+        }
+
+        const saveResult = await saveResponse.json();
+        console.log('[GrowthSprites] Save complete, metadata has growthSprites:', !!saveResult.metadata?.growthSprites);
 
         setGrowthGenerationStatus('Growth sprites generated!');
       } else {
@@ -737,7 +748,7 @@ export default function FishEditorPage() {
         onAddNewCreature={handleAddNewCreature}
         onSetPlayer={handleSetPlayerFish}
         onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
-        spawnedFishIds={spawnedFish.map(f => f.id)}
+        spawnedFishIds={spawnedFish.map(f => f.creatureId || f.id)}
         onPreviousFish={handlePreviousFish}
         onNextFish={handleNextFish}
         hasPrevious={hasPrevious}

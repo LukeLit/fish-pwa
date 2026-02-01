@@ -116,6 +116,7 @@ async function uploadGrowthSprite(
         put(filename, resizedBuffer, {
           access: 'public',
           contentType: 'image/png',
+          allowOverwrite: true, // Allow regeneration of growth sprites
         }).then((result) => ({
           key: key as keyof SpriteResolutions,
           url: result.url,

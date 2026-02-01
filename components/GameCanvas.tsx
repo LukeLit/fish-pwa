@@ -155,6 +155,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           if (blobCreature?.sprite) {
             playerSprite = blobCreature.sprite;
 
+            // Debug: Check if growthSprites exist
+            console.log(`[GameCanvas] Loaded player creature: ${blobCreature.id}, hasGrowthSprites:`, !!blobCreature.growthSprites, blobCreature.growthSprites ? Object.keys(blobCreature.growthSprites) : 'none');
+
             // Store full creature for clip state machine
             setPlayerCreature(blobCreature);
 
