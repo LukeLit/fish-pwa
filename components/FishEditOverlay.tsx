@@ -56,6 +56,7 @@ export interface FishData {
   rarity?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
   playable?: boolean;
   biomeId?: string;
+  sizeTier?: 'prey' | 'mid' | 'predator' | 'boss' | string;
 
   // NEW: Modular Prompt System
   descriptionChunks?: string[];

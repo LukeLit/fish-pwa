@@ -75,6 +75,13 @@ export default function SpriteGenerationLab({
     elder: undefined,
   });
   
+  // Track sprite sources for visual indicator
+  const [spriteSources, setSpriteSources] = useState<Record<GrowthStage, 'local' | 'blob' | null>>({
+    juvenile: null,
+    adult: null,
+    elder: null,
+  });
+  
   // UI state
   const [selectedModel, setSelectedModel] = useState<ModelOption>('google/imagen-4.0-fast-generate-001');
   const [generatingStage, setGeneratingStage] = useState<GrowthStage | 'all' | null>(null);
@@ -84,6 +91,7 @@ export default function SpriteGenerationLab({
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [promptPreview, setPromptPreview] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [isLoadingExisting, setIsLoadingExisting] = useState(false);
   
   // Editable prompt data
   const [descriptionChunks, setDescriptionChunks] = useState<string[]>(fish.descriptionChunks || []);
@@ -111,6 +119,9 @@ export default function SpriteGenerationLab({
     return essenceRecord;
   }, [fish.essence, fish.essenceTypes]);
   
+  // Derive sizeTier - prefer explicit value, fall back to type-based derivation
+  const derivedSizeTier = fish.sizeTier || (fish.type === 'predator' ? 'predator' : fish.type === 'prey' ? 'prey' : 'mid');
+  
   // Build prompt for a specific stage
   const buildPromptForStage = useCallback((stage: GrowthStage): string => {
     const { prompt: basePrompt } = composeFishPrompt({
@@ -118,7 +129,7 @@ export default function SpriteGenerationLab({
       name: fish.name,
       biomeId: fish.biomeId,
       rarity: fish.rarity,
-      sizeTier: fish.type === 'predator' ? 'predator' : fish.type === 'prey' ? 'prey' : 'mid',
+      sizeTier: derivedSizeTier,
       essence: getEssenceRecord(),
       descriptionChunks: descriptionChunks.length > 0 ? descriptionChunks : fish.descriptionChunks,
       visualMotif: visualMotif || fish.visualMotif,
@@ -138,48 +149,82 @@ export default function SpriteGenerationLab({
     setPromptPreview(buildPromptForStage('adult'));
   }, [buildPromptForStage]);
   
-  // Load existing local sprites on mount
+  // Load existing sprites on mount (local + blob fallback)
   useEffect(() => {
-    if (!isOpen || !isIndexedDBAvailable()) return;
+    if (!isOpen) return;
     
-    const loadLocalSprites = async () => {
+    const loadSprites = async () => {
+      setIsLoadingExisting(true);
+      
+      const loadedSprites: Record<GrowthStage, string | undefined> = {
+        juvenile: undefined,
+        adult: undefined,
+        elder: undefined,
+      };
+      const loadedSources: Record<GrowthStage, 'local' | 'blob' | null> = {
+        juvenile: null,
+        adult: null,
+        elder: null,
+      };
+      
       try {
-        const entry = await getEntry(fish.id);
-        if (entry) {
-          const loadedSprites: Record<GrowthStage, string | undefined> = {
-            juvenile: undefined,
-            adult: undefined,
-            elder: undefined,
-          };
-          
-          // Convert blobs to data URLs
+        // 1. First, try to load from IndexedDB (local work-in-progress has priority)
+        if (isIndexedDBAvailable()) {
+          const entry = await getEntry(fish.id);
+          if (entry) {
+            for (const stage of ['juvenile', 'adult', 'elder'] as GrowthStage[]) {
+              const blob = entry.sprites[stage];
+              if (blob) {
+                loadedSprites[stage] = await blobToDataUrl(blob);
+                loadedSources[stage] = 'local';
+              }
+            }
+            
+            setLastSaved(entry.updatedAt);
+            
+            // Restore prompt data if available
+            if (entry.promptData.descriptionChunks.length > 0) {
+              setDescriptionChunks(entry.promptData.descriptionChunks);
+            }
+            if (entry.promptData.visualMotif) {
+              setVisualMotif(entry.promptData.visualMotif);
+            }
+            
+            console.log('[SpriteLab] Loaded local sprites for', fish.id);
+          }
+        }
+        
+        // 2. Fill in missing stages from existing blob storage URLs
+        if (fish.growthSprites) {
           for (const stage of ['juvenile', 'adult', 'elder'] as GrowthStage[]) {
-            const blob = entry.sprites[stage];
-            if (blob) {
-              loadedSprites[stage] = await blobToDataUrl(blob);
+            // Only load from blob if we don't already have a local sprite
+            if (!loadedSprites[stage] && fish.growthSprites[stage]?.sprite) {
+              try {
+                const response = await fetch(fish.growthSprites[stage]!.sprite);
+                if (response.ok) {
+                  const blob = await response.blob();
+                  loadedSprites[stage] = await blobToDataUrl(blob);
+                  loadedSources[stage] = 'blob';
+                  console.log(`[SpriteLab] Loaded ${stage} from blob storage`);
+                }
+              } catch (err) {
+                console.error(`[SpriteLab] Failed to load ${stage} from blob:`, err);
+              }
             }
           }
-          
-          setSprites(loadedSprites);
-          setLastSaved(entry.updatedAt);
-          
-          // Restore prompt data if available
-          if (entry.promptData.descriptionChunks.length > 0) {
-            setDescriptionChunks(entry.promptData.descriptionChunks);
-          }
-          if (entry.promptData.visualMotif) {
-            setVisualMotif(entry.promptData.visualMotif);
-          }
-          
-          console.log('[SpriteLab] Loaded local sprites for', fish.id);
         }
+        
+        setSprites(loadedSprites);
+        setSpriteSources(loadedSources);
       } catch (err) {
-        console.error('[SpriteLab] Failed to load local sprites:', err);
+        console.error('[SpriteLab] Failed to load sprites:', err);
+      } finally {
+        setIsLoadingExisting(false);
       }
     };
     
-    loadLocalSprites();
-  }, [isOpen, fish.id]);
+    loadSprites();
+  }, [isOpen, fish.id, fish.growthSprites]);
   
   // Auto-save to IndexedDB (debounced)
   useEffect(() => {
@@ -214,7 +259,7 @@ export default function SpriteGenerationLab({
             visualMotif: visualMotif,
             biomeId: fish.biomeId || 'shallow',
             rarity: fish.rarity || 'common',
-            sizeTier: fish.type === 'predator' ? 'predator' : fish.type === 'prey' ? 'prey' : 'mid',
+            sizeTier: derivedSizeTier,
             essence: getEssenceRecord(),
             grantedAbilities: fish.grantedAbilities || [],
           },
@@ -269,6 +314,10 @@ export default function SpriteGenerationLab({
         ...prev,
         [stage]: dataUrl,
       }));
+      setSpriteSources(prev => ({
+        ...prev,
+        [stage]: 'local',
+      }));
       
       setGenerationStatus(`${STAGE_LABELS[stage]} sprite generated!`);
     } catch (err: any) {
@@ -312,6 +361,10 @@ export default function SpriteGenerationLab({
           setSprites(prev => ({
             ...prev,
             [stage]: dataUrl,
+          }));
+          setSpriteSources(prev => ({
+            ...prev,
+            [stage]: 'local',
           }));
         }
       } catch (err: any) {
@@ -417,6 +470,7 @@ export default function SpriteGenerationLab({
     try {
       await deleteEntry(fish.id);
       setSprites({ juvenile: undefined, adult: undefined, elder: undefined });
+      setSpriteSources({ juvenile: null, adult: null, elder: null });
       setLastSaved(null);
       setGenerationStatus('Local data cleared');
     } catch (err) {
@@ -478,6 +532,14 @@ export default function SpriteGenerationLab({
             </div>
           )}
           
+          {/* Loading existing sprites */}
+          {isLoadingExisting && (
+            <div className="text-center text-gray-400 text-sm py-4 flex items-center justify-center gap-2">
+              <div className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full" />
+              Loading existing sprites...
+            </div>
+          )}
+          
           {/* Growth Stage Sprites - 3 column layout */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(['juvenile', 'adult', 'elder'] as GrowthStage[]).map((stage) => (
@@ -488,13 +550,25 @@ export default function SpriteGenerationLab({
                 </div>
                 
                 {/* Sprite Preview */}
-                <div className="aspect-square bg-[#FF00FF] rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+                <div className="aspect-square bg-[#FF00FF] rounded-lg mb-3 flex items-center justify-center overflow-hidden relative">
                   {sprites[stage] ? (
-                    <img
-                      src={sprites[stage]}
-                      alt={`${fish.name} ${stage}`}
-                      className="w-full h-full object-contain"
-                    />
+                    <>
+                      <img
+                        src={sprites[stage]}
+                        alt={`${fish.name} ${stage}`}
+                        className="w-full h-full object-contain"
+                      />
+                      {/* Source badge */}
+                      {spriteSources[stage] && (
+                        <span className={`absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          spriteSources[stage] === 'local' 
+                            ? 'bg-yellow-600/90 text-yellow-100' 
+                            : 'bg-green-600/90 text-green-100'
+                        }`}>
+                          {spriteSources[stage] === 'local' ? 'Local' : 'Uploaded'}
+                        </span>
+                      )}
+                    </>
                   ) : (
                     <div className="text-gray-800/50 text-sm">No sprite</div>
                   )}
