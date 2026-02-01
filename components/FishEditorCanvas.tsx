@@ -919,13 +919,13 @@ export default function FishEditorCanvas({
         let creatureData = fish.creatureData;
         if (!creatureData) {
           // Try direct lookup
-          creatureData = fishDataRef.current.get(fishId);
+          creatureData = fishDataRef.current.get(fishId) as Creature | undefined;
           // If not found, fish might have instance ID - extract creature ID from spawnedFish
           if (!creatureData) {
             const spawnedEntry = spawnedFish.find(f => f.id === fishId);
             const creatureId = (spawnedEntry as { creatureId?: string })?.creatureId;
             if (creatureId) {
-              creatureData = fishDataRef.current.get(creatureId);
+              creatureData = fishDataRef.current.get(creatureId) as Creature | undefined;
             }
           }
         }
@@ -1023,11 +1023,11 @@ export default function FishEditorCanvas({
         creatureForSprite = fishItem;
       } else {
         // Look up by direct ID first, then by creatureId if it exists
-        creatureForSprite = fishDataRef.current.get(fishItem.id);
+        creatureForSprite = fishDataRef.current.get(fishItem.id) as Creature | undefined;
         if (!creatureForSprite) {
           const creatureId = (fishItem as { creatureId?: string }).creatureId;
           if (creatureId) {
-            creatureForSprite = fishDataRef.current.get(creatureId);
+            creatureForSprite = fishDataRef.current.get(creatureId) as Creature | undefined;
           }
         }
       }
