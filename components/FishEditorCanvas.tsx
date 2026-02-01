@@ -112,7 +112,6 @@ export default function FishEditorCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isClient, setIsClient] = useState(false);
-  const [zoomSliderValue, setZoomSliderValue] = useState(zoom);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const chromaToleranceRef = useRef<number>(chromaTolerance);
   const zoomRef = useRef<number>(zoom);
@@ -146,7 +145,6 @@ export default function FishEditorCanvas({
   useEffect(() => {
     zoomRef.current = zoom;
     targetZoomRef.current = zoom;
-    setZoomSliderValue(zoom);
   }, [zoom])
   useEffect(() => { deformationRef.current = deformationIntensity }, [deformationIntensity])
   useEffect(() => { editModeRef.current = editMode }, [editMode])
@@ -382,13 +380,6 @@ export default function FishEditorCanvas({
   const handleJoystickChange = useCallback((output: AnalogJoystickOutput) => {
     joystickVelocityRef.current = output.velocity;
     joystickActiveRef.current = output.isActive;
-  }, []);
-
-  // Zoom slider handler
-  const handleZoomSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newZoom = parseFloat(e.target.value);
-    targetZoomRef.current = newZoom;
-    setZoomSliderValue(newZoom);
   }, []);
 
   // ============================================================================
@@ -1239,7 +1230,6 @@ export default function FishEditorCanvas({
       const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1; // 10% per scroll tick
       const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current * zoomDelta));
       targetZoomRef.current = newZoom;
-      setZoomSliderValue(newZoom); // Sync slider
     };
 
     // Helper to calculate distance between two touches
@@ -1265,7 +1255,6 @@ export default function FishEditorCanvas({
         const scale = dist / pinchRef.current.startDistance;
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchRef.current.startZoom * scale));
         targetZoomRef.current = newZoom;
-        setZoomSliderValue(newZoom); // Sync slider
       }
     };
 
@@ -2469,24 +2458,6 @@ export default function FishEditorCanvas({
         <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
       </div>
 
-      {/* Zoom Slider - bottom right */}
-      <div
-        className="absolute bottom-4 right-4 flex items-center gap-2 bg-black/60 rounded-lg px-3 py-2"
-        style={{ zIndex: 30 }}
-      >
-        <span className="text-white text-xs font-mono">🔍</span>
-        <input
-          type="range"
-          min={MIN_ZOOM}
-          max={MAX_ZOOM}
-          step={0.1}
-          value={zoomSliderValue}
-          onChange={handleZoomSliderChange}
-          className="w-24 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-          style={{ pointerEvents: 'auto' }}
-        />
-        <span className="text-white text-xs font-mono w-10">{zoomSliderValue.toFixed(1)}x</span>
-      </div>
     </div>
   );
 }

@@ -38,6 +38,23 @@ const getBiomeColors = (biomeId: string) => {
   return BIOME_COLORS[biomeId] || { bg: 'bg-gray-600/20', text: 'text-gray-400', border: 'border-gray-500' };
 };
 
+/**
+ * Format a timestamp as a relative time string (e.g., "2 min ago")
+ */
+function formatRelativeTime(timestamp: number | undefined): string {
+  if (!timestamp) return '';
+  
+  const now = Date.now();
+  const diff = now - timestamp;
+  
+  if (diff < 1000) return 'Just now';
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
 interface FishLibraryPanelProps {
   onSelectFish: (fish: FishData) => void;
   onAddNew: () => void;
@@ -267,6 +284,13 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
                         </span>
                       ))}
                     </div>
+
+                    {/* Modified timestamp - helps track sync status */}
+                    {creature.updatedAt && (
+                      <div className="text-[10px] text-gray-500 mt-1">
+                        Modified {formatRelativeTime(creature.updatedAt)}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

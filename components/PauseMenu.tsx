@@ -640,8 +640,8 @@ export default function PauseMenu({
         )}
       </div>
 
-      {/* Bottom Bar: Tabs and Resume */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800/90 border-t border-gray-700">
+      {/* Bottom Bar: Tabs */}
+      <div className="flex items-center px-4 py-2 bg-gray-800/90 border-t border-gray-700">
         {/* Tabs */}
         <div className="flex gap-1">
           {visibleTabs.map((tab) => (
@@ -657,17 +657,6 @@ export default function PauseMenu({
             </button>
           ))}
         </div>
-
-        {/* Resume button */}
-        <button
-          onClick={onClose}
-          className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-          </svg>
-          Resume
-        </button>
       </div>
     </div>
   );

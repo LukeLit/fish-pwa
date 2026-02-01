@@ -1,5 +1,8 @@
 /**
  * Fish Edit Overlay - Edit mode UI for fish properties
+ * 
+ * Implements optimistic updates: local state updates immediately,
+ * API call happens in background, with rollback on failure.
  */
 'use client';
 
@@ -8,6 +11,7 @@ import { composeFishPrompt } from '@/lib/ai/prompt-builder';
 import type { CreatureClips, ClipAction, GrowthSprites, SpriteResolutions } from '@/lib/game/types';
 import { generateCreatureClip, type ClipGenerationProgress } from '@/lib/video/clip-generator';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
+import { devLogSave, devLogError } from '@/lib/editor/dev-logger';
 
 /**
  * Minimum time between clip generation requests (ms)
@@ -90,6 +94,10 @@ export interface FishData {
 
   // Growth stage sprites
   growthSprites?: GrowthSprites;
+
+  // Timestamps for sync tracking
+  createdAt?: number;  // Unix timestamp (ms) when creature was first created
+  updatedAt?: number;  // Unix timestamp (ms) when creature was last modified
 }
 
 // Type alias for updateField values to improve readability
@@ -328,9 +336,24 @@ export default function FishEditOverlay({
 
     setIsSaving(true);
     setSaveMessage('');
+    devLogSave(`Starting save for creature: ${editedFish.id}`);
 
     // Track if sprite was regenerated (data URL) - we'll need to refresh cache
     const spriteWasRegenerated = editedFish.sprite?.startsWith('data:') || false;
+
+    // OPTIMISTIC UPDATE: Store previous state for potential rollback
+    const previousFish = { ...editedFish };
+
+    // Optimistically update the timestamp (server will set the actual one)
+    const optimisticFish: FishData = {
+      ...editedFish,
+      updatedAt: Date.now(),
+    };
+
+    // Apply optimistic update immediately to parent
+    devLogSave('Applying optimistic update');
+    onSave(optimisticFish);
+    setSaveMessage('Saving...');
 
     try {
       // Always convert sprite to blob for upload (whether data URL or blob URL)
@@ -367,7 +390,6 @@ export default function FishEditOverlay({
 
       // Prepare metadata - sprite will be set by server after upload
       // Strip any cache busters from the sprite URL before saving
-      const cleanSpriteUrl = editedFish.sprite ? editedFish.sprite.split('?')[0] : '';
       const metadata = {
         ...editedFish,
         sprite: '', // Server will fill this in with the uploaded blob URL
@@ -379,6 +401,7 @@ export default function FishEditOverlay({
       formData.append('metadata', JSON.stringify(metadata));
       formData.append('sprite', spriteBlob, `${editedFish.id}.png`);
 
+      devLogSave('Sending save request to API');
       const response = await fetch('/api/save-creature', {
         method: 'POST',
         body: formData,
@@ -392,6 +415,8 @@ export default function FishEditOverlay({
       const result = await response.json();
 
       if (result.success) {
+        devLogSave('Save successful', { spriteUrl: result.spriteUrl });
+        
         // Verify we got a sprite URL back
         if (!result.spriteUrl) {
           console.error('[FishEditOverlay] WARNING: Save succeeded but no spriteUrl returned!');
@@ -409,15 +434,18 @@ export default function FishEditOverlay({
         // Cache busters should only be added when rendering/displaying, not when storing
         const cleanSpriteUrl = spriteUrl.split('?')[0];
 
-        // Update local state with the clean blob URL
+        // Update local state with the clean blob URL and server timestamps
         const savedFish: FishData = {
           ...editedFish,
           sprite: cleanSpriteUrl,
+          // Use server's timestamps if available
+          createdAt: result.metadata?.createdAt || optimisticFish.createdAt,
+          updatedAt: result.metadata?.updatedAt || optimisticFish.updatedAt,
         };
 
         setEditedFish(savedFish);
 
-        // Update parent state so preview refreshes with new blob URL
+        // Final update to parent with confirmed server data
         onSave(savedFish);
 
         // Dispatch event to update canvas preview immediately if this is the player fish
@@ -435,13 +463,13 @@ export default function FishEditOverlay({
           // Dispatch refresh event to reload sprites from server with new blob URLs
           // Small delay to ensure blob storage has propagated
           setTimeout(() => {
-            console.log('[FishEditOverlay] Sprite was regenerated - refreshing cache');
+            devLogSave('Sprite was regenerated - refreshing cache');
             window.dispatchEvent(new CustomEvent('refreshFishSprites'));
             setSaveMessage(`✓ Saved and refreshed!`);
           }, 500);
         } else {
           setSaveMessage(`✓ Saved successfully!`);
-          console.log('[FishEditOverlay] Metadata-only save - no cache refresh needed');
+          devLogSave('Metadata-only save - no cache refresh needed');
         }
 
         // Verify the save by fetching the creature back
@@ -458,10 +486,16 @@ export default function FishEditOverlay({
           }
         }, 1500);
       } else {
+        // API returned success:false - rollback optimistic update
+        devLogError('Save', 'Save returned failure', result);
+        onSave(previousFish); // ROLLBACK
         setSaveMessage(`❌ Save failed: ${result.error || 'Unknown error'}`);
         console.error('[FishEditOverlay] Save failed:', result);
       }
     } catch (error: any) {
+      // Exception during save - rollback optimistic update
+      devLogError('Save', `Save error: ${error.message}`, error);
+      onSave(previousFish); // ROLLBACK
       console.error('[FishEditor] Save error:', error);
       setSaveMessage(`❌ Error: ${error.message || 'Failed to save'}`);
     } finally {

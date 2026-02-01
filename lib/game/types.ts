@@ -276,6 +276,10 @@ export interface Creature extends BaseFishData {
 
   // Animation clips (optional - falls back to sprite + deformation if not present)
   clips?: CreatureClips;
+
+  // Timestamps for sync tracking
+  createdAt?: number;  // Unix timestamp (ms) when creature was first created
+  updatedAt?: number;  // Unix timestamp (ms) when creature was last modified
 }
 
 /**

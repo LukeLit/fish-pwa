@@ -7,12 +7,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { list } from '@vercel/blob';
 import type { Creature } from '@/lib/game/types';
 
+// Development mode logging helper
+const isDev = process.env.NODE_ENV === 'development';
+function devLog(message: string, data?: unknown) {
+  if (isDev) {
+    const timestamp = new Date().toISOString();
+    console.log(`[ListCreatures] ${timestamp} - ${message}`, data || '');
+  }
+}
+
 export async function GET(request: NextRequest) {
+  const startTime = performance.now();
+  devLog('Request received', { url: request.url });
+
   try {
     const { searchParams } = new URL(request.url);
     const biome = searchParams.get('biome');
     const rarity = searchParams.get('rarity');
     const playableOnly = searchParams.get('playable') === 'true';
+
+    devLog('Filters applied', { biome, rarity, playableOnly });
 
     // Load creatures from individual blob files
     // This approach supports concurrent creation by multiple users
@@ -36,10 +50,17 @@ export async function GET(request: NextRequest) {
       filteredCreatures = filteredCreatures.filter(c => c.playable === true);
     }
 
+    const duration = Math.round(performance.now() - startTime);
+    devLog(`Request completed in ${duration}ms`, { 
+      total: filteredCreatures.length,
+      hasTimestamps: filteredCreatures.some(c => c.updatedAt),
+    });
+
     return NextResponse.json({
       success: true,
       creatures: filteredCreatures,
       total: filteredCreatures.length,
+      _debug: isDev ? { duration, timestamp: Date.now() } : undefined,
     }, {
       headers: {
         // Prevent caching to ensure fresh data
@@ -48,6 +69,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    const duration = Math.round(performance.now() - startTime);
+    devLog(`Request failed after ${duration}ms`, error);
     console.error('[ListCreatures] Error:', error);
     return NextResponse.json(
       {

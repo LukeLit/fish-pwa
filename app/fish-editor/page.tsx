@@ -13,6 +13,9 @@ import { type FishData } from '@/components/FishEditOverlay';
 import PauseMenu from '@/components/PauseMenu';
 import ArtSelectorPanel from '@/components/ArtSelectorPanel';
 import SettingsDrawer from '@/components/SettingsDrawer';
+import SyncStatusIndicator from '@/components/SyncStatusIndicator';
+import { SyncProvider, useSync } from '@/lib/editor/sync-context';
+import { devLog, devLogCache, devLogFetch } from '@/lib/editor/dev-logger';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
 import {
   setMipmapDebug,
@@ -50,6 +53,7 @@ export default function FishEditorPage() {
   const [growthDebug, setGrowthDebugState] = useState(false);
   const [isGeneratingGrowth, setIsGeneratingGrowth] = useState(false);
   const [growthGenerationStatus, setGrowthGenerationStatus] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Helper to get resolution tier from size
   const getResolutionTier = useCallback((size: number, currentZoom: number): 'high' | 'medium' | 'low' => {
@@ -58,6 +62,96 @@ export default function FishEditorPage() {
     if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) return 'medium';
     return 'low';
   }, []);
+
+  /**
+   * Comprehensive refresh - clears ALL caches and refetches data
+   * This is the "nuclear option" for cache issues
+   */
+  const handleRefreshAll = useCallback(async () => {
+    if (isRefreshing) return; // Prevent double-clicks
+
+    setIsRefreshing(true);
+    devLog('Refresh', 'Starting comprehensive refresh...');
+    const startTime = performance.now();
+
+    try {
+      // 1. Clear Service Worker's asset cache
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        devLogCache('Clearing Service Worker asset cache...');
+        const messageChannel = new MessageChannel();
+        navigator.serviceWorker.controller.postMessage(
+          { type: 'CLEAR_ASSET_CACHE' },
+          [messageChannel.port2]
+        );
+        // Wait for confirmation with timeout
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            messageChannel.port1.onmessage = () => resolve();
+          }),
+          new Promise<void>((resolve) => setTimeout(resolve, 1000)),
+        ]);
+        devLogCache('Service Worker cache cleared');
+      }
+
+      // 2. Clear browser's Cache API
+      if ('caches' in window) {
+        devLogCache('Clearing browser Cache API...');
+        const cacheNames = await caches.keys();
+        for (const cacheName of cacheNames) {
+          if (cacheName.includes('asset') || cacheName.includes('fish')) {
+            await caches.delete(cacheName);
+            devLogCache(`Deleted cache: ${cacheName}`);
+          }
+        }
+      }
+
+      // 3. Clear localStorage fish cache
+      try {
+        const localCreatures = localStorage.getItem('fish_game_creatures');
+        if (localCreatures) {
+          localStorage.removeItem('fish_game_creatures');
+          devLogCache('Cleared localStorage fish_game_creatures');
+        }
+      } catch (err) {
+        devLog('Refresh', 'localStorage clear skipped', err, 'warn');
+      }
+
+      // 4. Refetch creature list from API (force no-cache)
+      devLogFetch('Refetching creature list from API...');
+      const response = await fetch('/api/list-creatures', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+      });
+      const result = await response.json();
+
+      if (result.success && result.creatures) {
+        devLogFetch(`Loaded ${result.creatures.length} creatures from API`);
+
+        // Update fishData with fresh data
+        const newFishData = new Map<string, FishData>();
+        (result.creatures as FishData[]).forEach((creature) => {
+          newFishData.set(creature.id, creature);
+        });
+        setFishData(newFishData);
+      }
+
+      // 5. Dispatch event to refresh sprites in canvas
+      devLogCache('Dispatching refreshFishSprites event...');
+      window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+
+      const duration = Math.round(performance.now() - startTime);
+      devLog('Refresh', `Comprehensive refresh completed in ${duration}ms`);
+
+    } catch (error) {
+      devLog('Refresh', 'Refresh failed', error, 'error');
+      console.error('[FishEditor] Refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing]);
 
   // Handle Escape key for pause toggle - uses callback form to access current state
   useEffect(() => {
@@ -569,147 +663,160 @@ export default function FishEditorPage() {
   }, []);
 
   return (
-    <div className="relative w-full h-screen bg-black flex flex-col overflow-hidden">
-      {/* Top Right Icon Buttons - offset right to make room for menu button */}
-      <div className="absolute top-4 right-16 flex gap-2" style={{ zIndex: Z_LAYERS.CONTROLS }}>
-        {/* Refresh Textures Icon */}
-        <button
-          onClick={() => {
-            console.log('[FishEditor] Dispatching refreshFishSprites event');
-            window.dispatchEvent(new CustomEvent('refreshFishSprites'));
-          }}
-          className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
-          title="Refresh Textures (clear cache)"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-          </svg>
-        </button>
-        {/* Pause Icon */}
-        <button
-          onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
-          className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
-          title={paused ? 'Resume' : 'Pause'}
-        >
-          {paused ? (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-            </svg>
-          )}
-        </button>
-      </div>
+    <SyncProvider>
+      <div className="relative w-full h-screen bg-black flex flex-col overflow-hidden">
+        {/* Top Left - Sync Status Indicator */}
+        <div className="absolute top-4 left-4" style={{ zIndex: Z_LAYERS.CONTROLS }}>
+          <SyncStatusIndicator onRetry={handleRefreshAll} />
+        </div>
 
-      {/* Settings Drawer - Rendered at page level to avoid stacking context issues */}
-      <SettingsDrawer mode="editor" />
-
-      {/* Fish Name Bar with Prev/Next - Docked above the Pause Menu on mobile, above canvas on desktop */}
-      {paused && selectedFish && (
-        <div
-          className="absolute left-0 right-0 flex items-center justify-between px-4 py-2
-            bottom-[65vh] lg:bottom-4 lg:left-[420px]"
-          style={{ zIndex: Z_LAYERS.CONTROLS }}
-        >
-          {/* Previous Arrow */}
+        {/* Top Right Icon Buttons - offset right to make room for menu button */}
+        <div className="absolute top-4 right-16 flex gap-2" style={{ zIndex: Z_LAYERS.CONTROLS }}>
+          {/* Refresh Textures Icon */}
           <button
-            onClick={handlePreviousFish}
-            disabled={!hasPrevious}
-            className={`p-2 rounded-full transition-all ${hasPrevious
-              ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
-              : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
-              }`}
-            title="Previous Fish"
+            onClick={handleRefreshAll}
+            disabled={isRefreshing}
+            className={`w-10 h-10 rounded-lg shadow-lg border flex items-center justify-center transition-colors ${isRefreshing
+                ? 'bg-cyan-700 border-cyan-500 cursor-wait'
+                : 'bg-gray-800 hover:bg-gray-700 border-gray-600'
+              } text-white`}
+            title="Refresh Everything (clear all caches)"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
             </svg>
           </button>
+          {/* Pause Icon */}
+          <button
+            onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
+            className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
+            title={paused ? 'Resume' : 'Pause'}
+          >
+            {paused ? (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+              </svg>
+            )}
+          </button>
+        </div>
 
-          {/* Fish Name - Center */}
-          {editingName ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={tempName}
-                onChange={(e) => setTempName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+        {/* Settings Drawer - Rendered at page level to avoid stacking context issues */}
+        <SettingsDrawer mode="editor" />
+
+        {/* Fish Name Bar with Prev/Next - Docked above the Pause Menu on mobile, above canvas on desktop */}
+        {paused && selectedFish && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 py-2 bottom-[65vh] lg:bottom-4"
+            style={{ zIndex: Z_LAYERS.CONTROLS }}
+          >
+            {/* Previous Arrow */}
+            <button
+              onClick={handlePreviousFish}
+              disabled={!hasPrevious}
+              className={`p-1.5 rounded-full transition-all ${hasPrevious
+                ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
+                : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
+              }`}
+              title="Previous Fish"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+            </button>
+
+            {/* Fish Name - Center */}
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (tempName.trim() && selectedFishId) {
+                        const updatedFish = { ...selectedFish, name: tempName.trim() };
+                        handleSaveFish(updatedFish);
+                      }
+                      setEditingName(false);
+                    } else if (e.key === 'Escape') {
+                      setEditingName(false);
+                    }
+                  }}
+                  className="bg-gray-800 text-white px-3 py-1 rounded text-base font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[160px]"
+                  autoFocus
+                />
+                <button
+                  onClick={() => {
                     if (tempName.trim() && selectedFishId) {
                       const updatedFish = { ...selectedFish, name: tempName.trim() };
                       handleSaveFish(updatedFish);
                     }
                     setEditingName(false);
-                  } else if (e.key === 'Escape') {
-                    setEditingName(false);
-                  }
-                }}
-                className="bg-gray-800 text-white px-3 py-1 rounded text-lg font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-              />
-              <button
-                onClick={() => {
-                  if (tempName.trim() && selectedFishId) {
-                    const updatedFish = { ...selectedFish, name: tempName.trim() };
-                    handleSaveFish(updatedFish);
-                  }
-                  setEditingName(false);
-                }}
-                className="p-1 bg-green-600 hover:bg-green-500 rounded text-white"
-                title="Save Name"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-              </button>
-              <button
-                onClick={() => setEditingName(false)}
-                className="p-1 bg-gray-600 hover:bg-gray-500 rounded text-white"
-                title="Cancel"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-white drop-shadow-lg">
-                {selectedFish.name}
-              </span>
-              <button
-                onClick={() => {
-                  setTempName(selectedFish.name);
-                  setEditingName(true);
-                }}
-                className="p-1 text-gray-400 hover:text-white transition-colors"
-                title="Edit Name"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-                </svg>
-              </button>
-            </div>
-          )}
+                  }}
+                  className="p-1 bg-green-600 hover:bg-green-500 rounded text-white"
+                  title="Save Name"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setEditingName(false)}
+                  className="p-1 bg-gray-600 hover:bg-gray-500 rounded text-white"
+                  title="Cancel"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="text-base font-bold text-white drop-shadow-lg max-w-[160px] truncate">
+                  {selectedFish.name}
+                </span>
+                <button
+                  onClick={() => {
+                    setTempName(selectedFish.name);
+                    setEditingName(true);
+                  }}
+                  className="p-1 text-gray-400 hover:text-white transition-colors"
+                  title="Edit Name"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                  </svg>
+                </button>
+              </div>
+            )}
 
-          {/* Next Arrow */}
-          <button
-            onClick={handleNextFish}
-            disabled={!hasNext}
-            className={`p-2 rounded-full transition-all ${hasNext
-              ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
-              : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
+            {/* Next Arrow */}
+            <button
+              onClick={handleNextFish}
+              disabled={!hasNext}
+              className={`p-1.5 rounded-full transition-all ${hasNext
+                ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
+                : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
               }`}
-            title="Next Fish"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-            </svg>
-          </button>
-        </div>
-      )}
+              title="Next Fish"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          </div>
+        )}
 
       {/* Canvas - Full screen, but fish will be positioned in top area during edit mode */}
       {/* Mobile: explicit height above panel, Desktop: left margin for side drawer */}
@@ -776,33 +883,48 @@ export default function FishEditorPage() {
         onBackToMenu={handleBackToMenu}
       />
 
-      {/* Bottom Right Edit Button - Hidden when pause menu is open */}
-      {!paused && (
-        <div className="absolute bottom-20 right-4" style={{ zIndex: Z_LAYERS.CONTROLS }}>
+      {/* Bottom Right Edit/Resume Button - Same position for both states */}
+      {/* Uses PANEL_HEADER z-index to float above the pause menu panel on mobile */}
+      {/* Compact on mobile, larger on desktop */}
+      <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4" style={{ zIndex: Z_LAYERS.PANEL_HEADER }}>
+        {!paused ? (
           <button
             onClick={() => setPaused(true)}
-            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-4 py-2 rounded-lg shadow-lg border-2 border-cyan-400/50 font-bold uppercase tracking-wider transition-all hover:scale-105 flex items-center gap-2"
+            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow-lg border-2 border-cyan-400/50 font-bold uppercase tracking-wider transition-all hover:scale-105 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base"
             title="Open Editor"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 sm:w-5 sm:h-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
             </svg>
             Edit
           </button>
-        </div>
-      )}
+        ) : (
+          <button
+            onClick={() => setPaused(false)}
+            className="flex items-center gap-1.5 sm:gap-2 bg-green-600 hover:bg-green-500 text-white px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow-lg font-bold uppercase tracking-wider transition-all hover:scale-105 text-sm sm:text-base"
+            title="Resume"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 sm:w-5 sm:h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+            Resume
+          </button>
+        )}
+      </div>
 
       {/* Size Slider Panel - Right side when editing a fish */}
+      {/* On mobile: compact version with just slider + size value */}
+      {/* On desktop (lg+): full version with all debug info, vertically centered */}
       {paused && selectedFish && (
         <div
-          className="absolute right-4 top-1/2 -translate-y-1/2 bg-gray-900/95 backdrop-blur-sm rounded-lg p-3 border border-gray-700 shadow-xl w-16 flex flex-col items-center gap-3"
-          style={{ zIndex: Z_LAYERS.CONTROLS }}
+          className="absolute right-2 top-16 lg:right-4 lg:top-1/2 lg:-translate-y-1/2 bg-gray-900/95 backdrop-blur-sm rounded-lg p-2 lg:p-3 border border-gray-700 shadow-xl w-12 lg:w-16 flex flex-col items-center gap-1 lg:gap-2"
+          style={{ zIndex: Z_LAYERS.PANEL_HEADER }}
         >
           {/* Size Label */}
-          <div className="text-xs text-gray-400 font-medium">SIZE</div>
+          <div className="text-[10px] lg:text-xs text-gray-400 font-medium">SIZE</div>
 
-          {/* Vertical Slider */}
-          <div className="relative h-48 w-6 flex items-center justify-center">
+          {/* Vertical Slider - shorter on mobile */}
+          <div className="relative h-28 lg:h-48 w-6 flex items-center justify-center">
             <input
               type="range"
               min="20"
@@ -837,7 +959,7 @@ export default function FishEditorPage() {
                   console.log(`[Mipmap] Size slider crossed threshold: ${oldTier} -> ${newTier} (size: ${oldSize} -> ${newSize}, screen: ${Math.round(newSize * zoom)}px)`);
                 }
               }}
-              className="absolute h-48 w-6 cursor-pointer appearance-none bg-transparent
+              className="absolute h-28 lg:h-48 w-6 cursor-pointer appearance-none bg-transparent
                 [writing-mode:vertical-lr] [direction:rtl]
                 [&::-webkit-slider-runnable-track]:w-2 [&::-webkit-slider-runnable-track]:h-full 
                 [&::-webkit-slider-runnable-track]:bg-gray-700 [&::-webkit-slider-runnable-track]:rounded-full
@@ -856,116 +978,119 @@ export default function FishEditorPage() {
           </div>
 
           {/* Size Value */}
-          <div className="text-sm text-white font-mono">
+          <div className="text-xs lg:text-sm text-white font-mono">
             {sizeOverride ?? selectedFish.stats?.size ?? 60}
           </div>
 
-          {/* Screen Size (calculated) */}
-          <div className="text-xs text-gray-500 text-center">
-            <div>screen:</div>
-            <div className="text-cyan-400 font-mono">
-              {Math.round((sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom)}px
+          {/* Desktop only: Screen Size, Mipmap, Debug, Growth info */}
+          <div className="hidden lg:contents">
+            {/* Screen Size (calculated) */}
+            <div className="text-xs text-gray-500 text-center">
+              <div>screen:</div>
+              <div className="text-cyan-400 font-mono">
+                {Math.round((sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom)}px
+              </div>
             </div>
-          </div>
 
-          {/* Resolution indicator */}
-          <div className="text-xs text-center">
-            <div className="text-gray-500">mipmap:</div>
-            <div className={`font-bold ${(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
-              ? 'text-green-400'
-              : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
-                ? 'text-yellow-400'
-                : 'text-red-400'
-              }`}>
-              {(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
-                ? 'HIGH'
+            {/* Resolution indicator */}
+            <div className="text-xs text-center">
+              <div className="text-gray-500">mipmap:</div>
+              <div className={`font-bold ${(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
+                ? 'text-green-400'
                 : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
-                  ? 'MED'
-                  : 'LOW'}
+                  ? 'text-yellow-400'
+                  : 'text-red-400'
+                }`}>
+                {(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
+                  ? 'HIGH'
+                  : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
+                    ? 'MED'
+                    : 'LOW'}
+              </div>
             </div>
+
+            {/* Mipmap Debug Toggle */}
+            <button
+              onClick={() => {
+                const newState = !mipmapDebug;
+                setMipmapDebugState(newState);
+                setMipmapDebug(newState);
+              }}
+              className={`text-xs px-2 py-1 rounded transition-colors ${mipmapDebug
+                ? 'bg-cyan-600 text-white'
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              title="Toggle mipmap debug logging in console"
+            >
+              {mipmapDebug ? 'DEBUG' : 'debug'}
+            </button>
+
+            {/* Divider */}
+            <div className="w-full border-t border-gray-600 my-1"></div>
+
+            {/* Growth Stage Section */}
+            <div className="text-xs text-gray-400 font-medium">GROWTH</div>
+
+            {/* Current Growth Stage */}
+            <div className="text-xs text-center">
+              <div className="text-gray-500">stage:</div>
+              <div className={`font-bold ${getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'juvenile'
+                ? 'text-blue-400'
+                : getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'elder'
+                  ? 'text-purple-400'
+                  : 'text-green-400'
+                }`}>
+                {getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites).toUpperCase()}
+              </div>
+            </div>
+
+            {/* Growth Sprite Status */}
+            <div className="text-xs text-center space-y-1">
+              <div className={`${selectedFish.growthSprites?.juvenile ? 'text-green-400' : 'text-gray-600'}`}>
+                {selectedFish.growthSprites?.juvenile ? '✓' : '○'} juvenile
+              </div>
+              <div className="text-green-400">✓ adult</div>
+              <div className={`${selectedFish.growthSprites?.elder ? 'text-green-400' : 'text-gray-600'}`}>
+                {selectedFish.growthSprites?.elder ? '✓' : '○'} elder
+              </div>
+            </div>
+
+            {/* Generate Growth Sprites Button */}
+            <button
+              onClick={handleGenerateGrowthSprites}
+              disabled={isGeneratingGrowth}
+              className={`text-xs px-2 py-1 rounded transition-colors ${isGeneratingGrowth
+                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                : 'bg-purple-600 text-white hover:bg-purple-500'
+                }`}
+              title="Generate juvenile and elder sprite variants"
+            >
+              {isGeneratingGrowth ? '...' : 'GEN'}
+            </button>
+
+            {/* Growth Generation Status */}
+            {growthGenerationStatus && (
+              <div className="text-xs text-center text-yellow-400 max-w-full break-words">
+                {growthGenerationStatus}
+              </div>
+            )}
+
+            {/* Growth Debug Toggle */}
+            <button
+              onClick={() => {
+                const newState = !growthDebug;
+                setGrowthDebugState(newState);
+                setGrowthDebug(newState);
+              }}
+              className={`text-xs px-2 py-1 rounded transition-colors ${growthDebug
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              title="Toggle growth stage debug logging in console"
+            >
+              {growthDebug ? 'DEBUG' : 'debug'}
+            </button>
           </div>
-
-          {/* Mipmap Debug Toggle */}
-          <button
-            onClick={() => {
-              const newState = !mipmapDebug;
-              setMipmapDebugState(newState);
-              setMipmapDebug(newState);
-            }}
-            className={`text-xs px-2 py-1 rounded transition-colors ${mipmapDebug
-              ? 'bg-cyan-600 text-white'
-              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              }`}
-            title="Toggle mipmap debug logging in console"
-          >
-            {mipmapDebug ? 'DEBUG' : 'debug'}
-          </button>
-
-          {/* Divider */}
-          <div className="w-full border-t border-gray-600 my-1"></div>
-
-          {/* Growth Stage Section */}
-          <div className="text-xs text-gray-400 font-medium">GROWTH</div>
-
-          {/* Current Growth Stage */}
-          <div className="text-xs text-center">
-            <div className="text-gray-500">stage:</div>
-            <div className={`font-bold ${getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'juvenile'
-              ? 'text-blue-400'
-              : getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'elder'
-                ? 'text-purple-400'
-                : 'text-green-400'
-              }`}>
-              {getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites).toUpperCase()}
-            </div>
-          </div>
-
-          {/* Growth Sprite Status */}
-          <div className="text-xs text-center space-y-1">
-            <div className={`${selectedFish.growthSprites?.juvenile ? 'text-green-400' : 'text-gray-600'}`}>
-              {selectedFish.growthSprites?.juvenile ? '✓' : '○'} juvenile
-            </div>
-            <div className="text-green-400">✓ adult</div>
-            <div className={`${selectedFish.growthSprites?.elder ? 'text-green-400' : 'text-gray-600'}`}>
-              {selectedFish.growthSprites?.elder ? '✓' : '○'} elder
-            </div>
-          </div>
-
-          {/* Generate Growth Sprites Button */}
-          <button
-            onClick={handleGenerateGrowthSprites}
-            disabled={isGeneratingGrowth}
-            className={`text-xs px-2 py-1 rounded transition-colors ${isGeneratingGrowth
-              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              : 'bg-purple-600 text-white hover:bg-purple-500'
-              }`}
-            title="Generate juvenile and elder sprite variants"
-          >
-            {isGeneratingGrowth ? '...' : 'GEN'}
-          </button>
-
-          {/* Growth Generation Status */}
-          {growthGenerationStatus && (
-            <div className="text-xs text-center text-yellow-400 max-w-full break-words">
-              {growthGenerationStatus}
-            </div>
-          )}
-
-          {/* Growth Debug Toggle */}
-          <button
-            onClick={() => {
-              const newState = !growthDebug;
-              setGrowthDebugState(newState);
-              setGrowthDebug(newState);
-            }}
-            className={`text-xs px-2 py-1 rounded transition-colors ${growthDebug
-              ? 'bg-purple-600 text-white'
-              : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              }`}
-            title="Toggle growth stage debug logging in console"
-          >
-            {growthDebug ? 'DEBUG' : 'debug'}
-          </button>
         </div>
       )}
 
@@ -978,5 +1103,6 @@ export default function FishEditorPage() {
         />
       )}
     </div>
+    </SyncProvider >
   );
 }

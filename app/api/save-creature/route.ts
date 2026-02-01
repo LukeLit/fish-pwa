@@ -17,7 +17,19 @@ import {
   type ResolutionUrls
 } from '@/lib/assets/image-processor';
 
+// Development mode logging helper
+const isDev = process.env.NODE_ENV === 'development';
+function devLog(message: string, data?: unknown) {
+  if (isDev) {
+    const timestamp = new Date().toISOString();
+    console.log(`[SaveCreature] ${timestamp} - ${message}`, data || '');
+  }
+}
+
 export async function POST(request: NextRequest) {
+  const startTime = performance.now();
+  devLog('Save request received');
+
   try {
     const formData = await request.formData();
     const creatureId = formData.get('creatureId') as string;
@@ -32,6 +44,15 @@ export async function POST(request: NextRequest) {
     }
 
     const metadata = JSON.parse(metadataJson);
+
+    // Set timestamps for sync tracking
+    const now = Date.now();
+    if (!metadata.createdAt) {
+      metadata.createdAt = now; // Preserve original creation time
+    }
+    metadata.updatedAt = now; // Always update modification time
+
+    devLog('Timestamps set', { createdAt: metadata.createdAt, updatedAt: metadata.updatedAt, creatureId });
 
     let spriteUrl: string | undefined;
 
@@ -143,6 +164,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const duration = Math.round(performance.now() - startTime);
+    devLog(`Save completed in ${duration}ms`, { creatureId, hasSprite: !!spriteUrl });
+
     return NextResponse.json({
       success: true,
       creatureId,
@@ -150,8 +174,11 @@ export async function POST(request: NextRequest) {
       spriteResolutions,
       metadataUrl: metadataBlob.url,
       metadata: savedMetadata, // Return verified saved metadata
+      _debug: isDev ? { duration, timestamp: Date.now() } : undefined,
     });
   } catch (error) {
+    const duration = Math.round(performance.now() - startTime);
+    devLog(`Save failed after ${duration}ms`, error);
     console.error('[SaveCreature] Error:', error);
 
     // Check if error is due to missing BLOB_READ_WRITE_TOKEN
@@ -165,6 +192,7 @@ export async function POST(request: NextRequest) {
           ? 'Blob storage token not configured. Please set BLOB_READ_WRITE_TOKEN environment variable.'
           : errorMessage,
         requiresToken: isBlobTokenError,
+        _debug: isDev ? { duration } : undefined,
       },
       { status: 500 }
     );
