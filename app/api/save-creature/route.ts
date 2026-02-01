@@ -167,14 +167,30 @@ export async function POST(request: NextRequest) {
     const duration = Math.round(performance.now() - startTime);
     devLog(`Save completed in ${duration}ms`, { creatureId, hasSprite: !!spriteUrl });
 
+    // Add cache-busting timestamp to returned sprite URLs
+    const timestamp = savedMetadata.updatedAt || Date.now();
+    const addCacheBuster = (url: string | null | undefined) => {
+      if (!url) return url;
+      if (url.includes('?')) return url;
+      return `${url}?t=${timestamp}`;
+    };
+
     return NextResponse.json({
       success: true,
       creatureId,
-      spriteUrl,
-      spriteResolutions,
+      spriteUrl: addCacheBuster(spriteUrl),
+      spriteResolutions: spriteResolutions ? {
+        high: addCacheBuster(spriteResolutions.high)!,
+        medium: addCacheBuster(spriteResolutions.medium)!,
+        low: addCacheBuster(spriteResolutions.low)!,
+      } : undefined,
       metadataUrl: metadataBlob.url,
       metadata: savedMetadata, // Return verified saved metadata
       _debug: isDev ? { duration, timestamp: Date.now() } : undefined,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
     });
   } catch (error) {
     const duration = Math.round(performance.now() - startTime);

@@ -142,10 +142,47 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
       })
     );
 
-    // Collect successful results
+    // Collect successful results and add cache-busting to sprite URLs
     for (const result of results) {
       if (result.status === 'fulfilled' && result.value) {
-        creatures.push(result.value);
+        const creature = result.value;
+        
+        // Add cache-busting timestamp using updatedAt or current time
+        const timestamp = creature.updatedAt || Date.now();
+        const addCacheBuster = (url: string | null | undefined) => {
+          if (!url) return url;
+          if (url.includes('?')) return url; // Already has params
+          return `${url}?t=${timestamp}`;
+        };
+        
+        // Cache-bust main sprite
+        if (creature.sprite) {
+          creature.sprite = addCacheBuster(creature.sprite)!;
+        }
+        
+        // Cache-bust sprite resolutions
+        if (creature.spriteResolutions) {
+          if (creature.spriteResolutions.high) creature.spriteResolutions.high = addCacheBuster(creature.spriteResolutions.high)!;
+          if (creature.spriteResolutions.medium) creature.spriteResolutions.medium = addCacheBuster(creature.spriteResolutions.medium)!;
+          if (creature.spriteResolutions.low) creature.spriteResolutions.low = addCacheBuster(creature.spriteResolutions.low)!;
+        }
+        
+        // Cache-bust growth sprite URLs
+        if (creature.growthSprites) {
+          for (const stage of ['juvenile', 'adult', 'elder'] as const) {
+            if (creature.growthSprites[stage]?.sprite) {
+              creature.growthSprites[stage].sprite = addCacheBuster(creature.growthSprites[stage].sprite)!;
+            }
+            if (creature.growthSprites[stage]?.spriteResolutions) {
+              const res = creature.growthSprites[stage].spriteResolutions;
+              if (res?.high) res.high = addCacheBuster(res.high)!;
+              if (res?.medium) res.medium = addCacheBuster(res.medium)!;
+              if (res?.low) res.low = addCacheBuster(res.low)!;
+            }
+          }
+        }
+        
+        creatures.push(creature);
       }
     }
 

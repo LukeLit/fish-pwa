@@ -6,21 +6,21 @@
  */
 
 const DB_NAME = 'sprite-lab-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;  // Bumped to match browser's existing version
 const STORE_NAME = 'sprites';
 
 export interface SpriteLabEntry {
   id: string;                    // Creature ID e.g., "goldfish_starter"
   name: string;
   updatedAt: number;             // Unix timestamp for display
-  
+
   // Growth sprites stored as Blobs (efficient binary storage)
   sprites: {
     juvenile?: Blob;
     adult?: Blob;
     elder?: Blob;
   };
-  
+
   // Metadata needed to regenerate/upload
   promptData: {
     descriptionChunks: string[];
@@ -51,7 +51,7 @@ function openDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      
+
       // Create object store if it doesn't exist
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
@@ -67,23 +67,23 @@ function openDB(): Promise<IDBDatabase> {
  */
 export async function saveEntry(entry: SpriteLabEntry): Promise<void> {
   const db = await openDB();
-  
+
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    
+
     const request = store.put(entry);
-    
+
     request.onerror = () => {
       console.error('[SpriteLabDB] Failed to save entry:', request.error);
       reject(request.error);
     };
-    
+
     request.onsuccess = () => {
       console.log('[SpriteLabDB] Saved entry:', entry.id);
       resolve();
     };
-    
+
     transaction.oncomplete = () => {
       db.close();
     };
@@ -95,22 +95,22 @@ export async function saveEntry(entry: SpriteLabEntry): Promise<void> {
  */
 export async function getEntry(id: string): Promise<SpriteLabEntry | null> {
   const db = await openDB();
-  
+
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readonly');
     const store = transaction.objectStore(STORE_NAME);
-    
+
     const request = store.get(id);
-    
+
     request.onerror = () => {
       console.error('[SpriteLabDB] Failed to get entry:', request.error);
       reject(request.error);
     };
-    
+
     request.onsuccess = () => {
       resolve(request.result || null);
     };
-    
+
     transaction.oncomplete = () => {
       db.close();
     };
@@ -122,19 +122,19 @@ export async function getEntry(id: string): Promise<SpriteLabEntry | null> {
  */
 export async function listEntries(): Promise<SpriteLabEntry[]> {
   const db = await openDB();
-  
+
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const index = store.index('updatedAt');
-    
+
     const request = index.getAll();
-    
+
     request.onerror = () => {
       console.error('[SpriteLabDB] Failed to list entries:', request.error);
       reject(request.error);
     };
-    
+
     request.onsuccess = () => {
       // Sort by updatedAt descending (most recent first)
       const entries = (request.result as SpriteLabEntry[]).sort(
@@ -142,7 +142,7 @@ export async function listEntries(): Promise<SpriteLabEntry[]> {
       );
       resolve(entries);
     };
-    
+
     transaction.oncomplete = () => {
       db.close();
     };
@@ -154,23 +154,23 @@ export async function listEntries(): Promise<SpriteLabEntry[]> {
  */
 export async function deleteEntry(id: string): Promise<void> {
   const db = await openDB();
-  
+
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    
+
     const request = store.delete(id);
-    
+
     request.onerror = () => {
       console.error('[SpriteLabDB] Failed to delete entry:', request.error);
       reject(request.error);
     };
-    
+
     request.onsuccess = () => {
       console.log('[SpriteLabDB] Deleted entry:', id);
       resolve();
     };
-    
+
     transaction.oncomplete = () => {
       db.close();
     };

@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const metadataResponse = await fetch(metadataBlobs[0].url);
+    const metadataResponse = await fetch(metadataBlobs[0].url, {
+      cache: 'no-store', // Bypass fetch cache
+    });
     const metadata = await metadataResponse.json();
 
     // Fetch sprite URL
@@ -42,15 +44,54 @@ export async function GET(request: NextRequest) {
     });
 
     const spriteUrl = spriteBlobs.length > 0 ? spriteBlobs[0].url : null;
+    
+    // Add cache-busting timestamp to sprite URLs using updatedAt or current time
+    const timestamp = metadata.updatedAt || Date.now();
+    const addCacheBuster = (url: string | null | undefined) => {
+      if (!url) return url;
+      // Don't add if already has query params (might already have cache buster)
+      if (url.includes('?')) return url;
+      return `${url}?t=${timestamp}`;
+    };
+
+    // Build creature with cache-busted URLs
+    const creature = {
+      ...metadata,
+      sprite: addCacheBuster(spriteUrl || metadata.sprite),
+    };
+    
+    // Also cache-bust growth sprite URLs if present
+    if (creature.growthSprites) {
+      for (const stage of ['juvenile', 'adult', 'elder'] as const) {
+        if (creature.growthSprites[stage]?.sprite) {
+          creature.growthSprites[stage].sprite = addCacheBuster(creature.growthSprites[stage].sprite);
+        }
+        if (creature.growthSprites[stage]?.spriteResolutions) {
+          const res = creature.growthSprites[stage].spriteResolutions;
+          if (res.high) res.high = addCacheBuster(res.high)!;
+          if (res.medium) res.medium = addCacheBuster(res.medium)!;
+          if (res.low) res.low = addCacheBuster(res.low)!;
+        }
+      }
+    }
+    
+    // Cache-bust main sprite resolutions too
+    if (creature.spriteResolutions) {
+      if (creature.spriteResolutions.high) creature.spriteResolutions.high = addCacheBuster(creature.spriteResolutions.high)!;
+      if (creature.spriteResolutions.medium) creature.spriteResolutions.medium = addCacheBuster(creature.spriteResolutions.medium)!;
+      if (creature.spriteResolutions.low) creature.spriteResolutions.low = addCacheBuster(creature.spriteResolutions.low)!;
+    }
 
     return NextResponse.json({
       success: true,
-      creature: {
-        ...metadata,
-        sprite: spriteUrl || metadata.sprite,
-      },
-      spriteUrl,
+      creature,
+      spriteUrl: addCacheBuster(spriteUrl),
       metadata,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
   } catch (error) {
     console.error('[GetCreature] Error:', error);

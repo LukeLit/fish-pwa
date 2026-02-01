@@ -2081,9 +2081,21 @@ export default function FishEditOverlay({
           fish={editedFish}
           isOpen={showSpriteLab}
           onClose={() => setShowSpriteLab(false)}
+          onPreview={(previewFish) => {
+            // Update fish in editor to preview sprites in canvas
+            setEditedFish(previewFish);
+            // Also trigger canvas refresh for preview
+            window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+          }}
           onUploadComplete={(updatedFish) => {
+            console.log('[FishEditOverlay] SpriteLab upload complete, refreshing sprites');
             setEditedFish(updatedFish);
             onSave(updatedFish);
+            // Dispatch refresh to update canvas with new sprites
+            // Small delay to ensure state has propagated
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+            }, 100);
             setShowSpriteLab(false);
           }}
         />

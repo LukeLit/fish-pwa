@@ -21,12 +21,14 @@ import {
 } from '@/lib/storage/sprite-lab-db';
 import type { FishData } from './FishEditOverlay';
 import type { GrowthStage, GrowthSprites, SpriteResolutions } from '@/lib/game/types';
+import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
 
 interface SpriteGenerationLabProps {
   fish: FishData;
   isOpen: boolean;
   onClose: () => void;
   onUploadComplete?: (updatedFish: FishData) => void;
+  onPreview?: (updatedFish: FishData) => void;
 }
 
 type ModelOption = 'google/imagen-4.0-fast-generate-001' | 'google/imagen-4.0-generate-001' | 'bfl/flux-2-pro';
@@ -49,10 +51,20 @@ const STAGE_DESCRIPTIONS: Record<GrowthStage, string> = {
   elder: 'Large, weathered, battle-scarred, ancient',
 };
 
+// Stage modifiers - direct instructions for each life stage, emphasizing SINGLE FISH
 const STAGE_MODIFIERS: Record<GrowthStage, string> = {
-  juvenile: 'young juvenile version, smaller, rounder proportions, cuter features, bigger eyes relative to body',
-  adult: '', // No modifier for adult
-  elder: 'mature elder version, larger, more weathered, battle-scarred, ancient experienced appearance',
+  juvenile: `SINGLE FISH ONLY - Draw exactly ONE fish, the JUVENILE/BABY version:
+- Small body size, rounder proportions, bigger eyes relative to body
+- Cuter, softer features with smaller, less developed fins
+- Same species, same colors, same patterns - just younger and smaller
+DO NOT draw multiple fish. ONE fish only.`,
+  adult: '', // Adult is the baseline - no modifier needed
+  elder: `SINGLE FISH ONLY - Draw exactly ONE fish, the ELDER/ANCIENT version:
+- Large body size, more angular and weathered proportions
+- Battle scars, slightly faded coloring, experienced/ancient appearance  
+- Larger, more developed fins
+- Same species, same colors, same patterns - just older and larger
+DO NOT draw multiple fish. DO NOT draw a comparison. ONE fish only.`,
 };
 
 // Default size ranges for growth stages
@@ -67,6 +79,7 @@ export default function SpriteGenerationLab({
   isOpen,
   onClose,
   onUploadComplete,
+  onPreview,
 }: SpriteGenerationLabProps) {
   // Sprite state - data URLs for display
   const [sprites, setSprites] = useState<Record<GrowthStage, string | undefined>>({
@@ -74,14 +87,14 @@ export default function SpriteGenerationLab({
     adult: undefined,
     elder: undefined,
   });
-  
+
   // Track sprite sources for visual indicator
   const [spriteSources, setSpriteSources] = useState<Record<GrowthStage, 'local' | 'blob' | null>>({
     juvenile: null,
     adult: null,
     elder: null,
   });
-  
+
   // UI state
   const [selectedModel, setSelectedModel] = useState<ModelOption>('google/imagen-4.0-fast-generate-001');
   const [generatingStage, setGeneratingStage] = useState<GrowthStage | 'all' | null>(null);
@@ -92,15 +105,15 @@ export default function SpriteGenerationLab({
   const [promptPreview, setPromptPreview] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isLoadingExisting, setIsLoadingExisting] = useState(false);
-  
+
   // Editable prompt data
   const [descriptionChunks, setDescriptionChunks] = useState<string[]>(fish.descriptionChunks || []);
   const [visualMotif, setVisualMotif] = useState<string>(fish.visualMotif || '');
   const [newChunk, setNewChunk] = useState('');
-  
+
   // Refs
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Build essence record from FishData
   const getEssenceRecord = useCallback((): Record<string, number> => {
     const essenceRecord: Record<string, number> = {};
@@ -118,10 +131,68 @@ export default function SpriteGenerationLab({
     }
     return essenceRecord;
   }, [fish.essence, fish.essenceTypes]);
-  
+
   // Derive sizeTier - prefer explicit value, fall back to type-based derivation
   const derivedSizeTier = fish.sizeTier || (fish.type === 'predator' ? 'predator' : fish.type === 'prey' ? 'prey' : 'mid');
-  
+
+  // Get essence color directives for the prompt
+  const getEssenceColorDirectives = useCallback((): string => {
+    const essenceRecord = getEssenceRecord();
+    const entries = Object.entries(essenceRecord).sort((a, b) => b[1] - a[1]); // Sort by yield, highest first
+    
+    if (entries.length === 0) return '';
+    
+    const colorDirectives: string[] = [];
+    
+    // Primary essence = dominant color
+    const [primaryType] = entries[0];
+    const primaryEssence = ESSENCE_TYPES[primaryType];
+    if (primaryEssence) {
+      colorDirectives.push(`PRIMARY/DOMINANT COLOR: ${primaryEssence.color} (${primaryEssence.name} essence) - use this for the main body color`);
+    }
+    
+    // Secondary/tertiary essences = accent colors
+    for (let i = 1; i < entries.length && i < 3; i++) {
+      const [type] = entries[i];
+      const essence = ESSENCE_TYPES[type];
+      if (essence) {
+        const placement = i === 1 ? 'fins and belly' : 'small accents and spots';
+        colorDirectives.push(`${i === 1 ? 'SECONDARY' : 'TERTIARY'} ACCENT: ${essence.color} (${essence.name} essence) - use for ${placement}`);
+      }
+    }
+    
+    return colorDirectives.length > 0
+      ? `\n\nCOLOR PALETTE (MUST use these exact colors):\n${colorDirectives.join('\n')}`
+      : '';
+  }, [getEssenceRecord]);
+
+  // Build species identity section - what makes this fish THIS fish
+  const buildSpeciesIdentity = useCallback((): string => {
+    const chunks = descriptionChunks.length > 0 ? descriptionChunks : (fish.descriptionChunks || []);
+    const motif = visualMotif || fish.visualMotif || '';
+    
+    const details: string[] = [];
+    
+    // Add fish name for identity
+    if (fish.name) {
+      details.push(`Species: "${fish.name}"`);
+    }
+    
+    // Add visual motif as the core design
+    if (motif) {
+      details.push(`Design theme: ${motif}`);
+    }
+    
+    // List key descriptive features
+    if (chunks.length > 0) {
+      details.push(`Required features: ${chunks.join(', ')}`);
+    }
+    
+    return details.length > 0 
+      ? `\n\nSPECIES IDENTITY (this specific fish):\n${details.join('\n')}`
+      : '';
+  }, [fish.name, fish.descriptionChunks, descriptionChunks, visualMotif, fish.visualMotif]);
+
   // Build prompt for a specific stage
   const buildPromptForStage = useCallback((stage: GrowthStage): string => {
     const { prompt: basePrompt } = composeFishPrompt({
@@ -135,27 +206,44 @@ export default function SpriteGenerationLab({
       visualMotif: visualMotif || fish.visualMotif,
       grantedAbilities: fish.grantedAbilities || [],
     });
+
+    // Get color directives and species identity
+    const colorDirectives = getEssenceColorDirectives();
+    const speciesIdentity = buildSpeciesIdentity();
+
+    // Build the full prompt
+    let fullPrompt = basePrompt;
     
-    // Add stage modifier if not adult
-    if (stage === 'adult') {
-      return basePrompt;
+    // Add color directives
+    if (colorDirectives) {
+      fullPrompt += colorDirectives;
     }
     
-    return `${STAGE_MODIFIERS[stage]}, ${basePrompt}`;
-  }, [fish, descriptionChunks, visualMotif, getEssenceRecord]);
-  
+    // Add species identity
+    if (speciesIdentity) {
+      fullPrompt += speciesIdentity;
+    }
+
+    // Add stage-specific modifier if not adult (prepend so it's seen first)
+    if (stage !== 'adult' && STAGE_MODIFIERS[stage]) {
+      fullPrompt = `${STAGE_MODIFIERS[stage]}\n\nFISH DESIGN:\n${fullPrompt}`;
+    }
+
+    return fullPrompt;
+  }, [fish, descriptionChunks, visualMotif, getEssenceRecord, derivedSizeTier, getEssenceColorDirectives, buildSpeciesIdentity]);
+
   // Update prompt preview when inputs change
   useEffect(() => {
     setPromptPreview(buildPromptForStage('adult'));
   }, [buildPromptForStage]);
-  
+
   // Load existing sprites on mount (local + blob fallback)
   useEffect(() => {
     if (!isOpen) return;
-    
+
     const loadSprites = async () => {
       setIsLoadingExisting(true);
-      
+
       const loadedSprites: Record<GrowthStage, string | undefined> = {
         juvenile: undefined,
         adult: undefined,
@@ -166,7 +254,7 @@ export default function SpriteGenerationLab({
         adult: null,
         elder: null,
       };
-      
+
       try {
         // 1. First, try to load from IndexedDB (local work-in-progress has priority)
         if (isIndexedDBAvailable()) {
@@ -179,9 +267,9 @@ export default function SpriteGenerationLab({
                 loadedSources[stage] = 'local';
               }
             }
-            
+
             setLastSaved(entry.updatedAt);
-            
+
             // Restore prompt data if available
             if (entry.promptData.descriptionChunks.length > 0) {
               setDescriptionChunks(entry.promptData.descriptionChunks);
@@ -189,11 +277,11 @@ export default function SpriteGenerationLab({
             if (entry.promptData.visualMotif) {
               setVisualMotif(entry.promptData.visualMotif);
             }
-            
+
             console.log('[SpriteLab] Loaded local sprites for', fish.id);
           }
         }
-        
+
         // 2. Fill in missing stages from existing blob storage URLs
         if (fish.growthSprites) {
           for (const stage of ['juvenile', 'adult', 'elder'] as GrowthStage[]) {
@@ -213,7 +301,7 @@ export default function SpriteGenerationLab({
             }
           }
         }
-        
+
         setSprites(loadedSprites);
         setSpriteSources(loadedSources);
       } catch (err) {
@@ -222,33 +310,33 @@ export default function SpriteGenerationLab({
         setIsLoadingExisting(false);
       }
     };
-    
+
     loadSprites();
   }, [isOpen, fish.id, fish.growthSprites]);
-  
+
   // Auto-save to IndexedDB (debounced)
   useEffect(() => {
     if (!isIndexedDBAvailable()) return;
-    
+
     // Clear any existing timeout
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    
+
     // Only save if we have at least one sprite
     const hasSprites = sprites.juvenile || sprites.adult || sprites.elder;
     if (!hasSprites) return;
-    
+
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         const blobSprites: Record<string, Blob | undefined> = {};
-        
+
         for (const [stage, dataUrl] of Object.entries(sprites)) {
           if (dataUrl) {
             blobSprites[stage] = await dataUrlToBlob(dataUrl);
           }
         }
-        
+
         await saveEntry({
           id: fish.id,
           name: fish.name,
@@ -264,29 +352,29 @@ export default function SpriteGenerationLab({
             grantedAbilities: fish.grantedAbilities || [],
           },
         });
-        
+
         setLastSaved(Date.now());
       } catch (err) {
         console.error('[SpriteLab] Auto-save failed:', err);
       }
     }, 500);
-    
+
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [sprites, fish.id, fish.name, fish.biomeId, fish.rarity, fish.type, fish.grantedAbilities, descriptionChunks, visualMotif, getEssenceRecord]);
-  
+  }, [sprites, fish.id, fish.name, fish.biomeId, fish.rarity, fish.type, fish.grantedAbilities, descriptionChunks, visualMotif, getEssenceRecord, derivedSizeTier]);
+
   // Generate sprite for a single stage
   const generateSprite = async (stage: GrowthStage) => {
     setGeneratingStage(stage);
     setGenerationStatus(`Generating ${STAGE_LABELS[stage]} sprite...`);
     setError('');
-    
+
     try {
       const prompt = buildPromptForStage(stage);
-      
+
       const response = await fetch('/api/generate-fish-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -296,20 +384,20 @@ export default function SpriteGenerationLab({
           aspectRatio: '1:1',
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Generation failed');
       }
-      
+
       const data = await response.json();
-      
+
       if (!data.imageBase64) {
         throw new Error('No image in response');
       }
-      
+
       const dataUrl = `data:image/png;base64,${data.imageBase64}`;
-      
+
       setSprites(prev => ({
         ...prev,
         [stage]: dataUrl,
@@ -318,7 +406,7 @@ export default function SpriteGenerationLab({
         ...prev,
         [stage]: 'local',
       }));
-      
+
       setGenerationStatus(`${STAGE_LABELS[stage]} sprite generated!`);
     } catch (err: any) {
       console.error('[SpriteLab] Generation failed:', err);
@@ -328,17 +416,17 @@ export default function SpriteGenerationLab({
       setGeneratingStage(null);
     }
   };
-  
+
   // Generate all sprites sequentially
   const generateAllSprites = async () => {
     setGeneratingStage('all');
-    
+
     for (const stage of ['juvenile', 'adult', 'elder'] as GrowthStage[]) {
       setGenerationStatus(`Generating ${STAGE_LABELS[stage]} sprite (${['juvenile', 'adult', 'elder'].indexOf(stage) + 1}/3)...`);
-      
+
       try {
         const prompt = buildPromptForStage(stage);
-        
+
         const response = await fetch('/api/generate-fish-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -348,14 +436,14 @@ export default function SpriteGenerationLab({
             aspectRatio: '1:1',
           }),
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.message || `Failed to generate ${stage}`);
         }
-        
+
         const data = await response.json();
-        
+
         if (data.imageBase64) {
           const dataUrl = `data:image/png;base64,${data.imageBase64}`;
           setSprites(prev => ({
@@ -373,49 +461,81 @@ export default function SpriteGenerationLab({
         break;
       }
     }
-    
+
     setGeneratingStage(null);
     setGenerationStatus('All sprites generated!');
   };
-  
-  // Upload all sprites to blob storage
+
+  // Preview sprites in canvas without uploading
+  const handlePreview = () => {
+    if (!onPreview) return;
+    
+    // Build preview fish data using data URLs directly
+    const previewGrowthSprites: GrowthSprites = {};
+    
+    for (const stage of ['juvenile', 'adult', 'elder'] as const) {
+      if (sprites[stage]) {
+        previewGrowthSprites[stage] = {
+          sprite: sprites[stage]!,
+          sizeRange: DEFAULT_SIZE_RANGES[stage],
+        };
+      }
+    }
+    
+    // Build updated fish with preview sprites
+    const previewFish: FishData = {
+      ...fish,
+      growthSprites: previewGrowthSprites,
+    };
+    
+    // Update main sprite to adult if available
+    if (sprites.adult) {
+      previewFish.sprite = sprites.adult;
+    }
+    
+    onPreview(previewFish);
+    setGenerationStatus('Preview updated! Check the canvas.');
+  };
+
+  // Upload all sprites to blob storage AND save creature metadata
   const handleUploadToLibrary = async () => {
     setUploading(true);
     setUploadStatus('Uploading sprites...');
     setError('');
-    
+
     try {
       const growthSprites: GrowthSprites = {};
       const stages = ['juvenile', 'adult', 'elder'] as const;
       let uploadedCount = 0;
-      
+
+      // Step 1: Upload all sprite images
       for (const stage of stages) {
         const dataUrl = sprites[stage];
         if (!dataUrl) continue;
-        
-        setUploadStatus(`Uploading ${STAGE_LABELS[stage]} (${uploadedCount + 1}/3)...`);
-        
+
+        setUploadStatus(`Uploading ${STAGE_LABELS[stage]} sprite (${uploadedCount + 1}/3)...`);
+
         // Convert data URL to blob
         const blob = await dataUrlToBlob(dataUrl);
-        
+
         // Create form data
         const formData = new FormData();
         formData.append('creatureId', fish.id);
         formData.append('stage', stage);
         formData.append('sprite', blob, `${fish.id}_${stage}.png`);
-        
+
         const response = await fetch('/api/upload-growth-sprite', {
           method: 'POST',
           body: formData,
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.message || `Failed to upload ${stage}`);
         }
-        
+
         const result = await response.json();
-        
+
         if (result.success && result.spriteUrl) {
           growthSprites[stage] = {
             sprite: result.spriteUrl,
@@ -425,23 +545,73 @@ export default function SpriteGenerationLab({
           uploadedCount++;
         }
       }
-      
+
       if (uploadedCount === 0) {
         throw new Error('No sprites to upload');
       }
+
+      // Step 2: Build updated fish data
+      const updatedFish: FishData = {
+        ...fish,
+        growthSprites,
+        updatedAt: Date.now(), // Mark as updated for cache invalidation
+      };
       
-      // Clear local storage after successful upload
+      // Update main sprite to match adult if it was uploaded
+      if (growthSprites.adult) {
+        updatedFish.sprite = growthSprites.adult.sprite;
+        updatedFish.spriteResolutions = growthSprites.adult.spriteResolutions;
+      }
+
+      // Step 3: Save creature metadata to persist the new sprite URLs
+      setUploadStatus('Saving creature metadata...');
+      
+      const saveFormData = new FormData();
+      saveFormData.append('creatureId', fish.id);
+      saveFormData.append('metadata', JSON.stringify(updatedFish));
+      // Don't include sprite file - we already uploaded it above
+
+      const saveResponse = await fetch('/api/save-creature', {
+        method: 'POST',
+        body: saveFormData,
+      });
+
+      if (!saveResponse.ok) {
+        const saveError = await saveResponse.json();
+        throw new Error(saveError.message || 'Failed to save creature metadata');
+      }
+
+      const saveResult = await saveResponse.json();
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save creature metadata');
+      }
+
+      console.log('[SpriteLab] Creature metadata saved:', saveResult);
+
+      // Step 4: Clear local storage after successful save
       await deleteEntry(fish.id);
       setLastSaved(null);
       
-      setUploadStatus(`Upload complete! ${uploadedCount} sprites uploaded.`);
-      
-      // Notify parent with updated fish data
+      // Update sprite sources to reflect they're now uploaded
+      setSpriteSources(prev => {
+        const updated = { ...prev };
+        for (const stage of stages) {
+          if (sprites[stage]) {
+            updated[stage] = 'blob';
+          }
+        }
+        return updated;
+      });
+
+      setUploadStatus(`Upload complete! ${uploadedCount} sprites saved.`);
+
+      // Step 5: Dispatch refresh event to update canvas with new sprites
+      console.log('[SpriteLab] Dispatching refreshFishSprites event');
+      window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+
+      // Step 6: Notify parent with updated fish data
       if (onUploadComplete) {
-        onUploadComplete({
-          ...fish,
-          growthSprites,
-        });
+        onUploadComplete(updatedFish);
       }
     } catch (err: any) {
       console.error('[SpriteLab] Upload failed:', err);
@@ -451,7 +621,7 @@ export default function SpriteGenerationLab({
       setUploading(false);
     }
   };
-  
+
   // Add a description chunk
   const addChunk = () => {
     if (newChunk.trim()) {
@@ -459,12 +629,12 @@ export default function SpriteGenerationLab({
       setNewChunk('');
     }
   };
-  
+
   // Remove a description chunk
   const removeChunk = (index: number) => {
     setDescriptionChunks(prev => prev.filter((_, i) => i !== index));
   };
-  
+
   // Clear local data
   const clearLocalData = async () => {
     try {
@@ -477,7 +647,7 @@ export default function SpriteGenerationLab({
       console.error('[SpriteLab] Failed to clear local data:', err);
     }
   };
-  
+
   // Format time ago
   const formatTimeAgo = (timestamp: number): string => {
     const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -487,14 +657,14 @@ export default function SpriteGenerationLab({
     const hours = Math.floor(minutes / 60);
     return `${hours} hour${hours > 1 ? 's' : ''} ago`;
   };
-  
+
   if (!isOpen) return null;
-  
+
   const hasAnySprite = sprites.juvenile || sprites.adult || sprites.elder;
   const isGenerating = generatingStage !== null;
-  
+
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/90 flex items-center justify-center"
       style={{ zIndex: Z_LAYERS.MODAL }}
     >
@@ -522,7 +692,7 @@ export default function SpriteGenerationLab({
             </svg>
           </button>
         </div>
-        
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Error display */}
@@ -531,7 +701,7 @@ export default function SpriteGenerationLab({
               {error}
             </div>
           )}
-          
+
           {/* Loading existing sprites */}
           {isLoadingExisting && (
             <div className="text-center text-gray-400 text-sm py-4 flex items-center justify-center gap-2">
@@ -539,7 +709,23 @@ export default function SpriteGenerationLab({
               Loading existing sprites...
             </div>
           )}
-          
+
+          {/* Preview Button - Update canvas without uploading */}
+          {onPreview && hasAnySprite && (
+            <div className="flex justify-center">
+              <button
+                onClick={handlePreview}
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Preview in Canvas
+              </button>
+            </div>
+          )}
+
           {/* Growth Stage Sprites - 3 column layout */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(['juvenile', 'adult', 'elder'] as GrowthStage[]).map((stage) => (
@@ -548,7 +734,7 @@ export default function SpriteGenerationLab({
                   <h3 className="text-base font-bold text-white">{STAGE_LABELS[stage]}</h3>
                   <p className="text-xs text-gray-400">{STAGE_DESCRIPTIONS[stage]}</p>
                 </div>
-                
+
                 {/* Sprite Preview */}
                 <div className="aspect-square bg-[#FF00FF] rounded-lg mb-3 flex items-center justify-center overflow-hidden relative">
                   {sprites[stage] ? (
@@ -560,11 +746,10 @@ export default function SpriteGenerationLab({
                       />
                       {/* Source badge */}
                       {spriteSources[stage] && (
-                        <span className={`absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                          spriteSources[stage] === 'local' 
-                            ? 'bg-yellow-600/90 text-yellow-100' 
+                        <span className={`absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded font-medium ${spriteSources[stage] === 'local'
+                            ? 'bg-yellow-600/90 text-yellow-100'
                             : 'bg-green-600/90 text-green-100'
-                        }`}>
+                          }`}>
                           {spriteSources[stage] === 'local' ? 'Local' : 'Uploaded'}
                         </span>
                       )}
@@ -573,18 +758,17 @@ export default function SpriteGenerationLab({
                     <div className="text-gray-800/50 text-sm">No sprite</div>
                   )}
                 </div>
-                
+
                 {/* Generate Button */}
                 <button
                   onClick={() => generateSprite(stage)}
                   disabled={isGenerating}
-                  className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                    generatingStage === stage
+                  className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${generatingStage === stage
                       ? 'bg-blue-600/50 text-blue-300 cursor-wait'
                       : sprites[stage]
                         ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30'
                         : 'bg-blue-600 hover:bg-blue-500 text-white'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {generatingStage === stage ? (
                     <>
@@ -605,13 +789,13 @@ export default function SpriteGenerationLab({
               </div>
             ))}
           </div>
-          
+
           {/* Generate All Button */}
           <div className="flex justify-center">
             <button
               onClick={generateAllSprites}
               disabled={isGenerating}
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl font-medium transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
             >
               {generatingStage === 'all' ? (
                 <>
@@ -620,32 +804,76 @@ export default function SpriteGenerationLab({
                 </>
               ) : (
                 <>
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
                   </svg>
-                  Generate All Stages
+                  <div className="text-left">
+                    <div>Generate All Stages</div>
+                    <div className="text-xs opacity-75">3 separate API calls for each growth stage</div>
+                  </div>
                 </>
               )}
             </button>
           </div>
-          
+
           {/* Status messages */}
           {generationStatus && !generatingStage && (
             <div className="text-center text-sm text-green-400">{generationStatus}</div>
           )}
-          
+
           {/* Prompt Preview */}
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <h3 className="text-sm font-bold text-white mb-2">Prompt Preview (Adult)</h3>
-            <div className="bg-gray-900 rounded p-3 text-xs text-gray-300 font-mono max-h-32 overflow-y-auto">
+            <h3 className="text-sm font-bold text-white mb-3">Prompt Preview (Adult)</h3>
+            <div className="bg-gray-900 rounded p-3 text-xs text-gray-300 font-mono max-h-48 overflow-y-auto whitespace-pre-wrap">
               {promptPreview || 'Loading...'}
             </div>
           </div>
-          
+
           {/* Editable Prompt Data */}
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 space-y-4">
             <h3 className="text-sm font-bold text-white">Customize Prompt Data</h3>
-            
+
+            {/* Essence Color Preview */}
+            {(() => {
+              const essenceRecord = getEssenceRecord();
+              const entries = Object.entries(essenceRecord).sort((a, b) => b[1] - a[1]);
+              if (entries.length === 0) return null;
+              
+              return (
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Essence Colors (auto-derived from fish data)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {entries.map(([type, yield_], i) => {
+                      const essence = ESSENCE_TYPES[type];
+                      if (!essence) return null;
+                      const placement = i === 0 ? 'Main body' : i === 1 ? 'Fins & belly' : 'Accents';
+                      return (
+                        <div
+                          key={type}
+                          className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg text-xs"
+                        >
+                          <div
+                            className="w-5 h-5 rounded-full border-2 border-white/30 shadow-inner"
+                            style={{ backgroundColor: essence.color }}
+                          />
+                          <div>
+                            <span className="text-gray-200 font-medium">
+                              {i === 0 ? 'Primary' : i === 1 ? 'Secondary' : 'Accent'}
+                            </span>
+                            <span className="text-gray-400 ml-1">({essence.name})</span>
+                            <div className="text-gray-500 text-[10px]">{placement}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">
+                    These colors will be explicitly specified in the prompt to ensure consistency across all growth stages.
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* Description Chunks */}
             <div>
               <label className="block text-xs text-gray-400 mb-2">Description Chunks</label>
@@ -684,7 +912,7 @@ export default function SpriteGenerationLab({
                 </button>
               </div>
             </div>
-            
+
             {/* Visual Motif */}
             <div>
               <label className="block text-xs text-gray-400 mb-2">Visual Motif</label>
@@ -697,29 +925,24 @@ export default function SpriteGenerationLab({
               />
             </div>
           </div>
-          
+
           {/* Model Selection */}
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
             <label className="block text-sm font-bold text-white mb-2">Generation Model</label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value as ModelOption)}
+              className="w-full bg-gray-900 text-white px-4 py-3 rounded-lg border border-gray-600 text-sm focus:border-blue-500 focus:outline-none cursor-pointer"
+            >
               {MODEL_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  onClick={() => setSelectedModel(option.value)}
-                  className={`px-4 py-3 rounded-lg text-left transition-colors ${
-                    selectedModel === option.value
-                      ? 'bg-blue-600/20 border-2 border-blue-500 text-white'
-                      : 'bg-gray-700 border-2 border-transparent text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  <div className="font-medium text-sm">{option.label}</div>
-                  <div className="text-xs text-gray-400">{option.description}</div>
-                </button>
+                <option key={option.value} value={option.value}>
+                  {option.label} - {option.description}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
         </div>
-        
+
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/50">
           <div className="flex items-center justify-between">
@@ -739,7 +962,7 @@ export default function SpriteGenerationLab({
                 </button>
               )}
             </div>
-            
+
             {/* Actions */}
             <div className="flex items-center gap-3">
               {uploadStatus && (

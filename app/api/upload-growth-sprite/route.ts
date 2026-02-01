@@ -124,24 +124,38 @@ export async function POST(request: NextRequest) {
       }),
     ]);
 
+    // Add cache-busting timestamp to URLs
+    const timestamp = Date.now();
+    const addCacheBuster = (url: string) => `${url}?t=${timestamp}`;
+    
     const spriteResolutions: SpriteResolutions = {
-      high: highResult.url,
-      medium: mediumResult.url,
-      low: lowResult.url,
+      high: addCacheBuster(highResult.url),
+      medium: addCacheBuster(mediumResult.url),
+      low: addCacheBuster(lowResult.url),
     };
 
-    console.log(`[UploadGrowthSprite] Uploaded ${stage} sprite for ${creatureId}:`, spriteResolutions.high);
+    console.log(`[UploadGrowthSprite] Uploaded ${stage} sprite for ${creatureId}:`, highResult.url);
 
     return NextResponse.json({
       success: true,
       creatureId,
       stage,
-      spriteUrl: highResult.url,
+      spriteUrl: addCacheBuster(highResult.url),
       spriteResolutions,
+      // Include raw URLs without cache buster for reference
+      _rawUrls: {
+        high: highResult.url,
+        medium: mediumResult.url,
+        low: lowResult.url,
+      },
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
     });
   } catch (error) {
     console.error('[UploadGrowthSprite] Error:', error);
-    
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isBlobTokenError = errorMessage.includes('No token found') || errorMessage.includes('BLOB_READ_WRITE_TOKEN');
 
