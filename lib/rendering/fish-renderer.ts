@@ -354,14 +354,14 @@ export function getClipMode(
 }
 
 /**
- * Check if a creature has usable clips
+ * Check if a creature has usable animations
  * 
- * @param clips - CreatureClips object or undefined
- * @returns boolean indicating if clips are available
+ * @param animations - CreatureAnimations object or undefined
+ * @returns boolean indicating if animations are available
  */
-export function hasUsableClips(clips: object | undefined | null): boolean {
-  if (!clips) return false;
-  return Object.keys(clips).length > 0;
+export function hasUsableAnimations(animations: object | undefined | null): boolean {
+  if (!animations) return false;
+  return Object.keys(animations).length > 0;
 }
 
 /**

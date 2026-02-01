@@ -4,18 +4,19 @@
  * Allows manual recovery of videos using an operation ID.
  * Use this if video generation succeeded but download/save failed.
  * 
+ * Primarily used for background video recovery.
+ * 
  * Usage: POST /api/recover-video
- * Body: { operationId: "operations/...", creatureId: "...", action: "swimIdle" }
+ * Body: { operationId: "operations/...", identifier: "...", label: "..." }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
-import type { CreatureClip, ClipAction } from '@/lib/game/types';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { operationId, creatureId, action, spriteUrl } = body;
+    const { operationId, identifier, label, thumbnailUrl } = body;
 
     if (!operationId) {
       return NextResponse.json(
@@ -115,9 +116,9 @@ export async function POST(request: NextRequest) {
 
     // Save to blob storage
     const timestamp = Date.now();
-    const safeCreatureId = creatureId || 'unknown';
-    const safeAction = action || 'unknown';
-    const blobPath = `assets/clips/${safeCreatureId}/${safeAction}_${timestamp}.mp4`;
+    const safeId = identifier || 'unknown';
+    const safeLabel = label || 'recovered';
+    const blobPath = `assets/videos/${safeId}/${safeLabel}_${timestamp}.mp4`;
 
     console.log(`[RecoverVideo] Saving to: ${blobPath}`);
     const blobResult = await put(blobPath, videoBlob, {
@@ -128,22 +129,11 @@ export async function POST(request: NextRequest) {
 
     console.log(`[RecoverVideo] Saved to: ${blobResult.url}`);
 
-    // Determine if this action should loop
-    const loopingActions = ['swimIdle', 'swimFast'];
-    const shouldLoop = loopingActions.includes(safeAction);
-
-    const clip: CreatureClip = {
-      videoUrl: blobResult.url,
-      thumbnailUrl: spriteUrl,
-      duration: 5000,
-      loop: shouldLoop,
-    };
-
     return NextResponse.json({
       success: true,
       status: 'recovered',
-      clip,
-      blobUrl: blobResult.url,
+      videoUrl: blobResult.url,
+      thumbnailUrl,
       message: 'Video recovered and saved successfully!',
     });
 

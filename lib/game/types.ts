@@ -151,49 +151,55 @@ export interface MutationMetadata {
 }
 
 /**
- * Creature Clip - Single animation clip data
- * 
- * Simplified: Only videoUrl is required. The main goal is generating
- * short clips consistent with the fish art. Frames are optional and
- * can be extracted client-side if needed for fallback rendering.
+ * Animation Action Types - The different animation poses a creature can have
  */
-export interface CreatureClip {
-  videoUrl: string;           // Full video URL - primary playback method
-  thumbnailUrl?: string;      // Optional thumbnail (can use sprite as fallback)
-  frames?: string[];          // Optional pre-extracted frames (rarely needed)
-  duration: number;           // Clip duration in milliseconds
-  loop?: boolean;             // Whether clip loops (default based on action type)
-  frameRate?: number;         // Original frame rate (default: 24)
+export type AnimationAction = 'idle' | 'swim' | 'dash' | 'bite' | 'hurt' | 'death';
+
+/**
+ * Animation Frame - A single frame/pose generated via image-to-image
+ * Each frame is a separate image showing the creature in a specific pose
+ */
+export interface AnimationFrame {
+  url: string;           // URL to the frame image
+  action: AnimationAction;
+  frameIndex: number;    // 0-based index within the action sequence
+  generatedAt?: string;  // ISO timestamp
 }
 
 /**
- * Creature Clips - All animation clips for a creature (all optional)
+ * Animation Sequence - A set of frames for one animation action
+ * Generated via image-to-image from the base sprite
  */
-export interface CreatureClips {
-  swimIdle?: CreatureClip;    // Slow, gentle swimming motion
-  swimFast?: CreatureClip;    // Rapid swimming with strong tail strokes
-  dash?: CreatureClip;        // Quick burst of speed
-  bite?: CreatureClip;        // Chomping/eating animation
-  takeDamage?: CreatureClip;  // Flinch/recoil when hit
-  death?: CreatureClip;       // Death animation (future)
-  special?: CreatureClip;     // Special ability animation (future)
+export interface AnimationSequence {
+  action: AnimationAction;
+  frames: string[];      // URLs to frame images in order
+  loop: boolean;         // Whether this animation loops
+  frameRate: number;     // Playback speed (default: 12 fps for pixel art style)
+  generatedAt?: string;
 }
 
 /**
- * Clip Action Types - Union type for clip actions
+ * Creature Animations - All animation sequences for a creature
+ * Organized by growth stage, each stage can have its own animations
  */
-export type ClipAction = keyof CreatureClips;
+export interface CreatureAnimations {
+  // Animations per growth stage
+  juvenile?: Partial<Record<AnimationAction, AnimationSequence>>;
+  adult?: Partial<Record<AnimationAction, AnimationSequence>>;
+  elder?: Partial<Record<AnimationAction, AnimationSequence>>;
+}
 
 /**
- * Growth Stage Clips - Clips organized by growth stage
- * Each growth stage (juvenile, adult, elder) can have its own set of animation clips
- * generated from the appropriate growth stage sprite.
+ * Default animation configuration
  */
-export interface GrowthStageClips {
-  juvenile?: CreatureClips;   // Clips using juvenile sprite
-  adult?: CreatureClips;      // Clips using adult/base sprite
-  elder?: CreatureClips;      // Clips using elder sprite
-}
+export const ANIMATION_CONFIG: Record<AnimationAction, { loop: boolean; frameCount: number; frameRate: number }> = {
+  idle: { loop: true, frameCount: 1, frameRate: 1 },
+  swim: { loop: true, frameCount: 1, frameRate: 1 },
+  dash: { loop: false, frameCount: 1, frameRate: 1 },
+  bite: { loop: false, frameCount: 2, frameRate: 6 },
+  hurt: { loop: false, frameCount: 1, frameRate: 1 },
+  death: { loop: false, frameCount: 1, frameRate: 1 },
+};
 
 /**
  * Sprite Resolution Variants - Multi-resolution sprites for optimal rendering
@@ -285,12 +291,9 @@ export interface Creature extends BaseFishData {
     maxDepth?: number; // Optional maximum depth
   };
 
-  // Animation clips organized by growth stage
-  // Each stage (juvenile, adult, elder) can have its own clips generated from the corresponding sprite
-  clips?: GrowthStageClips;
-  
-  // Legacy: flat clips structure for backward compatibility (deprecated, will be migrated to clips)
-  legacyClips?: CreatureClips;
+  // Animation frames - generated via image-to-image from base sprite
+  // Each growth stage can have its own set of animation sequences
+  animations?: CreatureAnimations;
 
   // Timestamps for sync tracking
   createdAt?: number;  // Unix timestamp (ms) when creature was first created

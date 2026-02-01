@@ -1,11 +1,11 @@
 /**
- * Clip State Machine
+ * Animation State Machine
  * 
- * Manages animation state transitions for creatures with video clips.
+ * Manages animation state transitions for creatures with frame-based animations.
  * Handles transitions based on game events (eating, taking damage, speed changes).
  */
 
-import type { ClipAction } from './types';
+import type { AnimationAction } from './types';
 
 /** Speed thresholds for swim state transitions */
 export const SPEED_THRESHOLDS = {
@@ -16,39 +16,38 @@ export const SPEED_THRESHOLDS = {
 };
 
 /** State transition events */
-export type ClipEvent =
+export type AnimationEvent =
   | { type: 'speed_change'; speed: number }
   | { type: 'bite' }
-  | { type: 'take_damage' }
+  | { type: 'hurt' }
   | { type: 'death' }
-  | { type: 'special' }
-  | { type: 'action_complete'; action: ClipAction }
-  | { type: 'force'; action: ClipAction };
+  | { type: 'action_complete'; action: AnimationAction }
+  | { type: 'force'; action: AnimationAction };
 
 /** State machine state */
-export interface ClipState {
-  currentAction: ClipAction;
-  previousAction: ClipAction | null;
+export interface AnimationState {
+  currentAction: AnimationAction;
+  previousAction: AnimationAction | null;
   isTransitioning: boolean;
   transitionStartTime: number;
   speed: number;
-  queuedAction: ClipAction | null;
+  queuedAction: AnimationAction | null;
 }
 
 /**
- * ClipStateMachine - Manages clip transitions for a single creature
+ * AnimationStateMachine - Manages clip transitions for a single creature
  */
-export class ClipStateMachine {
-  private state: ClipState;
-  private availableActions: Set<ClipAction>;
-  private defaultAction: ClipAction = 'swimIdle';
+export class AnimationStateMachine {
+  private state: AnimationState;
+  private availableActions: Set<AnimationAction>;
+  private defaultAction: AnimationAction = 'idle';
 
-  constructor(availableActions: ClipAction[]) {
+  constructor(availableActions: AnimationAction[]) {
     this.availableActions = new Set(availableActions);
 
     // Determine initial state based on available actions
-    const hasSwimIdle = this.availableActions.has('swimIdle');
-    const initialAction = hasSwimIdle ? 'swimIdle' : (availableActions[0] || 'swimIdle');
+    const hasSwimIdle = this.availableActions.has('idle');
+    const initialAction = hasSwimIdle ? 'idle' : (availableActions[0] || 'idle');
 
     this.state = {
       currentAction: initialAction,
@@ -61,30 +60,30 @@ export class ClipStateMachine {
 
     // Set default action to first available looping action
     if (hasSwimIdle) {
-      this.defaultAction = 'swimIdle';
-    } else if (this.availableActions.has('swimFast')) {
-      this.defaultAction = 'swimFast';
+      this.defaultAction = 'idle';
+    } else if (this.availableActions.has('swim')) {
+      this.defaultAction = 'swim';
     }
   }
 
   /**
    * Get current state
    */
-  getState(): Readonly<ClipState> {
+  getState(): Readonly<AnimationState> {
     return { ...this.state };
   }
 
   /**
    * Get current action
    */
-  getCurrentAction(): ClipAction {
+  getCurrentAction(): AnimationAction {
     return this.state.currentAction;
   }
 
   /**
    * Check if an action is available
    */
-  hasAction(action: ClipAction): boolean {
+  hasAction(action: AnimationAction): boolean {
     return this.availableActions.has(action);
   }
 
@@ -92,7 +91,7 @@ export class ClipStateMachine {
    * Process an event and potentially transition state
    * Returns the new action if changed, null if no change
    */
-  processEvent(event: ClipEvent): ClipAction | null {
+  processEvent(event: AnimationEvent): AnimationAction | null {
     const previousAction = this.state.currentAction;
 
     switch (event.type) {
@@ -102,14 +101,11 @@ export class ClipStateMachine {
       case 'bite':
         return this.handleBite();
 
-      case 'take_damage':
-        return this.handleTakeDamage();
+      case 'hurt':
+        return this.handleHurt();
 
       case 'death':
         return this.handleDeath();
-
-      case 'special':
-        return this.handleSpecial();
 
       case 'action_complete':
         return this.handleActionComplete(event.action);
@@ -124,7 +120,7 @@ export class ClipStateMachine {
   /**
    * Handle speed changes - determines swim state
    */
-  private handleSpeedChange(speed: number): ClipAction | null {
+  private handleSpeedChange(speed: number): AnimationAction | null {
     this.state.speed = speed;
 
     // Don't interrupt non-looping actions
@@ -132,12 +128,12 @@ export class ClipStateMachine {
       return null;
     }
 
-    let targetAction: ClipAction;
+    let targetAction: AnimationAction;
 
     if (speed < SPEED_THRESHOLDS.IDLE) {
-      targetAction = 'swimIdle';
+      targetAction = 'idle';
     } else if (speed < SPEED_THRESHOLDS.FAST) {
-      targetAction = 'swimFast';
+      targetAction = 'swim';
     } else {
       targetAction = 'dash';
     }
@@ -149,11 +145,11 @@ export class ClipStateMachine {
 
     // Fall back to available swim action
     if (!this.availableActions.has(targetAction)) {
-      if (this.availableActions.has('swimIdle') && this.state.currentAction !== 'swimIdle') {
-        return this.transitionTo('swimIdle');
+      if (this.availableActions.has('idle') && this.state.currentAction !== 'idle') {
+        return this.transitionTo('idle');
       }
-      if (this.availableActions.has('swimFast') && this.state.currentAction !== 'swimFast') {
-        return this.transitionTo('swimFast');
+      if (this.availableActions.has('swim') && this.state.currentAction !== 'swim') {
+        return this.transitionTo('swim');
       }
     }
 
@@ -163,7 +159,7 @@ export class ClipStateMachine {
   /**
    * Handle bite event
    */
-  private handleBite(): ClipAction | null {
+  private handleBite(): AnimationAction | null {
     if (this.availableActions.has('bite')) {
       return this.transitionTo('bite');
     }
@@ -171,11 +167,11 @@ export class ClipStateMachine {
   }
 
   /**
-   * Handle take damage event
+   * Handle hurt/damage event
    */
-  private handleTakeDamage(): ClipAction | null {
-    if (this.availableActions.has('takeDamage')) {
-      return this.transitionTo('takeDamage');
+  private handleHurt(): AnimationAction | null {
+    if (this.availableActions.has('hurt')) {
+      return this.transitionTo('hurt');
     }
     return null;
   }
@@ -183,7 +179,7 @@ export class ClipStateMachine {
   /**
    * Handle death event
    */
-  private handleDeath(): ClipAction | null {
+  private handleDeath(): AnimationAction | null {
     if (this.availableActions.has('death')) {
       return this.transitionTo('death');
     }
@@ -191,19 +187,9 @@ export class ClipStateMachine {
   }
 
   /**
-   * Handle special ability event
-   */
-  private handleSpecial(): ClipAction | null {
-    if (this.availableActions.has('special')) {
-      return this.transitionTo('special');
-    }
-    return null;
-  }
-
-  /**
    * Handle action completion - return to appropriate state
    */
-  private handleActionComplete(completedAction: ClipAction): ClipAction | null {
+  private handleActionComplete(completedAction: AnimationAction): AnimationAction | null {
     if (completedAction !== this.state.currentAction) {
       return null; // Action already changed
     }
@@ -220,7 +206,7 @@ export class ClipStateMachine {
   /**
    * Force a specific action (for external control)
    */
-  private forceAction(action: ClipAction): ClipAction | null {
+  private forceAction(action: AnimationAction): AnimationAction | null {
     if (this.availableActions.has(action)) {
       return this.transitionTo(action);
     }
@@ -230,7 +216,7 @@ export class ClipStateMachine {
   /**
    * Transition to a new action
    */
-  private transitionTo(action: ClipAction): ClipAction {
+  private transitionTo(action: AnimationAction): AnimationAction {
     this.state.previousAction = this.state.currentAction;
     this.state.currentAction = action;
     this.state.isTransitioning = true;
@@ -241,22 +227,22 @@ export class ClipStateMachine {
   /**
    * Check if an action is a one-shot (non-looping)
    */
-  private isOneShot(action: ClipAction): boolean {
-    return action === 'bite' || action === 'takeDamage' || action === 'death' || action === 'special' || action === 'dash';
+  private isOneShot(action: AnimationAction): boolean {
+    return action === 'bite' || action === 'hurt' || action === 'death' || action === 'dash';
   }
 
   /**
    * Get appropriate swim action for current speed
    */
-  private getSwimActionForSpeed(speed: number): ClipAction {
-    if (speed < SPEED_THRESHOLDS.IDLE && this.availableActions.has('swimIdle')) {
-      return 'swimIdle';
+  private getSwimActionForSpeed(speed: number): AnimationAction {
+    if (speed < SPEED_THRESHOLDS.IDLE && this.availableActions.has('idle')) {
+      return 'idle';
     }
-    if (this.availableActions.has('swimFast')) {
-      return 'swimFast';
+    if (this.availableActions.has('swim')) {
+      return 'swim';
     }
-    if (this.availableActions.has('swimIdle')) {
-      return 'swimIdle';
+    if (this.availableActions.has('idle')) {
+      return 'idle';
     }
     return this.defaultAction;
   }
@@ -277,18 +263,18 @@ export class ClipStateMachine {
 }
 
 /**
- * ClipStateManager - Manages state machines for multiple creatures
+ * AnimationStateManager - Manages state machines for multiple creatures
  */
-export class ClipStateManager {
-  private stateMachines: Map<string, ClipStateMachine> = new Map();
+export class AnimationStateManager {
+  private stateMachines: Map<string, AnimationStateMachine> = new Map();
 
   /**
    * Get or create state machine for a creature
    */
-  getStateMachine(creatureId: string, availableActions: ClipAction[]): ClipStateMachine {
+  getStateMachine(creatureId: string, availableActions: AnimationAction[]): AnimationStateMachine {
     let machine = this.stateMachines.get(creatureId);
     if (!machine) {
-      machine = new ClipStateMachine(availableActions);
+      machine = new AnimationStateMachine(availableActions);
       this.stateMachines.set(creatureId, machine);
     }
     return machine;
@@ -311,7 +297,7 @@ export class ClipStateManager {
   /**
    * Process event for a specific creature
    */
-  processEvent(creatureId: string, event: ClipEvent): ClipAction | null {
+  processEvent(creatureId: string, event: AnimationEvent): AnimationAction | null {
     const machine = this.stateMachines.get(creatureId);
     return machine?.processEvent(event) ?? null;
   }
@@ -319,7 +305,7 @@ export class ClipStateManager {
   /**
    * Get current action for a creature
    */
-  getCurrentAction(creatureId: string): ClipAction | null {
+  getCurrentAction(creatureId: string): AnimationAction | null {
     return this.stateMachines.get(creatureId)?.getCurrentAction() ?? null;
   }
 
@@ -332,14 +318,14 @@ export class ClipStateManager {
 }
 
 // Singleton manager instance
-let sharedStateManager: ClipStateManager | null = null;
+let sharedStateManager: AnimationStateManager | null = null;
 
 /**
- * Get shared ClipStateManager instance
+ * Get shared AnimationStateManager instance
  */
-export function getClipStateManager(): ClipStateManager {
+export function getAnimationStateManager(): AnimationStateManager {
   if (!sharedStateManager) {
-    sharedStateManager = new ClipStateManager();
+    sharedStateManager = new AnimationStateManager();
   }
   return sharedStateManager;
 }

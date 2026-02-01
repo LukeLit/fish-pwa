@@ -1,5 +1,9 @@
 /**
- * Video Module - Frame extraction and processing utilities
+ * Video Module - Frame extraction and animation utilities
+ * 
+ * Note: Video generation for fish has been removed.
+ * Use /api/generate-animation-frames for fish animation frames.
+ * Video generation is still available for backgrounds via /api/generate-video-fal
  */
 
 export {
@@ -14,10 +18,14 @@ export {
 } from './frame-extractor';
 
 export {
-  generateCreatureClip,
-  hasClip,
-  getMissingClipActions,
-  type ClipGenerationProgress,
-  type ClipGenerationResult,
-  type ProgressCallback,
+  getVideoGenerationSettings,
+  getProviderFromModel,
+  getFalModelKey,
+  getSpriteForGrowthStage,
+  getAvailableGrowthStages,
+  hasAnimation,
+  getAnimationSequence,
+  countAnimations,
+  getAvailableActions,
+  type VideoGenerationSettings,
 } from './clip-generator';

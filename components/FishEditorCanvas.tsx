@@ -25,7 +25,7 @@ import {
   getSegmentsSmooth,
   PLAYER_SEGMENT_MULTIPLIER,
   getClipMode,
-  hasUsableClips,
+  hasUsableAnimations,
   getSpriteUrl,
   getResolutionKey,
   getGrowthStage,
@@ -35,9 +35,8 @@ import {
 } from '@/lib/rendering/fish-renderer';
 import type { SpriteResolutions, GrowthSprites } from '@/lib/game/types';
 import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
-import { getVideoSpriteManager, type VideoSprite } from '@/lib/rendering/video-sprite';
-import { getClipStateManager } from '@/lib/game/clip-state';
-import type { CreatureClips, ClipAction } from '@/lib/game/types';
+import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering/animation-sprite';
+import type { AnimationAction, CreatureAnimations } from '@/lib/game/types';
 
 export interface PlayerGameStats {
   size: number;
@@ -50,7 +49,7 @@ export interface PlayerGameStats {
 interface FishEditorCanvasProps {
   background: string | null;
   playerFishSprite: string | null;
-  playerCreature?: Creature; // Full player creature data (for clips, etc.)
+  playerCreature?: Creature; // Full player creature data (for animations, etc.)
   spawnedFish: Creature[] | Array<{ id: string; sprite: string; type: string }>;
   chromaTolerance?: number;
   zoom?: number;
@@ -178,6 +177,7 @@ export default function FishEditorCanvas({
         ...spawned,
         baseSize: spawned.size,
         sprite: processedSprite,
+        animations: fish.animations,
       };
     };
     img.onerror = () => {
@@ -306,6 +306,7 @@ export default function FishEditorCanvas({
     chompEndTime: 0,
     hunger: HUNGER_MAX, // 0-100 hunger meter
     hungerDrainRate: HUNGER_DRAIN_RATE, // % per second
+    animations: undefined as CreatureAnimations | undefined,
   });
 
   const chompParticlesRef = useRef<Array<{
@@ -347,14 +348,13 @@ export default function FishEditorCanvas({
     despawnTime?: number;    // When despawn started (for fade-out)
     opacity?: number;        // Current opacity (0-1)
     lifecycleState: FishLifecycleState; // Current lifecycle state
-    // Video clip animation
-    clips?: CreatureClips;
-    videoSprite?: VideoSprite;
+    // Frame-based animations
+    animations?: CreatureAnimations;
+    animationSprite?: AnimationSprite;
   }>>([]);
 
-  // Video sprite manager ref
-  const videoSpriteManagerRef = useRef(getVideoSpriteManager());
-  const clipStateManagerRef = useRef(getClipStateManager());
+  // Animation sprite manager ref
+  const animationSpriteManagerRef = useRef(getAnimationSpriteManager());
 
   // Spawn animation constants
   const SPAWN_FADE_DURATION = 1500; // ms to fully fade in (collision enables when fully opaque)
@@ -628,13 +628,7 @@ export default function FishEditorCanvas({
 
       console.log(`[FishEditorCanvas] Initializing player: gameMode=${gameMode}, size=${playerSize}, creature.stats.size=${playerCreature.stats?.size}`);
 
-      // Initialize clip state machine if creature has clips
-      if (playerCreature.clips) {
-        const availableActions = Object.keys(playerCreature.clips) as ClipAction[];
-        if (availableActions.length > 0) {
-          clipStateManagerRef.current.getStateMachine('player', availableActions);
-        }
-      }
+      // Animation sprites are initialized on-demand when needed
 
       // Now load growth-aware sprite using the correct size
       if (playerFishSprite) {
@@ -1134,16 +1128,11 @@ export default function FishEditorCanvas({
           const spawnIndex = fishListRef.current.length;
           const staggerDelay = spawnIndex * (100 + Math.random() * 100);
 
-          // Initialize video sprite if creature has clips
-          const clips = isCreature(fishItem) ? fishItem.clips : undefined;
-          let videoSprite: VideoSprite | undefined;
-          if (clips && hasUsableClips(clips)) {
-            videoSprite = videoSpriteManagerRef.current.getSprite(fishItem.id, clips, {
-              chromaTolerance: chromaToleranceRef.current,
-            });
-            // Initialize clip state machine
-            const availableActions = Object.keys(clips) as ClipAction[];
-            clipStateManagerRef.current.getStateMachine(fishItem.id, availableActions);
+          // Initialize animation sprite if creature has animations
+          const animations = isCreature(fishItem) ? fishItem.animations : undefined;
+          let animationSprite: AnimationSprite | undefined;
+          if (animations && hasUsableAnimations(animations)) {
+            animationSprite = animationSpriteManagerRef.current.getSprite(fishItem.id, animations);
           }
 
           const newFish = {
@@ -1167,9 +1156,9 @@ export default function FishEditorCanvas({
             despawnTime: undefined,
             opacity: 0,
             lifecycleState: 'spawning' as FishLifecycleState,
-            // Video clip animation
-            clips,
-            videoSprite,
+            // Frame-based animations
+            animations,
+            animationSprite,
           };
           fishListRef.current.push(newFish);
         }, { spriteResolutions, fishSize: fishSizeForResolution });
@@ -1420,8 +1409,11 @@ export default function FishEditorCanvas({
 
         // Check starvation death
         if (player.hunger <= 0 && !gameOverFiredRef.current) {
-          // Trigger death animation on player
-          clipStateManagerRef.current.processEvent('player', { type: 'death' });
+          // Trigger death animation on player if animation sprite exists
+          if (animationSpriteManagerRef.current.hasSprite('player')) {
+            const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+            sprite.triggerAction('death');
+          }
 
           gameOverFiredRef.current = true;
           if (onGameOver) {
@@ -1473,7 +1465,10 @@ export default function FishEditorCanvas({
           if (gameMode) {
             if (fish.size > player.size * 1.2) {
               // Trigger death animation on player before game over
-              clipStateManagerRef.current.processEvent('player', { type: 'death' });
+              if (animationSpriteManagerRef.current.hasSprite('player')) {
+                const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                sprite.triggerAction('death');
+              }
 
               // Player is eaten by larger fish - GAME OVER
               if (!gameOverFiredRef.current) {
@@ -1547,8 +1542,11 @@ export default function FishEditorCanvas({
               const eatX = (fish.x + player.x) * 0.5;
               const eatY = (fish.y + player.y) * 0.5;
 
-              // Trigger bite animation on player (if clip state machine exists)
-              clipStateManagerRef.current.processEvent('player', { type: 'bite' });
+              // Trigger bite animation on player (if animation sprite exists)
+              if (animationSpriteManagerRef.current.hasSprite('player')) {
+                const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                sprite.triggerAction('bite');
+              }
 
               // Haptic feedback
               if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -1639,8 +1637,11 @@ export default function FishEditorCanvas({
             const eatX = (fish.x + player.x) * 0.5;
             const eatY = (fish.y + player.y) * 0.5;
 
-            // Trigger bite animation on player (if clip state machine exists)
-            clipStateManagerRef.current.processEvent('player', { type: 'bite' });
+            // Trigger bite animation on player (if animation sprite exists)
+            if (animationSpriteManagerRef.current.hasSprite('player')) {
+              const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+              sprite.triggerAction('bite');
+            }
 
             // Haptic feedback
             if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -2057,9 +2058,9 @@ export default function FishEditorCanvas({
         const fishSpeed = Math.min(1, Math.sqrt(fish.vx ** 2 + fish.vy ** 2) / MAX_SPEED);
         const screenSize = fish.size * currentZoom;
 
-        // Determine rendering mode based on LOD and clip availability
-        const fishHasClips = hasUsableClips(fish.clips);
-        const clipMode = getClipMode(screenSize, fishHasClips, renderContext);
+        // Determine rendering mode based on LOD and animation availability
+        const fishHasAnimations = hasUsableAnimations(fish.animations);
+        const clipMode = getClipMode(screenSize, fishHasAnimations, renderContext);
 
         // Apply spawn fade-in opacity
         ctx.save();
@@ -2067,16 +2068,13 @@ export default function FishEditorCanvas({
 
         let rendered = false;
 
-        // Try video rendering if in video mode with clips
-        if (clipMode === 'video' && fish.clips && fish.videoSprite) {
-          // Update clip state based on speed
-          const clipStateManager = clipStateManagerRef.current;
-          if (clipStateManager.hasStateMachine(fish.id)) {
-            clipStateManager.processEvent(fish.id, { type: 'speed_change', speed: fishSpeed });
-          }
+        // Try animation frame rendering if animations are available
+        if (clipMode === 'video' && fish.animations && fish.animationSprite) {
+          // Update animation sprite
+          fish.animationSprite.update();
 
-          // Draw from video sprite
-          rendered = fish.videoSprite.drawToContext(
+          // Draw current frame
+          rendered = fish.animationSprite.drawToContext(
             ctx,
             fish.x,
             fish.y,

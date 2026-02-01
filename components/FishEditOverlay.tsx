@@ -8,8 +8,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
-import type { CreatureClips, ClipAction, GrowthSprites, SpriteResolutions, GrowthStageClips, GrowthStage } from '@/lib/game/types';
-import { generateCreatureClip, type ClipGenerationProgress, getSpriteForGrowthStage, getAvailableGrowthStages } from '@/lib/video/clip-generator';
+import type { GrowthSprites, SpriteResolutions, GrowthStage, AnimationAction, CreatureAnimations, AnimationSequence, ANIMATION_CONFIG } from '@/lib/game/types';
+import { ANIMATION_CONFIG as ANIM_CONFIG } from '@/lib/game/types';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
 import { devLogSave, devLogError } from '@/lib/editor/dev-logger';
 import SpriteGenerationLab from './SpriteGenerationLab';
@@ -19,6 +19,15 @@ import SpriteGenerationLab from './SpriteGenerationLab';
  * Prevents accidental double-clicks from firing multiple expensive API calls
  */
 const CLIP_GENERATION_DEBOUNCE_MS = 3000;
+
+/**
+ * Add cache-busting parameter to URL to force fresh load
+ */
+function cacheBust(url: string): string {
+  if (!url) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}cb=${Date.now()}`;
+}
 
 export interface EssenceData {
   primary: {
@@ -88,10 +97,8 @@ export interface FishData {
     biomeUnlocked: string[];
     essenceSpent?: Record<string, number>;
   };
-  // Video animation clips organized by growth stage
-  clips?: GrowthStageClips;
-  // Legacy flat clips (backward compatibility)
-  legacyClips?: CreatureClips;
+  // Animation frames - generated via image-to-image
+  animations?: CreatureAnimations;
 
   // Multi-resolution sprites (mipmap system)
   spriteResolutions?: SpriteResolutions;
@@ -154,10 +161,17 @@ export default function FishEditOverlay({
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [clipGenerationStatus, setClipGenerationStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'details' | 'animation'>('details');
-  const [useDirectMode, setUseDirectMode] = useState(false);
-  const [previewClip, setPreviewClip] = useState<{ action: ClipAction; mode: 'video' | 'frames' } | null>(null);
   const [selectedClipGrowthStage, setSelectedClipGrowthStage] = useState<GrowthStage>('adult');
   const [showSpriteLab, setShowSpriteLab] = useState(false);
+  
+  // Animation preview state
+  const [previewAnimation, setPreviewAnimation] = useState<{
+    stage: GrowthStage;
+    action: AnimationAction;
+    sequence: AnimationSequence;
+  } | null>(null);
+  const [previewFrame, setPreviewFrame] = useState(0);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(true);
 
   // Debounce ref to prevent rapid-fire clip generation requests
   const lastClipGenerationTime = useRef<number>(0);
@@ -334,6 +348,37 @@ export default function FishEditOverlay({
     window.addEventListener('fishEditAction', handleActionEvent);
     return () => window.removeEventListener('fishEditAction', handleActionEvent);
   }, [embedded, editedFish]);
+
+  // Animation preview playback
+  useEffect(() => {
+    if (!previewAnimation || !isPreviewPlaying) return;
+    
+    const frameRate = previewAnimation.sequence.frameRate || 12;
+    const interval = setInterval(() => {
+      setPreviewFrame(prev => {
+        const next = prev + 1;
+        if (next >= previewAnimation.sequence.frames.length) {
+          return previewAnimation.sequence.loop ? 0 : prev;
+        }
+        return next;
+      });
+    }, 1000 / frameRate);
+
+    return () => clearInterval(interval);
+  }, [previewAnimation, isPreviewPlaying]);
+
+  // Reset preview frame when animation changes
+  useEffect(() => {
+    setPreviewFrame(0);
+    setIsPreviewPlaying(true);
+  }, [previewAnimation]);
+
+  // Helper to get sprite URL for a growth stage
+  const getSpriteForStage = (stage: GrowthStage): string | null => {
+    if (!editedFish) return null;
+    if (stage === 'adult') return editedFish.sprite || null;
+    return editedFish.growthSprites?.[stage]?.sprite || null;
+  };
 
   if (!fish || !editedFish) return null;
 
@@ -699,136 +744,92 @@ export default function FishEditOverlay({
     }
   };
 
-  // Handler for generating animation clips
-  const handleGenerateClip = async (action: ClipAction) => {
-    if (!editedFish || !editedFish.sprite) {
-      setSaveMessage('❌ No sprite available. Generate or upload a sprite first.');
+  // Handler for generating animation frames for a specific action
+  const handleGenerateAnimation = async (stage: GrowthStage, action: AnimationAction) => {
+    if (!editedFish) {
+      setSaveMessage('❌ No fish data available.');
       return;
     }
 
-    // Get the sprite URL for the selected growth stage
-    // Cast editedFish to Creature-compatible type for getSpriteForGrowthStage
-    const spriteUrl = getSpriteForGrowthStage(editedFish as any, selectedClipGrowthStage);
-    
+    const spriteUrl = getSpriteForStage(stage);
     if (!spriteUrl) {
-      setSaveMessage(`❌ No sprite available for ${selectedClipGrowthStage} stage. Generate growth sprites first.`);
+      setSaveMessage(`❌ No sprite available for ${stage} stage.`);
       return;
     }
 
-    // Debounce: prevent rapid-fire requests (protects against accidental double-clicks)
+    // Debounce
     const now = Date.now();
     const timeSinceLastRequest = now - lastClipGenerationTime.current;
     if (timeSinceLastRequest < CLIP_GENERATION_DEBOUNCE_MS) {
       const waitTime = Math.ceil((CLIP_GENERATION_DEBOUNCE_MS - timeSinceLastRequest) / 1000);
-      setSaveMessage(`⏳ Please wait ${waitTime}s before generating another clip...`);
+      setSaveMessage(`⏳ Please wait ${waitTime}s...`);
       return;
     }
     lastClipGenerationTime.current = now;
 
     setIsGeneratingClip(true);
-    setClipGenerationStatus(`Starting ${action} clip generation for ${selectedClipGrowthStage}...`);
+    const config = ANIM_CONFIG[action];
+    setClipGenerationStatus(`Generating ${action} animation (${config.frameCount} frames)...`);
 
     try {
-      if (useDirectMode) {
-        // Direct mode: synchronous API call without job system
-        setClipGenerationStatus(`Calling Gemini API directly for ${action} (${selectedClipGrowthStage})...`);
-
-        const response = await fetch('/api/generate-creature-clip-direct', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            creatureId: editedFish.id,
-            action,
-            spriteUrl,
-            description: editedFish.description || editedFish.name,
-            growthStage: selectedClipGrowthStage,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || data.message || 'Direct generation failed');
-        }
-
-        if (data.success && data.clip) {
-          // Store clip under the correct growth stage
-          const existingStageClips = editedFish.clips?.[selectedClipGrowthStage] || {};
-          const updatedStageClips: CreatureClips = {
-            ...existingStageClips,
-            [action]: data.clip,
-          };
-
-          const updatedClips: GrowthStageClips = {
-            ...(editedFish.clips || {}),
-            [selectedClipGrowthStage]: updatedStageClips,
-          };
-
-          const updatedFish = {
-            ...editedFish,
-            clips: updatedClips,
-          };
-
-          setEditedFish(updatedFish);
-          onSave(updatedFish);
-
-          setSaveMessage(`✓ ${action} clip for ${selectedClipGrowthStage} generated (direct mode)!`);
-          setClipGenerationStatus('');
-        } else {
-          throw new Error(data.error || 'Direct generation failed');
-        }
-      } else {
-        // Job-based mode: use the full clip generation flow
-        const result = await generateCreatureClip(
-          editedFish.id,
+      const response = await fetch('/api/generate-animation-frames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatureId: editedFish.id,
           action,
+          growthStage: stage,
           spriteUrl,
-          editedFish.description || editedFish.name,
-          (progress: ClipGenerationProgress) => {
-            // Update UI with progress
-            setClipGenerationStatus(progress.message);
-            if (progress.stage === 'error') {
-              setSaveMessage(`❌ ${progress.message}`);
-            }
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Animation generation failed');
+      }
+
+      if (data.success && data.sequence) {
+        // Update animations
+        const updatedAnimations: CreatureAnimations = {
+          ...(editedFish.animations || {}),
+          [stage]: {
+            ...(editedFish.animations?.[stage] || {}),
+            [action]: data.sequence as AnimationSequence,
           },
-          selectedClipGrowthStage
-        );
+        };
 
-        if (result.success && result.clip) {
-          // Store clip under the correct growth stage
-          const existingStageClips = editedFish.clips?.[selectedClipGrowthStage] || {};
-          const updatedStageClips: CreatureClips = {
-            ...existingStageClips,
-            [action]: result.clip,
-          };
+        const updatedFish = {
+          ...editedFish,
+          animations: updatedAnimations,
+        };
 
-          const updatedClips: GrowthStageClips = {
-            ...(editedFish.clips || {}),
-            [selectedClipGrowthStage]: updatedStageClips,
-          };
+        setEditedFish(updatedFish);
+        onSave(updatedFish);
 
-          const updatedFish = {
-            ...editedFish,
-            clips: updatedClips,
-          };
-
-          setEditedFish(updatedFish);
-          onSave(updatedFish);
-
-          setSaveMessage(`✓ ${action} clip for ${selectedClipGrowthStage} generated and saved!`);
-          setClipGenerationStatus('');
-        } else {
-          setSaveMessage(`❌ ${result.error || 'Clip generation failed'}`);
-          setClipGenerationStatus('');
-        }
+        setSaveMessage(`✓ ${action} animation generated! ${data.framesGenerated} frames.`);
+      } else {
+        throw new Error(data.error || 'Animation generation failed');
       }
     } catch (error: any) {
-      console.error('[FishEditOverlay] Clip generation error:', error);
-      setSaveMessage(`❌ Clip generation failed: ${error.message}`);
-      setClipGenerationStatus('');
+      console.error('[FishEditOverlay] Animation generation error:', error);
+      setSaveMessage(`❌ ${error.message}`);
     } finally {
+      setClipGenerationStatus('');
       setIsGeneratingClip(false);
     }
+  };
+
+  // Helper to check if an animation exists for a stage/action
+  const hasAnimation = (stage: GrowthStage, action: AnimationAction): boolean => {
+    return (editedFish?.animations?.[stage]?.[action]?.frames?.length ?? 0) > 0;
+  };
+
+  // Count total animations for a stage
+  const countStageAnimations = (stage: GrowthStage): number => {
+    const stageAnims = editedFish?.animations?.[stage];
+    if (!stageAnims) return 0;
+    return Object.keys(stageAnims).length;
   };
 
   const updateField = (field: string, value: FishFieldValue) => {
@@ -1043,27 +1044,19 @@ export default function FishEditOverlay({
               : 'text-gray-400 hover:text-white'
               }`}
           >
-            Animation {editedFish.clips && Object.keys(editedFish.clips).length > 0 ? `(${(() => {
-              // Count total clips across all formats
-              const clips = editedFish.clips;
-              if (!clips) return 0;
-              const keys = Object.keys(clips);
-              const isOldFormat = keys.some(key => 
-                ['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(key)
-              );
-              if (isOldFormat) {
-                return keys.filter(k => clips[k as keyof typeof clips]).length;
-              }
-              // New format - count clips across all growth stages
+            Animation {editedFish.animations && (() => {
+              // Count total animations across all growth stages
+              const anims = editedFish.animations;
+              if (!anims) return '';
               let count = 0;
-              ['juvenile', 'adult', 'elder'].forEach(stage => {
-                const stageClips = clips[stage as keyof typeof clips];
-                if (stageClips && typeof stageClips === 'object') {
-                  count += Object.keys(stageClips).length;
+              (['juvenile', 'adult', 'elder'] as const).forEach(stage => {
+                const stageAnims = anims[stage];
+                if (stageAnims) {
+                  count += Object.keys(stageAnims).length;
                 }
               });
-              return count;
-            })()})` : ''}
+              return count > 0 ? `(${count})` : '';
+            })()}
           </button>
         </div>
 
@@ -1244,171 +1237,39 @@ export default function FishEditOverlay({
                 </p>
               </div>
 
-              {/* Existing Clips - Organized by Growth Stage */}
+              {/* Animation Frames Display */}
               <div>
-                <h3 className="text-sm font-bold text-white mb-3">Generated Clips</h3>
-                {editedFish.clips && Object.keys(editedFish.clips).length > 0 ? (
-                  <div className="space-y-4">
-                    {/* Check if clips are in old flat format (keys are action names like swimIdle) */}
-                    {(() => {
-                      const clipKeys = Object.keys(editedFish.clips || {});
-                      const isOldFormat = clipKeys.some(key => 
-                        ['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(key)
-                      );
-                      
-                      if (isOldFormat) {
-                        // Display old format clips as "Legacy (Adult)" 
-                        const legacyClips = editedFish.clips as unknown as CreatureClips;
-                        return (
-                          <div key="legacy">
-                            <h4 className="text-xs font-medium text-yellow-400 mb-2">⚠️ Legacy Clips (Pre-Growth Stage)</h4>
-                            <p className="text-xs text-gray-500 mb-2">These clips were generated before growth stage support. Re-generate to organize by stage.</p>
-                            <div className="space-y-2">
-                              {(Object.keys(legacyClips) as ClipAction[]).map((action) => {
-                                const clip = legacyClips[action];
-                                if (!clip) return null;
-                                return (
-                                  <div key={`legacy-${action}`} className="bg-gray-800 p-3 rounded-lg border border-yellow-600/30">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <div className="flex items-center gap-3">
-                                        {clip?.thumbnailUrl && (
-                                          <img
-                                            src={clip.thumbnailUrl}
-                                            alt={action}
-                                            className="w-12 h-12 object-cover rounded bg-gray-700"
-                                          />
-                                        )}
-                                        <div>
-                                          <span className="text-sm text-white font-medium capitalize">
-                                            {action.replace(/([A-Z])/g, ' $1').trim()}
-                                          </span>
-                                          <p className="text-xs text-gray-400">
-                                            {clip?.duration ? `${(clip.duration / 1000).toFixed(1)}s` : 'Unknown duration'}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                      {clip?.videoUrl && (
-                                        <>
-                                          <button
-                                            onClick={() => setPreviewClip({ action, mode: 'video' })}
-                                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                                            title="Preview Video"
-                                          >
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                                            </svg>
-                                            Play
-                                          </button>
-                                          <a
-                                            href={clip.videoUrl}
-                                            download={`${editedFish.id}_${action}.mp4`}
-                                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                                            title="Download Video"
-                                          >
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                                            </svg>
-                                            Download
-                                          </a>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      }
-                      
-                      // New format - display by growth stage
-                      return null;
-                    })()}
-                    
-                    {/* New format clips - organized by growth stage */}
+                <h3 className="text-sm font-bold text-white mb-3">Animation Frames</h3>
+                
+                {editedFish.animations && Object.keys(editedFish.animations).length > 0 ? (
+                  <div className="space-y-3">
                     {(['juvenile', 'adult', 'elder'] as GrowthStage[]).map((stage) => {
-                      const stageClips = editedFish.clips?.[stage];
-                      if (!stageClips || typeof stageClips !== 'object' || Object.keys(stageClips).length === 0) return null;
-                      // Skip if this looks like an action name (old format detected above)
-                      if (['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(stage)) return null;
+                      const stageAnims = editedFish.animations?.[stage];
+                      if (!stageAnims || Object.keys(stageAnims).length === 0) return null;
                       
                       const stageLabels: Record<GrowthStage, string> = {
-                        juvenile: '🐣 Juvenile',
-                        adult: '🐟 Adult',
-                        elder: '🐋 Elder',
+                        juvenile: 'Juvenile',
+                        adult: 'Adult',
+                        elder: 'Elder',
                       };
                       
                       return (
-                        <div key={stage}>
-                          <h4 className="text-xs font-medium text-gray-400 mb-2">{stageLabels[stage]}</h4>
-                          <div className="space-y-2">
-                            {(Object.keys(stageClips) as ClipAction[]).map((action) => {
-                              const clip = stageClips[action];
+                        <div key={stage} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                          <h4 className="text-sm font-medium text-white mb-2">
+                            {stageLabels[stage]} Animations
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {(Object.keys(stageAnims) as AnimationAction[]).map((action) => {
+                              const seq = stageAnims[action];
+                              if (!seq) return null;
                               return (
-                                <div key={`${stage}-${action}`} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-3">
-                                      {clip?.thumbnailUrl && (
-                                        <img
-                                          src={clip.thumbnailUrl}
-                                          alt={action}
-                                          className="w-12 h-12 object-cover rounded bg-gray-700"
-                                        />
-                                      )}
-                                      <div>
-                                        <span className="text-sm text-white font-medium capitalize">
-                                          {action.replace(/([A-Z])/g, ' $1').trim()}
-                                        </span>
-                                        <p className="text-xs text-gray-400">
-                                  {clip?.frames?.length || 0} frames • {clip?.duration ? `${(clip.duration / 1000).toFixed(1)}s` : ''} • {clip?.loop ? 'Loop' : 'One-shot'}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-green-400 text-sm">✓</span>
-                          </div>
-                          {/* Action buttons row */}
-                          <div className="flex gap-2 mt-2">
-                            {clip?.videoUrl && (
-                              <>
                                 <button
-                                  onClick={() => setPreviewClip({ action, mode: 'video' })}
-                                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                                  title="Preview Video"
+                                  key={action}
+                                  onClick={() => setPreviewAnimation({ stage, action, sequence: seq })}
+                                  className="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs transition-colors cursor-pointer"
                                 >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                                  </svg>
-                                  Video
+                                  <span className="text-green-400">✓</span> {action} ({seq.frames.length} frames)
                                 </button>
-                                <a
-                                  href={clip.videoUrl}
-                                  download={`${editedFish.id}_${action}.mp4`}
-                                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                                  title="Download Video"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                                  </svg>
-                                  Download
-                                </a>
-                              </>
-                            )}
-                            {clip?.frames && clip.frames.length > 0 && (
-                              <button
-                                onClick={() => setPreviewClip({ action, mode: 'frames' })}
-                                className="flex-1 bg-purple-600 hover:bg-purple-500 text-white px-2 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                                title="Preview Frame-by-Frame"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-2.625 0V6.375m0 12.75c0-.621.504-1.125 1.125-1.125m16.125 0h1.5c.621 0 1.125.504 1.125 1.125v.75m-18.75-12.75h17.25m-17.25 0V6.375m17.25 0v12.75m0-12.75a1.125 1.125 0 01-1.125 1.125H4.5m0 0V5.25m0 1.125c0 .621.504 1.125 1.125 1.125m15.75 0a1.125 1.125 0 010 2.25m0-2.25H5.625m15.75 0V5.25" />
-                                </svg>
-                                Frames
-                              </button>
-                            )}
-                          </div>
-                        </div>
                               );
                             })}
                           </div>
@@ -1418,33 +1279,145 @@ export default function FishEditOverlay({
                   </div>
                 ) : (
                   <p className="text-sm text-gray-400 text-center py-4">
-                    No clips generated yet. Generate clips below to add video animations.
+                    No animations generated yet. Generate animation frames below.
                   </p>
                 )}
               </div>
 
-              {/* Generate New Clips */}
+              {/* Animation Preview Modal */}
+              {previewAnimation && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999]" onClick={() => setPreviewAnimation(null)}>
+                  <div 
+                    className="bg-gray-900 rounded-xl p-6 max-w-lg w-full mx-4 border border-gray-700"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-white">
+                        {previewAnimation.stage.charAt(0).toUpperCase() + previewAnimation.stage.slice(1)} - {previewAnimation.action}
+                      </h3>
+                      <button
+                        onClick={() => setPreviewAnimation(null)}
+                        className="text-gray-400 hover:text-white transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* Preview Area */}
+                    <div className="bg-fuchsia-600 rounded-lg p-4 mb-4 flex items-center justify-center" style={{ minHeight: '200px' }}>
+                      <img
+                        src={cacheBust(previewAnimation.sequence.frames[previewFrame])}
+                        alt={`Frame ${previewFrame + 1}`}
+                        className="max-w-full max-h-48 object-contain"
+                        style={{ imageRendering: 'pixelated' }}
+                      />
+                    </div>
+
+                    {/* Frame Scrubber */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs text-gray-400">Frame:</span>
+                        <span className="text-xs text-white font-mono">
+                          {previewFrame + 1} / {previewAnimation.sequence.frames.length}
+                        </span>
+                        <span className="text-xs text-gray-500 ml-auto">
+                          {previewAnimation.sequence.frameRate || 12} fps
+                          {previewAnimation.sequence.loop && ' • loops'}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={previewAnimation.sequence.frames.length - 1}
+                        value={previewFrame}
+                        onChange={e => {
+                          setPreviewFrame(parseInt(e.target.value));
+                          setIsPreviewPlaying(false);
+                        }}
+                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Frame Thumbnails */}
+                    <div className="flex gap-1 overflow-x-auto pb-2 mb-4">
+                      {previewAnimation.sequence.frames.map((frameUrl, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            setPreviewFrame(idx);
+                            setIsPreviewPlaying(false);
+                          }}
+                          className={`flex-shrink-0 w-12 h-12 rounded border-2 transition-colors ${
+                            idx === previewFrame 
+                              ? 'border-blue-500' 
+                              : 'border-gray-700 hover:border-gray-500'
+                          }`}
+                          style={{ backgroundColor: '#FF00FF' }}
+                        >
+                          <img
+                            src={cacheBust(frameUrl)}
+                            alt={`Frame ${idx + 1}`}
+                            className="w-full h-full object-contain"
+                            style={{ imageRendering: 'pixelated' }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setIsPreviewPlaying(!isPreviewPlaying)}
+                        className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                      >
+                        {isPreviewPlaying ? (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                            </svg>
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                            </svg>
+                            Play
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPreviewFrame(0);
+                          setIsPreviewPlaying(true);
+                        }}
+                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                      >
+                        Restart
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Generate Animation Frames */}
               <div className="border-t border-gray-700 pt-4">
-                <h3 className="text-sm font-bold text-white mb-2">Generate New Clips</h3>
-                <p className="text-xs text-gray-400 mb-3">
-                  Generate video clips from growth stage sprites. Each clip takes 1-2 minutes.
+                <h3 className="text-sm font-bold text-white mb-2">Generate Animation Frames</h3>
+                <p className="text-xs text-gray-400 mb-4">
+                  Generate animation frames using image-to-image. Each action creates 2-6 frame poses.
                 </p>
                 
-                {/* Growth Stage Selector */}
+                {/* Stage selector */}
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-gray-400 mb-2">
-                    Select Growth Stage for Clip Generation
+                    Select Growth Stage
                   </label>
                   <div className="flex gap-2">
                     {(['juvenile', 'adult', 'elder'] as GrowthStage[]).map((stage) => {
-                      const hasSprite = stage === 'adult' 
-                        ? !!editedFish.sprite 
-                        : !!editedFish.growthSprites?.[stage]?.sprite;
-                      const stageLabels: Record<GrowthStage, string> = {
-                        juvenile: '🐣 Juvenile',
-                        adult: '🐟 Adult',
-                        elder: '🐋 Elder',
-                      };
+                      const hasSprite = getSpriteForStage(stage);
+                      const animCount = countStageAnimations(stage);
                       return (
                         <button
                           key={stage}
@@ -1457,82 +1430,60 @@ export default function FishEditOverlay({
                                 ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                 : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                           }`}
-                          title={hasSprite ? `Generate clips for ${stage}` : `No ${stage} sprite available`}
                         >
-                          {stageLabels[stage]}
+                          {stage.charAt(0).toUpperCase() + stage.slice(1)}
+                          {animCount > 0 && <span className="ml-1 text-green-400">({animCount})</span>}
                         </button>
                       );
                     })}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {selectedClipGrowthStage === 'adult' 
-                      ? 'Using base sprite for adult clips' 
-                      : editedFish.growthSprites?.[selectedClipGrowthStage]?.sprite
-                        ? `Using ${selectedClipGrowthStage} growth sprite`
-                        : `No ${selectedClipGrowthStage} sprite - generate growth sprites first`
-                    }
-                  </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  {(['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death'] as ClipAction[]).map((action) => {
-                    // Check for clip in the selected growth stage
-                    const hasClip = editedFish.clips?.[selectedClipGrowthStage]?.[action];
-                    const spriteAvailable = selectedClipGrowthStage === 'adult' 
-                      ? !!editedFish.sprite 
-                      : !!editedFish.growthSprites?.[selectedClipGrowthStage]?.sprite;
-                    const actionLabels: Record<string, string> = {
-                      swimIdle: 'Swim (Idle)',
-                      swimFast: 'Swim (Fast)',
-                      bite: 'Bite/Attack',
-                      takeDamage: 'Take Damage',
-                      dash: 'Dash',
-                      death: 'Death',
-                    };
+                {/* Action buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  {(['idle', 'swim', 'dash', 'bite', 'hurt', 'death'] as AnimationAction[]).map((action) => {
+                    const hasAnim = hasAnimation(selectedClipGrowthStage, action);
+                    const hasSprite = !!getSpriteForStage(selectedClipGrowthStage);
+                    const config = ANIM_CONFIG[action];
+                    
                     return (
                       <button
                         key={action}
-                        onClick={() => handleGenerateClip(action)}
-                        disabled={isGeneratingClip || !spriteAvailable}
-                        className={`px-3 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${hasClip
-                          ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30'
-                          : 'bg-blue-600 hover:bg-blue-500 text-white'
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        onClick={() => handleGenerateAnimation(selectedClipGrowthStage, action)}
+                        disabled={isGeneratingClip || !hasSprite}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          hasAnim
+                            ? 'bg-green-600/20 text-green-400 border border-green-600/30'
+                            : hasSprite
+                              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                        } disabled:opacity-50`}
                       >
-                        {hasClip ? '✓' : '+'} {actionLabels[action] || action}
+                        {hasAnim ? '✓' : '+'} {action} ({config.frameCount}f)
                       </button>
                     );
                   })}
                 </div>
 
-                {/* Direct Mode Toggle */}
-                <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useDirectMode}
-                      onChange={(e) => setUseDirectMode(e.target.checked)}
-                      className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-yellow-500 focus:ring-offset-gray-900"
-                    />
-                    <div>
-                      <span className="text-sm font-medium text-yellow-400">Direct Mode (Testing)</span>
-                      <p className="text-xs text-yellow-600 mt-1">
-                        Bypasses job system for faster iteration. Calls Gemini API synchronously -
-                        page will wait 1-2 min. Best for debugging video generation issues.
-                      </p>
-                    </div>
-                  </label>
-                </div>
+                {/* Generation Status */}
+                {clipGenerationStatus && (
+                  <div className="mt-4 p-3 bg-blue-900/20 border border-blue-600/30 rounded-lg">
+                    <p className="text-sm text-blue-400 flex items-center gap-2">
+                      <span className="animate-pulse">●</span>
+                      {clipGenerationStatus}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Info */}
               <div className="border-t border-gray-700 pt-4">
                 <h3 className="text-sm font-bold text-white mb-2">How It Works</h3>
                 <ul className="text-xs text-gray-400 space-y-1">
-                  <li>• Your sprite is used as a reference image for Veo 3.1</li>
-                  <li>• Video is generated with a magenta background for chroma keying</li>
-                  <li>• Frames are extracted and processed for transparency</li>
-                  <li>• Clips play automatically when zoomed in close (120px+ on screen)</li>
+                  <li>• Your sprite is transformed via image-to-image AI</li>
+                  <li>• Each action generates 2-6 frame poses</li>
+                  <li>• Frames maintain consistent style with your sprite</li>
+                  <li>• Animations play automatically based on fish behavior</li>
                 </ul>
               </div>
             </>
@@ -2260,42 +2211,7 @@ export default function FishEditOverlay({
         </div>
       </div>
 
-      {/* Clip Preview Modal */}
-      {previewClip && (() => {
-        // Find the clip - check both old flat format and new growth stage format
-        const clips = editedFish.clips;
-        if (!clips) return null;
-        
-        // Check if old format (direct action keys)
-        const isOldFormat = Object.keys(clips).some(key => 
-          ['swimIdle', 'swimFast', 'bite', 'takeDamage', 'dash', 'death', 'special'].includes(key)
-        );
-        
-        let clip;
-        if (isOldFormat) {
-          clip = (clips as unknown as CreatureClips)[previewClip.action];
-        } else {
-          // New format - look in all growth stages
-          for (const stage of ['juvenile', 'adult', 'elder'] as GrowthStage[]) {
-            const stageClips = clips[stage];
-            if (stageClips && stageClips[previewClip.action]) {
-              clip = stageClips[previewClip.action];
-              break;
-            }
-          }
-        }
-        
-        if (!clip) return null;
-        
-        return (
-          <ClipPreviewModal
-            clip={clip}
-            action={previewClip.action}
-            mode={previewClip.mode}
-            onClose={() => setPreviewClip(null)}
-          />
-        );
-      })()}
+      {/* Note: Video preview is now handled via direct links in the clip display UI */}
 
       {/* SpriteLab Modal */}
       {showSpriteLab && (
@@ -2326,172 +2242,4 @@ export default function FishEditOverlay({
   );
 }
 
-/**
- * Clip Preview Modal - Shows video or frame-by-frame animation
- */
-function ClipPreviewModal({
-  clip,
-  action,
-  mode,
-  onClose,
-}: {
-  clip: { videoUrl: string; frames?: string[]; thumbnailUrl?: string; duration: number; loop?: boolean; frameRate?: number };
-  action: string;
-  mode: 'video' | 'frames';
-  onClose: () => void;
-}) {
-  const [currentFrame, setCurrentFrame] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
-
-  // Frame-by-frame animation
-  useEffect(() => {
-    if (mode !== 'frames' || !isPlaying || !clip.frames?.length) return;
-
-    const frameRate = clip.frameRate || 24;
-    const interval = setInterval(() => {
-      setCurrentFrame((prev) => {
-        const next = prev + 1;
-        if (next >= (clip.frames?.length || 0)) {
-          return clip.loop ? 0 : prev;
-        }
-        return next;
-      });
-    }, 1000 / frameRate);
-
-    return () => clearInterval(interval);
-  }, [mode, isPlaying, clip.frames, clip.loop, clip.frameRate]);
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-      style={{ zIndex: Z_LAYERS.MODAL_BACKDROP }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-gray-900 rounded-xl border border-gray-700 max-w-lg w-full overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <div>
-            <h3 className="text-lg font-bold text-white capitalize">
-              {action.replace(/([A-Z])/g, ' $1').trim()} - {mode === 'video' ? 'Video' : 'Frames'}
-            </h3>
-            <p className="text-xs text-gray-400">
-              {mode === 'video'
-                ? `${(clip.duration / 1000).toFixed(1)}s • ${clip.loop ? 'Looping' : 'One-shot'}`
-                : `Frame ${currentFrame + 1} of ${clip.frames?.length || 0} • ${clip.frameRate || 24} fps`
-              }
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors p-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Preview Area */}
-        <div className="p-4 bg-[#FF00FF] flex items-center justify-center min-h-[300px]">
-          {mode === 'video' ? (
-            <video
-              src={clip.videoUrl}
-              autoPlay
-              loop={clip.loop}
-              muted
-              playsInline
-              className="max-w-full max-h-[400px] object-contain"
-              style={{ background: '#FF00FF' }}
-            />
-          ) : (
-            <img
-              src={clip.frames?.[currentFrame] || clip.thumbnailUrl || ''}
-              alt={`Frame ${currentFrame + 1}`}
-              className="max-w-full max-h-[400px] object-contain"
-              style={{ background: '#FF00FF' }}
-            />
-          )}
-        </div>
-
-        {/* Controls */}
-        <div className="p-4 border-t border-gray-700">
-          {mode === 'frames' && (
-            <div className="space-y-3">
-              {/* Playback Controls */}
-              <div className="flex items-center justify-center gap-4">
-                <button
-                  onClick={() => setCurrentFrame((prev) => Math.max(0, prev - 1))}
-                  className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors"
-                  title="Previous Frame"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-lg transition-colors"
-                  title={isPlaying ? 'Pause' : 'Play'}
-                >
-                  {isPlaying ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                    </svg>
-                  )}
-                </button>
-                <button
-                  onClick={() => setCurrentFrame((prev) => Math.min((clip.frames?.length || 1) - 1, prev + 1))}
-                  className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors"
-                  title="Next Frame"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Frame Scrubber */}
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400 w-8">{currentFrame + 1}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={(clip.frames?.length || 1) - 1}
-                  value={currentFrame}
-                  onChange={(e) => {
-                    setCurrentFrame(parseInt(e.target.value));
-                    setIsPlaying(false);
-                  }}
-                  className="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                />
-                <span className="text-xs text-gray-400 w-8">{clip.frames?.length || 0}</span>
-              </div>
-            </div>
-          )}
-
-          {mode === 'video' && (
-            <div className="flex justify-center gap-3">
-              <a
-                href={clip.videoUrl}
-                download={`clip_${action}.mp4`}
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                </svg>
-                Download Video
-              </a>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+// Note: Legacy ClipPreviewModal removed - videos are now viewed via direct links
