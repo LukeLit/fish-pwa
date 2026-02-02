@@ -50,6 +50,7 @@ export default function FishEditorPage() {
   const [artSelectorType, setArtSelectorType] = useState<'fish' | 'background'>('fish');
   const [artSelectorCallback, setArtSelectorCallback] = useState<((url: string, filename: string) => void) | null>(null);
   const [editingName, setEditingName] = useState(false);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [tempName, setTempName] = useState('');
   const [sizeOverride, setSizeOverride] = useState<number | null>(null);
   const [previewAnimationIndex, setPreviewAnimationIndex] = useState(0);
@@ -752,6 +753,23 @@ export default function FishEditorPage() {
 
         {/* Top Right Icon Buttons - offset right to make room for menu button */}
         <div className="absolute top-4 right-16 flex gap-2" style={{ zIndex: Z_LAYERS.CONTROLS }}>
+          {/* Save Button (only when fish selected) */}
+          {selectedFish && (
+            <button
+              onClick={() => handleSaveFish(selectedFish)}
+              disabled={!hasPendingChanges}
+              className={`w-10 h-10 rounded-lg shadow-lg border flex items-center justify-center transition-colors ${
+                hasPendingChanges 
+                  ? 'bg-green-700 hover:bg-green-600 border-green-500 text-white' 
+                  : 'bg-gray-700 border-gray-600 text-gray-500 cursor-not-allowed'
+              }`}
+              title={hasPendingChanges ? "Save Creature" : "No changes to save"}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+              </svg>
+            </button>
+          )}
           {/* Refresh Textures Icon */}
           <button
             onClick={handleRefreshAll}
@@ -797,7 +815,7 @@ export default function FishEditorPage() {
         {/* Fish Name Bar with Prev/Next - Docked above the Pause Menu on mobile, above canvas on desktop */}
         {paused && selectedFish && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 py-2 bottom-[65vh] lg:bottom-4"
+            className="absolute left-1/2 -translate-x-1/2 lg:left-[calc(50%+210px)] flex items-center justify-center gap-2 py-2 bottom-[65vh] lg:bottom-4"
             style={{ zIndex: Z_LAYERS.CONTROLS }}
           >
             {/* Previous Arrow */}
@@ -917,7 +935,7 @@ export default function FishEditorPage() {
 
           return (
             <div
-              className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 py-1.5 px-3 bg-gray-800/80 backdrop-blur-sm rounded-full bottom-[calc(65vh-44px)] lg:bottom-12"
+              className="absolute left-1/2 -translate-x-1/2 lg:left-[calc(50%+210px)] flex items-center justify-center gap-2 py-1.5 px-3 bg-gray-800/80 backdrop-blur-sm rounded-full top-16"
               style={{ zIndex: Z_LAYERS.CONTROLS }}
             >
               {/* Previous Animation */}
@@ -1034,6 +1052,7 @@ export default function FishEditorPage() {
           onDeformationIntensityChange={setDeformationIntensity}
           onClearFish={handleClearFish}
           onBackToMenu={handleBackToMenu}
+          onPendingChanges={setHasPendingChanges}
         />
 
         {/* Bottom Right Edit/Resume Button - Same position for both states */}

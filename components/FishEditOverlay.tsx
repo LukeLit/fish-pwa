@@ -138,6 +138,8 @@ interface FishEditOverlayProps {
   onOpenArtSelector?: (callback: (url: string, filename: string) => void) => void;
   /** When true, removes absolute positioning for embedding in another container */
   embedded?: boolean;
+  /** Called when the pending changes state changes */
+  onPendingChanges?: (hasPending: boolean) => void;
 }
 
 export default function FishEditOverlay({
@@ -150,10 +152,14 @@ export default function FishEditOverlay({
   hasNext,
   onOpenArtSelector,
   embedded = false,
+  onPendingChanges,
 }: FishEditOverlayProps) {
   const [editedFish, setEditedFish] = useState<FishData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string>('');
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
+  // Store the original fish state to compare against for pending changes
+  const originalFishRef = useRef<FishData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState<'google/imagen-4.0-fast-generate-001' | 'google/imagen-4.0-generate-001' | 'bfl/flux-2-pro'>('google/imagen-4.0-fast-generate-001');
@@ -162,9 +168,8 @@ export default function FishEditOverlay({
   const [showAIGeneration, setShowAIGeneration] = useState(false);
   const [isGeneratingClip, setIsGeneratingClip] = useState(false);
   const [clipGenerationStatus, setClipGenerationStatus] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'details' | 'animation'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'animation' | 'spritelab'>('details');
   const [selectedClipGrowthStage, setSelectedClipGrowthStage] = useState<GrowthStage>('adult');
-  const [showSpriteLab, setShowSpriteLab] = useState(false);
 
   // Animation preview state
   const [previewAnimation, setPreviewAnimation] = useState<{
@@ -281,9 +286,37 @@ export default function FishEditOverlay({
             spawnWeight: 50,
           },
         });
+        // Store original state for comparison and reset pending changes
+        originalFishRef.current = structuredClone(fish);
+        setHasPendingChanges(false);
       }
     }
   }, [fish?.id, isSaving]); // Only depend on fish.id and isSaving
+
+  // Track pending changes by comparing editedFish with original fish state
+  useEffect(() => {
+    if (!editedFish || !originalFishRef.current) {
+      setHasPendingChanges(false);
+      return;
+    }
+    const original = originalFishRef.current;
+    // Compare key fields to detect changes from original
+    const hasChanges = 
+      editedFish.name !== original.name ||
+      editedFish.biomeId !== original.biomeId ||
+      editedFish.rarity !== original.rarity ||
+      editedFish.playable !== original.playable ||
+      editedFish.type !== original.type ||
+      JSON.stringify(editedFish.sprites) !== JSON.stringify(original.sprites) ||
+      JSON.stringify(editedFish.animations) !== JSON.stringify(original.animations) ||
+      JSON.stringify(editedFish.essence) !== JSON.stringify(original.essence);
+    setHasPendingChanges(hasChanges);
+  }, [editedFish]);
+
+  // Notify parent when pending changes state changes
+  useEffect(() => {
+    onPendingChanges?.(hasPendingChanges);
+  }, [hasPendingChanges, onPendingChanges]);
 
   useEffect(() => {
     // Set default prompt based on fish type
@@ -306,37 +339,6 @@ export default function FishEditOverlay({
       const action = event.detail?.action;
 
       switch (action) {
-        case 'upload':
-          // Trigger file upload
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = 'image/*';
-          input.onchange = (ev) => {
-            const file = (ev.target as HTMLInputElement).files?.[0];
-            if (file && editedFish) {
-              const reader = new FileReader();
-              reader.onload = (readerEvent) => {
-                const spriteUrl = readerEvent.target?.result as string;
-                const updatedFish = { ...editedFish, sprite: spriteUrl };
-                setEditedFish(updatedFish);
-                onSave(updatedFish);
-                setSaveMessage('✓ Image uploaded. Click Save to persist.');
-              };
-              reader.readAsDataURL(file);
-            }
-          };
-          input.click();
-          break;
-
-        case 'regenerate':
-          // Trigger regeneration - dispatch another event that we handle below
-          handleRegenerateSprite();
-          break;
-
-        case 'flip':
-          handleFlipSprite();
-          break;
-
         case 'save':
           handleSaveToGame();
           break;
@@ -497,6 +499,8 @@ export default function FishEditOverlay({
         };
 
         setEditedFish(savedFish);
+        // Update original ref so pending changes clears
+        originalFishRef.current = structuredClone(savedFish);
 
         // Final update to parent with confirmed server data
         onSave(savedFish);
@@ -558,93 +562,6 @@ export default function FishEditOverlay({
       onSave(previousFish); // ROLLBACK
       console.error('[FishEditor] Save error:', error);
       setSaveMessage(`❌ Error: ${error.message || 'Failed to save'}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Handler for regenerating sprite via action bar
-  const handleRegenerateSprite = async () => {
-    if (!editedFish) return;
-    setIsGenerating(true);
-    setSaveMessage('🎨 Regenerating sprite...');
-    try {
-      const usedDescriptionChunks = getFallbackDescriptionChunks(editedFish);
-      const usedVisualMotif = getFallbackVisualMotif(editedFish);
-
-      const { prompt } = composeFishPrompt({
-        id: editedFish.id,
-        name: editedFish.name,
-        biomeId: editedFish.biomeId,
-        rarity: editedFish.rarity,
-        essence: editedFish.essence?.primary ? {
-          [editedFish.essence.primary.type]: editedFish.essence.primary.baseYield,
-          ...(editedFish.essence.secondary?.reduce((acc, sec) => {
-            acc[sec.type] = sec.baseYield;
-            return acc;
-          }, {} as Record<string, number>) || {}),
-        } : undefined,
-        descriptionChunks: usedDescriptionChunks,
-        visualMotif: usedVisualMotif,
-        grantedAbilities: editedFish.grantedAbilities,
-      });
-
-      const response = await fetch('/api/generate-fish-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, model: selectedModel }),
-      });
-
-      const result = await response.json();
-      if (result.success && result.imageBase64) {
-        const dataUrl = `data:image/png;base64,${result.imageBase64}`;
-        const updatedFish: FishData = { ...editedFish, sprite: dataUrl };
-        setEditedFish(updatedFish);
-        onSave(updatedFish);
-        setSaveMessage('✓ Sprite regenerated! Click Save to persist.');
-      } else {
-        setSaveMessage(`❌ Generation failed: ${result.error || 'Unknown error'}`);
-      }
-    } catch (err: any) {
-      setSaveMessage(`❌ Error: ${err.message || 'Unknown error'}`);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Handler for flipping sprite via action bar
-  const handleFlipSprite = async () => {
-    if (!editedFish?.sprite) return;
-    setIsSaving(true);
-    setSaveMessage('Flipping sprite...');
-
-    try {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = cacheBust(editedFish.sprite!);
-      });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('No canvas context');
-
-      ctx.translate(img.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(img, 0, 0);
-
-      const flippedDataUrl = canvas.toDataURL('image/png');
-      const updatedFish = { ...editedFish, sprite: flippedDataUrl };
-      setEditedFish(updatedFish);
-      onSave(updatedFish);
-      setSaveMessage('✓ Sprite flipped! Click Save to persist.');
-    } catch (err: any) {
-      setSaveMessage(`❌ Error: ${err.message || 'Failed to flip sprite'}`);
     } finally {
       setIsSaving(false);
     }
@@ -1079,6 +996,15 @@ export default function FishEditOverlay({
               return count > 0 ? `(${count})` : '';
             })()}
           </button>
+          <button
+            onClick={() => setActiveTab('spritelab')}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'spritelab'
+              ? 'text-white border-b-2 border-purple-500'
+              : 'text-gray-400 hover:text-white'
+              }`}
+          >
+            Sprite Lab
+          </button>
         </div>
 
         {/* Tab Content */}
@@ -1241,22 +1167,6 @@ export default function FishEditOverlay({
                   {clipGenerationStatus}
                 </div>
               )}
-
-              {/* Sprite Lab Button */}
-              <div className="mb-4">
-                <button
-                  onClick={() => setShowSpriteLab(true)}
-                  className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-                  </svg>
-                  Open Sprite Lab
-                </button>
-                <p className="text-xs text-gray-400 mt-2 text-center">
-                  Generate growth stage sprites (juvenile, adult, elder) with high-quality prompts
-                </p>
-              </div>
 
               {/* Animation Frames Display */}
               <div>
@@ -2226,38 +2136,34 @@ export default function FishEditOverlay({
               )}
             </>
           )}
+
+          {/* Sprite Lab Tab */}
+          {activeTab === 'spritelab' && (
+            <SpriteGenerationLab
+              fish={editedFish}
+              isOpen={true}
+              embedded={true}
+              onClose={() => setActiveTab('animation')}
+              onPreview={(previewFish) => {
+                setEditedFish(previewFish);
+                window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+              }}
+              onUploadComplete={(updatedFish) => {
+                console.log('[FishEditOverlay] SpriteLab upload complete, refreshing sprites');
+                setEditedFish(updatedFish);
+                onSave(updatedFish);
+                setCanvasStatus('Reloading sprites...');
+                setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+                  clearCanvasStatus();
+                }, 100);
+              }}
+            />
+          )}
         </div>
       </div>
 
       {/* Note: Video preview is now handled via direct links in the clip display UI */}
-
-      {/* SpriteLab Modal */}
-      {showSpriteLab && (
-        <SpriteGenerationLab
-          fish={editedFish}
-          isOpen={showSpriteLab}
-          onClose={() => setShowSpriteLab(false)}
-          onPreview={(previewFish) => {
-            // Update fish in editor to preview sprites in canvas
-            setEditedFish(previewFish);
-            // Also trigger canvas refresh for preview
-            window.dispatchEvent(new CustomEvent('refreshFishSprites'));
-          }}
-          onUploadComplete={(updatedFish) => {
-            console.log('[FishEditOverlay] SpriteLab upload complete, refreshing sprites');
-            setEditedFish(updatedFish);
-            onSave(updatedFish);
-            // Dispatch refresh to update canvas with new sprites
-            // Small delay to ensure state has propagated
-            setCanvasStatus('Reloading sprites...');
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('refreshFishSprites'));
-              clearCanvasStatus();
-            }, 100);
-            setShowSpriteLab(false);
-          }}
-        />
-      )}
     </div>
   );
 }
