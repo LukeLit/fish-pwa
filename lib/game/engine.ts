@@ -14,7 +14,7 @@ import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
 import { ESSENCE_TYPES } from './data/essence-types';
-import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
+import { loadRunState, saveRunState, addEssenceToRun, updateFishState } from './run-state';
 import {
   HUNGER_LOW_THRESHOLD,
   HUNGER_WARNING_PULSE_FREQUENCY,
@@ -158,18 +158,28 @@ export class GameEngine {
     this.mutations.clear();
     this.phases.reset();
 
+    // Check if continuing an existing run
+    const runState = loadRunState();
+    const isNewRun = !runState || runState.currentLevel === '1-1';
+    
+    // Determine starting size:
+    // - For new runs: use base size 10
+    // - For continuing runs: use saved size from RunState
+    const startingSize = isNewRun ? 10 : (runState?.fishState?.size ?? 10);
+
     // Create player
     const startX = this.p5Instance?.width ? this.p5Instance.width / 2 : 400;
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
-    this.player = new Player(this.physics, startX, startY, 10);
+    this.player = new Player(this.physics, startX, startY, startingSize);
 
     // Apply meta upgrades from player state (purchased with Evo Points)
+    // ONLY for new runs (level 1-1), not for continued runs
     const { loadPlayerState } = await import('./player-state');
     const playerState = loadPlayerState();
     const metaUpgrades = playerState.metaUpgrades;
 
-    // Apply starting size upgrade
-    if (metaUpgrades.meta_starting_size) {
+    // Apply starting size upgrade ONLY for new runs
+    if (isNewRun && metaUpgrades.meta_starting_size) {
       const sizeBonus = metaUpgrades.meta_starting_size * 5;
       this.player.stats.size += sizeBonus;
       this.player.size = this.player.stats.size;
@@ -506,6 +516,7 @@ export class GameEngine {
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
             this.player.eat(entity);
+            this.syncPlayerSizeToRunState(); // Persist size to RunState
             this.dropEssenceFromFish(entity as Fish);
             entity.destroy(this.physics);
             this.createParticles(entity.x, entity.y, entity.color, 10);
@@ -514,6 +525,7 @@ export class GameEngine {
         } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
           // Player eats entity (only from front)
           this.player.eat(entity);
+          this.syncPlayerSizeToRunState(); // Persist size to RunState
           this.dropEssenceFromFish(entity as Fish);
           entity.destroy(this.physics);
           this.createParticles(entity.x, entity.y, entity.color, 10);
@@ -597,6 +609,20 @@ export class GameEngine {
 
     // Destroy orb
     orb.destroy(this.physics);
+  }
+
+  /**
+   * Sync player size to run state
+   * Called after player grows to persist size between levels
+   */
+  private syncPlayerSizeToRunState(): void {
+    if (!this.player) return;
+    
+    let runState = loadRunState();
+    if (runState) {
+      runState = updateFishState(runState, { size: this.player.stats.size });
+      saveRunState(runState);
+    }
   }
 
   /**
