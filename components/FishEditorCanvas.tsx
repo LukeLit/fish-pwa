@@ -112,6 +112,7 @@ export default function FishEditorCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isClient, setIsClient] = useState(false);
+  const [operationStatus, setOperationStatus] = useState<string | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const chromaToleranceRef = useRef<number>(chromaTolerance);
   const zoomRef = useRef<number>(zoom);
@@ -607,6 +608,13 @@ export default function FishEditorCanvas({
   // Initialize player from playerCreature data AND load growth-aware sprite
   useEffect(() => {
     if (playerCreature) {
+      console.log(`[FishEditorCanvas] playerCreature changed:`, {
+        id: playerCreature.id,
+        hasGrowthSprites: !!playerCreature.growthSprites,
+        growthStages: playerCreature.growthSprites ? Object.keys(playerCreature.growthSprites) : [],
+        updatedAt: playerCreature.updatedAt,
+      });
+
       // Update player ID from creature data
       playerRef.current.id = playerCreature.id;
 
@@ -619,7 +627,11 @@ export default function FishEditorCanvas({
 
       // Set player animations from creature data
       playerRef.current.animations = playerCreature.animations;
-      
+
+      // Remove old animation sprite to ensure fresh data is used
+      // This handles the case where animations were regenerated
+      animationSpriteManagerRef.current.removeSprite('player');
+
       // Pre-initialize animation sprite if animations exist
       if (playerCreature.animations && hasUsableAnimations(playerCreature.animations)) {
         // Determine the correct growth stage for the player's starting size
@@ -642,16 +654,17 @@ export default function FishEditorCanvas({
           const growthStage = getGrowthStage(playerSize, playerCreature.growthSprites);
           const { sprite: growthSprite } = getGrowthStageSprite(playerCreature, playerSize, 'player');
           spriteToLoad = growthSprite;
-          console.log(`[FishEditorCanvas] Loading player sprite for ${growthStage} stage (size: ${playerSize})`);
+          console.log(`[FishEditorCanvas] Loading player sprite for ${growthStage} stage (size: ${playerSize}), URL: ${spriteToLoad.substring(0, 80)}...`);
         }
 
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
+          console.log(`[FishEditorCanvas] Player sprite loaded successfully`);
           playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
         };
         img.onerror = () => {
-          console.error('Failed to load player fish sprite');
+          console.error('Failed to load player fish sprite:', spriteToLoad);
           playerRef.current.sprite = null;
         };
         img.src = cacheBust(spriteToLoad);
@@ -822,7 +835,7 @@ export default function FishEditorCanvas({
     if (onCacheRefreshed) {
       onCacheRefreshed();
     }
-  }, [spawnedFish, playerFishSprite, onCacheRefreshed]);
+  }, [spawnedFish, playerFishSprite, playerCreature, onCacheRefreshed]);
 
   // Listen for global refresh event
   useEffect(() => {
@@ -832,6 +845,32 @@ export default function FishEditorCanvas({
     window.addEventListener('refreshFishSprites', handleRefresh);
     return () => window.removeEventListener('refreshFishSprites', handleRefresh);
   }, [refreshAllSprites]);
+
+  // Listen for operation status events (uploading, generating, etc.)
+  useEffect(() => {
+    const handleStatus = (e: CustomEvent<{ status: string | null }>) => {
+      setOperationStatus(e.detail.status);
+    };
+    window.addEventListener('canvasOperationStatus', handleStatus as EventListener);
+    return () => window.removeEventListener('canvasOperationStatus', handleStatus as EventListener);
+  }, []);
+
+  // Listen for animation preview requests
+  useEffect(() => {
+    const handlePreviewAnimation = (e: CustomEvent<{ action: string }>) => {
+      const { action } = e.detail;
+      console.log(`[FishEditorCanvas] Preview animation requested: ${action}`);
+
+      if (animationSpriteManagerRef.current.hasSprite('player')) {
+        const sprite = animationSpriteManagerRef.current.getSprite('player', playerRef.current.animations || {});
+        sprite.triggerAction(action as any);
+      } else {
+        console.warn('[FishEditorCanvas] No player animation sprite available for preview');
+      }
+    };
+    window.addEventListener('previewAnimation', handlePreviewAnimation as EventListener);
+    return () => window.removeEventListener('previewAnimation', handlePreviewAnimation as EventListener);
+  }, []);
 
   // Helper to load a growth-stage-aware sprite
   const loadGrowthAwareSprite = useCallback((
@@ -1516,7 +1555,7 @@ export default function FishEditorCanvas({
                     console.error(`[Growth] Failed to load sprite for ${newStage}:`, e);
                   };
                   growthImg.src = spriteUrl;
-                  
+
                   // Update animation sprite's growth stage
                   if (animationSpriteManagerRef.current.hasSprite('player')) {
                     const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
@@ -1630,7 +1669,7 @@ export default function FishEditorCanvas({
                   player.sprite = removeBackground(growthImg, chromaToleranceRef.current);
                 };
                 growthImg.src = spriteUrl;
-                
+
                 // Update animation sprite's growth stage
                 if (animationSpriteManagerRef.current.hasSprite('player')) {
                   const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
@@ -2132,9 +2171,9 @@ export default function FishEditorCanvas({
       const playerScreenSize = player.size * currentZoom;
       const playerHasAnimations = hasUsableAnimations(player.animations);
       const playerClipMode = getClipMode(playerScreenSize, playerHasAnimations, renderContext);
-      
+
       let playerRendered = false;
-      
+
       // Try animation sprite rendering first if animations available
       if (playerClipMode === 'video' && playerHasAnimations && animationSpriteManagerRef.current.hasSprite('player')) {
         const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
@@ -2153,7 +2192,7 @@ export default function FishEditorCanvas({
           { flipX: !player.facingRight }
         );
       }
-      
+
       // Fall back to deformation rendering
       if (!playerRendered && player.sprite) {
         // Calculate screen-space size for smooth LOD (player gets extra segments)
@@ -2177,7 +2216,7 @@ export default function FishEditorCanvas({
         );
         playerRendered = true;
       }
-      
+
       if (!playerRendered) {
         ctx.fillStyle = '#60a5fa';
         ctx.strokeStyle = '#fff';
@@ -2491,6 +2530,15 @@ export default function FishEditorCanvas({
         <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
       </div>
 
+      {/* Operation status overlay */}
+      {operationStatus && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-1 bg-black/70 backdrop-blur-sm rounded-full text-xs text-white/90 flex items-center gap-2 pointer-events-none"
+        >
+          <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+          {operationStatus}
+        </div>
+      )}
     </div>
   );
 }

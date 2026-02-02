@@ -176,6 +176,7 @@ export interface AnimationSequence {
   loop: boolean;         // Whether this animation loops
   frameRate: number;     // Playback speed (default: 12 fps for pixel art style)
   generatedAt?: string;
+  version?: string;      // Unique version ID for this animation (prevents cache issues)
 }
 
 /**

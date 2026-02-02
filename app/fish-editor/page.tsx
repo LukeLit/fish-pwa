@@ -23,7 +23,10 @@ import {
   getGrowthStage,
   setGrowthDebug,
 } from '@/lib/rendering/fish-renderer';
-import type { GrowthStage, GrowthSprites } from '@/lib/game/types';
+import type { GrowthStage, GrowthSprites, AnimationAction } from '@/lib/game/types';
+
+// Animation actions available for preview
+const PREVIEW_ANIMATIONS: AnimationAction[] = ['idle', 'swim', 'dash', 'bite', 'hurt', 'death'];
 
 // Constants
 const DEFAULT_ZOOM = 1.0;
@@ -49,6 +52,7 @@ export default function FishEditorPage() {
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   const [sizeOverride, setSizeOverride] = useState<number | null>(null);
+  const [previewAnimationIndex, setPreviewAnimationIndex] = useState(0);
   const [mipmapDebug, setMipmapDebugState] = useState(false);
   const [growthDebug, setGrowthDebugState] = useState(false);
   const [isGeneratingGrowth, setIsGeneratingGrowth] = useState(false);
@@ -351,7 +355,7 @@ export default function FishEditorPage() {
    */
   const handleBiomeSelect = useCallback(async (biomeId: string, biomeFish: FishData[]) => {
     console.log(`[FishEditor] Biome selected: ${biomeId}, ${biomeFish.length} fish`);
-    
+
     // 1. Fetch and set a background for this biome
     try {
       const bgResponse = await fetch(`/api/list-assets?type=background&includeMetadata=true`);
@@ -378,7 +382,7 @@ export default function FishEditorPage() {
     setSpawnedFish([]);
     setEditMode(false);
     setSelectedFishId(null);
-    
+
     // 3. Filter to fish with sprites and spawn them all
     const fishWithSprites = biomeFish.filter(fish => fish.sprite);
     if (fishWithSprites.length === 0) {
@@ -414,7 +418,7 @@ export default function FishEditorPage() {
     const playerCandidate = playableFish.length > 0
       ? playableFish[Math.floor(Math.random() * playableFish.length)]
       : fishWithSprites[Math.floor(Math.random() * fishWithSprites.length)];
-    
+
     setPlayerCreatureId(playerCandidate.id);
     console.log(`[FishEditor] Set player to: ${playerCandidate.name} (${playerCandidate.id})`);
   }, []);
@@ -753,8 +757,8 @@ export default function FishEditorPage() {
             onClick={handleRefreshAll}
             disabled={isRefreshing}
             className={`w-10 h-10 rounded-lg shadow-lg border flex items-center justify-center transition-colors ${isRefreshing
-                ? 'bg-cyan-700 border-cyan-500 cursor-wait'
-                : 'bg-gray-800 hover:bg-gray-700 border-gray-600'
+              ? 'bg-cyan-700 border-cyan-500 cursor-wait'
+              : 'bg-gray-800 hover:bg-gray-700 border-gray-600'
               } text-white`}
             title="Refresh Everything (clear all caches)"
           >
@@ -803,7 +807,7 @@ export default function FishEditorPage() {
               className={`p-1.5 rounded-full transition-all ${hasPrevious
                 ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
                 : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
-              }`}
+                }`}
               title="Previous Fish"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
@@ -884,7 +888,7 @@ export default function FishEditorPage() {
               className={`p-1.5 rounded-full transition-all ${hasNext
                 ? 'bg-gray-800/80 hover:bg-gray-700 text-white cursor-pointer'
                 : 'bg-gray-800/40 text-gray-600 cursor-not-allowed'
-              }`}
+                }`}
               title="Next Fish"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
@@ -894,149 +898,221 @@ export default function FishEditorPage() {
           </div>
         )}
 
-      {/* Canvas - Full screen, but fish will be positioned in top area during edit mode */}
-      {/* Mobile: explicit height above panel, Desktop: left margin for side drawer */}
-      <div className={`relative transition-all duration-200 ${paused
-        ? 'h-[35vh] lg:h-auto lg:flex-1 lg:ml-[420px]'
-        : 'flex-1'
-        }`}>
-        <FishEditorCanvas
-          background={selectedBackground}
-          playerFishSprite={playerFishSprite}
-          playerCreature={playerCreature as any}
-          spawnedFish={spawnedFish}
-          chromaTolerance={chromaTolerance}
-          zoom={zoom}
-          enableWaterDistortion={enableWaterDistortion}
-          deformationIntensity={deformationIntensity}
-          editMode={editMode}
-          selectedFishId={selectedFishId}
-          onEditFish={handleEditFish}
-          showEditButtons={paused}
-          fishData={fishData}
-          paused={paused}
-          onCacheRefreshed={() => console.log('[FishEditor] Cache refreshed!')}
+        {/* Animation Preview Controls - Below fish name */}
+        {paused && selectedFish && selectedFish.animations && (() => {
+          // Check which animations exist for any stage
+          const hasAnyAnimation = PREVIEW_ANIMATIONS.some(action =>
+            selectedFish.animations?.juvenile?.[action]?.frames?.length ||
+            selectedFish.animations?.adult?.[action]?.frames?.length ||
+            selectedFish.animations?.elder?.[action]?.frames?.length
+          );
+
+          if (!hasAnyAnimation) return null;
+
+          const currentAction = PREVIEW_ANIMATIONS[previewAnimationIndex];
+          const hasCurrentAnimation =
+            selectedFish.animations?.juvenile?.[currentAction]?.frames?.length ||
+            selectedFish.animations?.adult?.[currentAction]?.frames?.length ||
+            selectedFish.animations?.elder?.[currentAction]?.frames?.length;
+
+          return (
+            <div
+              className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 py-1.5 px-3 bg-gray-800/80 backdrop-blur-sm rounded-full bottom-[calc(65vh-44px)] lg:bottom-12"
+              style={{ zIndex: Z_LAYERS.CONTROLS }}
+            >
+              {/* Previous Animation */}
+              <button
+                onClick={() => {
+                  const newIndex = (previewAnimationIndex - 1 + PREVIEW_ANIMATIONS.length) % PREVIEW_ANIMATIONS.length;
+                  setPreviewAnimationIndex(newIndex);
+                  window.dispatchEvent(new CustomEvent('previewAnimation', { detail: { action: PREVIEW_ANIMATIONS[newIndex] } }));
+                }}
+                className="p-1 rounded-full bg-gray-700/50 hover:bg-gray-600 text-white/70 hover:text-white transition-all"
+                title="Previous Animation"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+
+              {/* Animation Name - Click to play */}
+              <button
+                onClick={() => {
+                  if (hasCurrentAnimation) {
+                    window.dispatchEvent(new CustomEvent('previewAnimation', { detail: { action: currentAction } }));
+                  }
+                }}
+                className={`text-xs font-medium min-w-[70px] text-center transition-colors ${hasCurrentAnimation
+                    ? 'text-green-400 hover:text-green-300'
+                    : 'text-gray-500'
+                  }`}
+                title={hasCurrentAnimation ? "Click to play" : "No animation generated"}
+                disabled={!hasCurrentAnimation}
+              >
+                {hasCurrentAnimation ? '▶' : '○'} {currentAction}
+              </button>
+
+              {/* Next Animation */}
+              <button
+                onClick={() => {
+                  const newIndex = (previewAnimationIndex + 1) % PREVIEW_ANIMATIONS.length;
+                  setPreviewAnimationIndex(newIndex);
+                  window.dispatchEvent(new CustomEvent('previewAnimation', { detail: { action: PREVIEW_ANIMATIONS[newIndex] } }));
+                }}
+                className="p-1 rounded-full bg-gray-700/50 hover:bg-gray-600 text-white/70 hover:text-white transition-all"
+                title="Next Animation"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Canvas - Full screen, but fish will be positioned in top area during edit mode */}
+        {/* Mobile: explicit height above panel, Desktop: left margin for side drawer */}
+        <div className={`relative transition-all duration-200 ${paused
+          ? 'h-[35vh] lg:h-auto lg:flex-1 lg:ml-[420px]'
+          : 'flex-1'
+          }`}>
+          <FishEditorCanvas
+            background={selectedBackground}
+            playerFishSprite={playerFishSprite}
+            playerCreature={playerCreature as any}
+            spawnedFish={spawnedFish}
+            chromaTolerance={chromaTolerance}
+            zoom={zoom}
+            enableWaterDistortion={enableWaterDistortion}
+            deformationIntensity={deformationIntensity}
+            editMode={editMode}
+            selectedFishId={selectedFishId}
+            onEditFish={handleEditFish}
+            showEditButtons={paused}
+            fishData={fishData}
+            paused={paused}
+            onCacheRefreshed={() => console.log('[FishEditor] Cache refreshed!')}
+          />
+        </div>
+
+        {/* Pause Menu - All editor functionality is now in the pause menu */}
+        <PauseMenu
+          isOpen={paused}
+          onClose={handleClosePauseMenu}
+          mode="editor"
+          creatures={fishData}
+          selectedFish={selectedFish}
+          onSelectFish={handlePauseMenuSelectFish}
+          onSaveFish={handleSaveFish}
+          onAddNewCreature={handleAddNewCreature}
+          onSetPlayer={handleSetPlayerFish}
+          onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
+          spawnedFishIds={spawnedFish.map(f => f.creatureId || f.id)}
+          onBiomeSelect={handleBiomeSelect}
+          onPreviousFish={handlePreviousFish}
+          onNextFish={handleNextFish}
+          hasPrevious={hasPrevious}
+          hasNext={hasNext}
+          onOpenArtSelector={(callback) => handleOpenArtSelector('fish', callback)}
+          onExitFishEdit={handleExitEditMode}
+          // Background props
+          currentBackground={selectedBackground}
+          onBackgroundChange={(url) => setSelectedBackground(url)}
+          onSelectBackground={handleSelectBackground}
+          onAddNewBackground={handleAddNewBackground}
+          // Scene settings props
+          sceneSettings={{
+            zoom,
+            chromaTolerance,
+            enableWaterDistortion,
+            deformationIntensity,
+            spawnedFishCount: spawnedFish.length,
+          }}
+          onZoomChange={setZoom}
+          onChromaToleranceChange={setChromaTolerance}
+          onWaterDistortionChange={setEnableWaterDistortion}
+          onDeformationIntensityChange={setDeformationIntensity}
+          onClearFish={handleClearFish}
+          onBackToMenu={handleBackToMenu}
         />
-      </div>
 
-      {/* Pause Menu - All editor functionality is now in the pause menu */}
-      <PauseMenu
-        isOpen={paused}
-        onClose={handleClosePauseMenu}
-        mode="editor"
-        creatures={fishData}
-        selectedFish={selectedFish}
-        onSelectFish={handlePauseMenuSelectFish}
-        onSaveFish={handleSaveFish}
-        onAddNewCreature={handleAddNewCreature}
-        onSetPlayer={handleSetPlayerFish}
-        onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
-        spawnedFishIds={spawnedFish.map(f => f.creatureId || f.id)}
-        onBiomeSelect={handleBiomeSelect}
-        onPreviousFish={handlePreviousFish}
-        onNextFish={handleNextFish}
-        hasPrevious={hasPrevious}
-        hasNext={hasNext}
-        onOpenArtSelector={(callback) => handleOpenArtSelector('fish', callback)}
-        onExitFishEdit={handleExitEditMode}
-        // Background props
-        currentBackground={selectedBackground}
-        onBackgroundChange={(url) => setSelectedBackground(url)}
-        onSelectBackground={handleSelectBackground}
-        onAddNewBackground={handleAddNewBackground}
-        // Scene settings props
-        sceneSettings={{
-          zoom,
-          chromaTolerance,
-          enableWaterDistortion,
-          deformationIntensity,
-          spawnedFishCount: spawnedFish.length,
-        }}
-        onZoomChange={setZoom}
-        onChromaToleranceChange={setChromaTolerance}
-        onWaterDistortionChange={setEnableWaterDistortion}
-        onDeformationIntensityChange={setDeformationIntensity}
-        onClearFish={handleClearFish}
-        onBackToMenu={handleBackToMenu}
-      />
+        {/* Bottom Right Edit/Resume Button - Same position for both states */}
+        {/* Uses PANEL_HEADER z-index to float above the pause menu panel on mobile */}
+        {/* Compact on mobile, larger on desktop */}
+        <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4" style={{ zIndex: Z_LAYERS.PANEL_HEADER }}>
+          {!paused ? (
+            <button
+              onClick={() => setPaused(true)}
+              className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow-lg border-2 border-cyan-400/50 font-bold uppercase tracking-wider transition-all hover:scale-105 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base"
+              title="Open Editor"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 sm:w-5 sm:h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+              </svg>
+              Edit
+            </button>
+          ) : (
+            <button
+              onClick={() => setPaused(false)}
+              className="flex items-center gap-1.5 sm:gap-2 bg-green-600 hover:bg-green-500 text-white px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow-lg font-bold uppercase tracking-wider transition-all hover:scale-105 text-sm sm:text-base"
+              title="Resume"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 sm:w-5 sm:h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+              </svg>
+              Resume
+            </button>
+          )}
+        </div>
 
-      {/* Bottom Right Edit/Resume Button - Same position for both states */}
-      {/* Uses PANEL_HEADER z-index to float above the pause menu panel on mobile */}
-      {/* Compact on mobile, larger on desktop */}
-      <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4" style={{ zIndex: Z_LAYERS.PANEL_HEADER }}>
-        {!paused ? (
-          <button
-            onClick={() => setPaused(true)}
-            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow-lg border-2 border-cyan-400/50 font-bold uppercase tracking-wider transition-all hover:scale-105 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base"
-            title="Open Editor"
+        {/* Size Slider Panel - Right side when editing a fish */}
+        {/* On mobile: compact version with just slider + size value */}
+        {/* On desktop (lg+): full version with all debug info, vertically centered */}
+        {paused && selectedFish && (
+          <div
+            className="absolute right-2 top-16 lg:right-4 lg:top-1/2 lg:-translate-y-1/2 bg-gray-900/95 backdrop-blur-sm rounded-lg p-2 lg:p-3 border border-gray-700 shadow-xl w-12 lg:w-16 flex flex-col items-center gap-1 lg:gap-2"
+            style={{ zIndex: Z_LAYERS.PANEL_HEADER }}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 sm:w-5 sm:h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-            </svg>
-            Edit
-          </button>
-        ) : (
-          <button
-            onClick={() => setPaused(false)}
-            className="flex items-center gap-1.5 sm:gap-2 bg-green-600 hover:bg-green-500 text-white px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow-lg font-bold uppercase tracking-wider transition-all hover:scale-105 text-sm sm:text-base"
-            title="Resume"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 sm:w-5 sm:h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-            </svg>
-            Resume
-          </button>
-        )}
-      </div>
+            {/* Size Label */}
+            <div className="text-[10px] lg:text-xs text-gray-400 font-medium">SIZE</div>
 
-      {/* Size Slider Panel - Right side when editing a fish */}
-      {/* On mobile: compact version with just slider + size value */}
-      {/* On desktop (lg+): full version with all debug info, vertically centered */}
-      {paused && selectedFish && (
-        <div
-          className="absolute right-2 top-16 lg:right-4 lg:top-1/2 lg:-translate-y-1/2 bg-gray-900/95 backdrop-blur-sm rounded-lg p-2 lg:p-3 border border-gray-700 shadow-xl w-12 lg:w-16 flex flex-col items-center gap-1 lg:gap-2"
-          style={{ zIndex: Z_LAYERS.PANEL_HEADER }}
-        >
-          {/* Size Label */}
-          <div className="text-[10px] lg:text-xs text-gray-400 font-medium">SIZE</div>
+            {/* Vertical Slider - shorter on mobile */}
+            <div className="relative h-28 lg:h-48 w-6 flex items-center justify-center">
+              <input
+                type="range"
+                min="20"
+                max="300"
+                value={sizeOverride ?? selectedFish.stats?.size ?? 60}
+                onChange={(e) => {
+                  const newSize = parseInt(e.target.value);
+                  const oldSize = sizeOverride ?? selectedFish.stats?.size ?? 60;
 
-          {/* Vertical Slider - shorter on mobile */}
-          <div className="relative h-28 lg:h-48 w-6 flex items-center justify-center">
-            <input
-              type="range"
-              min="20"
-              max="300"
-              value={sizeOverride ?? selectedFish.stats?.size ?? 60}
-              onChange={(e) => {
-                const newSize = parseInt(e.target.value);
-                const oldSize = sizeOverride ?? selectedFish.stats?.size ?? 60;
+                  // Check if we're crossing a resolution threshold
+                  const oldTier = getResolutionTier(oldSize, zoom);
+                  const newTier = getResolutionTier(newSize, zoom);
 
-                // Check if we're crossing a resolution threshold
-                const oldTier = getResolutionTier(oldSize, zoom);
-                const newTier = getResolutionTier(newSize, zoom);
+                  // Check if we're crossing a growth stage threshold
+                  const oldGrowthStage = getGrowthStage(oldSize, selectedFish.growthSprites);
+                  const newGrowthStage = getGrowthStage(newSize, selectedFish.growthSprites);
 
-                // Check if we're crossing a growth stage threshold
-                const oldGrowthStage = getGrowthStage(oldSize, selectedFish.growthSprites);
-                const newGrowthStage = getGrowthStage(newSize, selectedFish.growthSprites);
+                  setSizeOverride(newSize);
 
-                setSizeOverride(newSize);
+                  // Dispatch event to update ONLY the selected fish's size in canvas
+                  // Use selectedFishId (instance ID) not selectedFish.id (creature ID)
+                  if (selectedFishId) {
+                    window.dispatchEvent(new CustomEvent('updateFishSize', {
+                      detail: { fishId: selectedFishId, size: newSize }
+                    }));
+                  }
 
-                // Dispatch event to update ONLY the selected fish's size in canvas
-                // Use selectedFishId (instance ID) not selectedFish.id (creature ID)
-                if (selectedFishId) {
-                  window.dispatchEvent(new CustomEvent('updateFishSize', {
-                    detail: { fishId: selectedFishId, size: newSize }
-                  }));
-                }
-
-                // Log growth stage changes (sprite swap is handled by updateFishSize event)
-                if (oldGrowthStage !== newGrowthStage) {
-                  console.log(`[Growth] Size slider crossed growth stage: ${oldGrowthStage} -> ${newGrowthStage} (size: ${oldSize} -> ${newSize})`);
-                } else if (oldTier !== newTier) {
-                  console.log(`[Mipmap] Size slider crossed threshold: ${oldTier} -> ${newTier} (size: ${oldSize} -> ${newSize}, screen: ${Math.round(newSize * zoom)}px)`);
-                }
-              }}
-              className="absolute h-28 lg:h-48 w-6 cursor-pointer appearance-none bg-transparent
+                  // Log growth stage changes (sprite swap is handled by updateFishSize event)
+                  if (oldGrowthStage !== newGrowthStage) {
+                    console.log(`[Growth] Size slider crossed growth stage: ${oldGrowthStage} -> ${newGrowthStage} (size: ${oldSize} -> ${newSize})`);
+                  } else if (oldTier !== newTier) {
+                    console.log(`[Mipmap] Size slider crossed threshold: ${oldTier} -> ${newTier} (size: ${oldSize} -> ${newSize}, screen: ${Math.round(newSize * zoom)}px)`);
+                  }
+                }}
+                className="absolute h-28 lg:h-48 w-6 cursor-pointer appearance-none bg-transparent
                 [writing-mode:vertical-lr] [direction:rtl]
                 [&::-webkit-slider-runnable-track]:w-2 [&::-webkit-slider-runnable-track]:h-full 
                 [&::-webkit-slider-runnable-track]:bg-gray-700 [&::-webkit-slider-runnable-track]:rounded-full
@@ -1050,136 +1126,136 @@ export default function FishEditorPage() {
                 [&::-moz-range-thumb]:bg-cyan-500 [&::-moz-range-thumb]:rounded-full 
                 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-2 
                 [&::-moz-range-thumb]:border-white"
-              title={`Fish size: ${sizeOverride ?? selectedFish.stats?.size ?? 60}px`}
-            />
-          </div>
-
-          {/* Size Value */}
-          <div className="text-xs lg:text-sm text-white font-mono">
-            {sizeOverride ?? selectedFish.stats?.size ?? 60}
-          </div>
-
-          {/* Desktop only: Screen Size, Mipmap, Debug, Growth info */}
-          <div className="hidden lg:contents">
-            {/* Screen Size (calculated) */}
-            <div className="text-xs text-gray-500 text-center">
-              <div>screen:</div>
-              <div className="text-cyan-400 font-mono">
-                {Math.round((sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom)}px
-              </div>
+                title={`Fish size: ${sizeOverride ?? selectedFish.stats?.size ?? 60}px`}
+              />
             </div>
 
-            {/* Resolution indicator */}
-            <div className="text-xs text-center">
-              <div className="text-gray-500">mipmap:</div>
-              <div className={`font-bold ${(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
-                ? 'text-green-400'
-                : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
-                  ? 'text-yellow-400'
-                  : 'text-red-400'
-                }`}>
-                {(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
-                  ? 'HIGH'
+            {/* Size Value */}
+            <div className="text-xs lg:text-sm text-white font-mono">
+              {sizeOverride ?? selectedFish.stats?.size ?? 60}
+            </div>
+
+            {/* Desktop only: Screen Size, Mipmap, Debug, Growth info */}
+            <div className="hidden lg:contents">
+              {/* Screen Size (calculated) */}
+              <div className="text-xs text-gray-500 text-center">
+                <div>screen:</div>
+                <div className="text-cyan-400 font-mono">
+                  {Math.round((sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom)}px
+                </div>
+              </div>
+
+              {/* Resolution indicator */}
+              <div className="text-xs text-center">
+                <div className="text-gray-500">mipmap:</div>
+                <div className={`font-bold ${(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
+                  ? 'text-green-400'
                   : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
-                    ? 'MED'
-                    : 'LOW'}
+                    ? 'text-yellow-400'
+                    : 'text-red-400'
+                  }`}>
+                  {(sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.HIGH
+                    ? 'HIGH'
+                    : (sizeOverride ?? selectedFish.stats?.size ?? 60) * zoom >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM
+                      ? 'MED'
+                      : 'LOW'}
+                </div>
               </div>
+
+              {/* Mipmap Debug Toggle */}
+              <button
+                onClick={() => {
+                  const newState = !mipmapDebug;
+                  setMipmapDebugState(newState);
+                  setMipmapDebug(newState);
+                }}
+                className={`text-xs px-2 py-1 rounded transition-colors ${mipmapDebug
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                title="Toggle mipmap debug logging in console"
+              >
+                {mipmapDebug ? 'DEBUG' : 'debug'}
+              </button>
+
+              {/* Divider */}
+              <div className="w-full border-t border-gray-600 my-1"></div>
+
+              {/* Growth Stage Section */}
+              <div className="text-xs text-gray-400 font-medium">GROWTH</div>
+
+              {/* Current Growth Stage */}
+              <div className="text-xs text-center">
+                <div className="text-gray-500">stage:</div>
+                <div className={`font-bold ${getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'juvenile'
+                  ? 'text-blue-400'
+                  : getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'elder'
+                    ? 'text-purple-400'
+                    : 'text-green-400'
+                  }`}>
+                  {getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites).toUpperCase()}
+                </div>
+              </div>
+
+              {/* Growth Sprite Status */}
+              <div className="text-xs text-center space-y-1">
+                <div className={`${selectedFish.growthSprites?.juvenile ? 'text-green-400' : 'text-gray-600'}`}>
+                  {selectedFish.growthSprites?.juvenile ? '✓' : '○'} juvenile
+                </div>
+                <div className="text-green-400">✓ adult</div>
+                <div className={`${selectedFish.growthSprites?.elder ? 'text-green-400' : 'text-gray-600'}`}>
+                  {selectedFish.growthSprites?.elder ? '✓' : '○'} elder
+                </div>
+              </div>
+
+              {/* Generate Growth Sprites Button */}
+              <button
+                onClick={handleGenerateGrowthSprites}
+                disabled={isGeneratingGrowth}
+                className={`text-xs px-2 py-1 rounded transition-colors ${isGeneratingGrowth
+                  ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  : 'bg-purple-600 text-white hover:bg-purple-500'
+                  }`}
+                title="Generate juvenile and elder sprite variants"
+              >
+                {isGeneratingGrowth ? '...' : 'GEN'}
+              </button>
+
+              {/* Growth Generation Status */}
+              {growthGenerationStatus && (
+                <div className="text-xs text-center text-yellow-400 max-w-full break-words">
+                  {growthGenerationStatus}
+                </div>
+              )}
+
+              {/* Growth Debug Toggle */}
+              <button
+                onClick={() => {
+                  const newState = !growthDebug;
+                  setGrowthDebugState(newState);
+                  setGrowthDebug(newState);
+                }}
+                className={`text-xs px-2 py-1 rounded transition-colors ${growthDebug
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                title="Toggle growth stage debug logging in console"
+              >
+                {growthDebug ? 'DEBUG' : 'debug'}
+              </button>
             </div>
-
-            {/* Mipmap Debug Toggle */}
-            <button
-              onClick={() => {
-                const newState = !mipmapDebug;
-                setMipmapDebugState(newState);
-                setMipmapDebug(newState);
-              }}
-              className={`text-xs px-2 py-1 rounded transition-colors ${mipmapDebug
-                ? 'bg-cyan-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                }`}
-              title="Toggle mipmap debug logging in console"
-            >
-              {mipmapDebug ? 'DEBUG' : 'debug'}
-            </button>
-
-            {/* Divider */}
-            <div className="w-full border-t border-gray-600 my-1"></div>
-
-            {/* Growth Stage Section */}
-            <div className="text-xs text-gray-400 font-medium">GROWTH</div>
-
-            {/* Current Growth Stage */}
-            <div className="text-xs text-center">
-              <div className="text-gray-500">stage:</div>
-              <div className={`font-bold ${getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'juvenile'
-                ? 'text-blue-400'
-                : getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites) === 'elder'
-                  ? 'text-purple-400'
-                  : 'text-green-400'
-                }`}>
-                {getGrowthStage(sizeOverride ?? selectedFish.stats?.size ?? 60, selectedFish.growthSprites).toUpperCase()}
-              </div>
-            </div>
-
-            {/* Growth Sprite Status */}
-            <div className="text-xs text-center space-y-1">
-              <div className={`${selectedFish.growthSprites?.juvenile ? 'text-green-400' : 'text-gray-600'}`}>
-                {selectedFish.growthSprites?.juvenile ? '✓' : '○'} juvenile
-              </div>
-              <div className="text-green-400">✓ adult</div>
-              <div className={`${selectedFish.growthSprites?.elder ? 'text-green-400' : 'text-gray-600'}`}>
-                {selectedFish.growthSprites?.elder ? '✓' : '○'} elder
-              </div>
-            </div>
-
-            {/* Generate Growth Sprites Button */}
-            <button
-              onClick={handleGenerateGrowthSprites}
-              disabled={isGeneratingGrowth}
-              className={`text-xs px-2 py-1 rounded transition-colors ${isGeneratingGrowth
-                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                : 'bg-purple-600 text-white hover:bg-purple-500'
-                }`}
-              title="Generate juvenile and elder sprite variants"
-            >
-              {isGeneratingGrowth ? '...' : 'GEN'}
-            </button>
-
-            {/* Growth Generation Status */}
-            {growthGenerationStatus && (
-              <div className="text-xs text-center text-yellow-400 max-w-full break-words">
-                {growthGenerationStatus}
-              </div>
-            )}
-
-            {/* Growth Debug Toggle */}
-            <button
-              onClick={() => {
-                const newState = !growthDebug;
-                setGrowthDebugState(newState);
-                setGrowthDebug(newState);
-              }}
-              className={`text-xs px-2 py-1 rounded transition-colors ${growthDebug
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                }`}
-              title="Toggle growth stage debug logging in console"
-            >
-              {growthDebug ? 'DEBUG' : 'debug'}
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Art Selector Modal - Rendered at page level */}
-      {showArtSelector && (
-        <ArtSelectorPanel
-          type={artSelectorType}
-          onSelect={handleArtSelect}
-          onCancel={handleArtSelectorCancel}
-        />
-      )}
-    </div>
+        {/* Art Selector Modal - Rendered at page level */}
+        {showArtSelector && (
+          <ArtSelectorPanel
+            type={artSelectorType}
+            onSelect={handleArtSelect}
+            onCancel={handleArtSelectorCancel}
+          />
+        )}
+      </div>
     </SyncProvider >
   );
 }

@@ -13,14 +13,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fal } from '@fal-ai/client';
 import { uploadAsset, downloadGameData, uploadGameData } from '@/lib/storage/blob-storage';
-import type { 
-  Creature, 
-  GrowthStage, 
+import type {
+  Creature,
+  GrowthStage,
   AnimationAction,
   AnimationSequence,
   ANIMATION_CONFIG
 } from '@/lib/game/types';
 import { ANIMATION_CONFIG as CONFIG } from '@/lib/game/types';
+import { generateVersionId, buildAnimationFramePath } from '@/lib/rendering/animation-asset-manager';
 
 // Configure fal client
 if (process.env.FAL_KEY) {
@@ -99,21 +100,25 @@ export async function POST(request: NextRequest) {
     // Use our simplified frame counts
     const numFrames = frameCount || FRAME_COUNTS[action as AnimationAction];
 
-    console.log(`[AnimFrames] Generating ${numFrames} frame(s) for ${creatureId}/${growthStage}/${action}`);
+    // Generate a unique version ID for this generation batch
+    // This ensures we never overwrite existing frames
+    const version = generateVersionId();
+
+    console.log(`[AnimFrames] Generating ${numFrames} frame(s) for ${creatureId}/${growthStage}/${action} (${version})`);
 
     // Generate each frame
     const frameUrls: string[] = [];
-    
+
     for (let i = 0; i < numFrames; i++) {
       const prompt = buildFramePrompt(action as AnimationAction, i);
-      
+
       console.log(`[AnimFrames] Generating frame ${i + 1}/${numFrames} with prompt: "${prompt}"`);
 
       try {
         // Use Nano Banana Pro (Google Gemini 3 Pro Image) - SOTA semantic editing
         // Understands natural language edits without masks or manual selection
         console.log(`[AnimFrames] Using Nano Banana Pro for ${action} frame ${i}`);
-        
+
         const result = await fal.subscribe('fal-ai/nano-banana-pro/edit', {
           input: {
             prompt,
@@ -134,15 +139,21 @@ export async function POST(request: NextRequest) {
           console.error(`[AnimFrames] Failed to download frame ${i}`);
           continue;
         }
-        
+
         const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-        const framePath = `creatures/${creatureId}/animations/${growthStage}/${action}/frame_${String(i).padStart(2, '0')}.png`;
+        // Use versioned path - never overwrites, each generation is unique
+        const framePath = buildAnimationFramePath(
+          creatureId,
+          growthStage as GrowthStage,
+          action as AnimationAction,
+          i,
+          version
+        );
         const uploadResult = await uploadAsset(framePath, imageBuffer, 'image/png');
-        
-        // Add cache-busting timestamp to URL
-        const cacheBustedUrl = `${uploadResult.url}?t=${Date.now()}`;
-        frameUrls.push(cacheBustedUrl);
-        console.log(`[AnimFrames] Frame ${i + 1} uploaded: ${cacheBustedUrl}`);
+
+        // No cache busting needed - the versioned path is unique
+        frameUrls.push(uploadResult.url);
+        console.log(`[AnimFrames] Frame ${i + 1} uploaded: ${uploadResult.url}`);
 
       } catch (frameError: any) {
         console.error(`[AnimFrames] Error generating frame ${i}:`, frameError.message);
@@ -157,13 +168,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build animation sequence
+    // Build animation sequence with version tracking
     const sequence: AnimationSequence = {
       action: action as AnimationAction,
       frames: frameUrls,
       loop: actionConfig.loop,
       frameRate: actionConfig.frameRate,
       generatedAt: new Date().toISOString(),
+      version,
     };
 
     // Update creature data
@@ -198,7 +210,7 @@ async function updateCreatureAnimations(
 ): Promise<void> {
   try {
     const creatures = await downloadGameData<Record<string, Creature>>('creatures', {});
-    
+
     if (!creatures[creatureId]) {
       console.warn(`[AnimFrames] Creature ${creatureId} not found`);
       return;

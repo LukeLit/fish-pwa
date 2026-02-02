@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { composeFishPrompt } from '@/lib/ai/prompt-builder';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
+import { setCanvasStatus, clearCanvasStatus } from '@/lib/ui/canvas-status';
 import {
   saveEntry,
   getEntry,
@@ -369,7 +370,9 @@ export default function SpriteGenerationLab({
   // Generate sprite for a single stage
   const generateSprite = async (stage: GrowthStage) => {
     setGeneratingStage(stage);
-    setGenerationStatus(`Generating ${STAGE_LABELS[stage]} sprite...`);
+    const statusMsg = `Generating ${STAGE_LABELS[stage]} sprite...`;
+    setGenerationStatus(statusMsg);
+    setCanvasStatus(statusMsg);
     setError('');
 
     try {
@@ -408,10 +411,12 @@ export default function SpriteGenerationLab({
       }));
 
       setGenerationStatus(`${STAGE_LABELS[stage]} sprite generated!`);
+      clearCanvasStatus();
     } catch (err: any) {
       console.error('[SpriteLab] Generation failed:', err);
       setError(err.message || 'Generation failed');
       setGenerationStatus('');
+      clearCanvasStatus();
     } finally {
       setGeneratingStage(null);
     }
@@ -422,7 +427,9 @@ export default function SpriteGenerationLab({
     setGeneratingStage('all');
 
     for (const stage of ['juvenile', 'adult', 'elder'] as GrowthStage[]) {
-      setGenerationStatus(`Generating ${STAGE_LABELS[stage]} sprite (${['juvenile', 'adult', 'elder'].indexOf(stage) + 1}/3)...`);
+      const statusMsg = `Generating ${STAGE_LABELS[stage]} sprite (${['juvenile', 'adult', 'elder'].indexOf(stage) + 1}/3)...`;
+      setGenerationStatus(statusMsg);
+      setCanvasStatus(statusMsg);
 
       try {
         const prompt = buildPromptForStage(stage);
@@ -464,6 +471,7 @@ export default function SpriteGenerationLab({
 
     setGeneratingStage(null);
     setGenerationStatus('All sprites generated!');
+    clearCanvasStatus();
   };
 
   // Preview sprites in canvas without uploading
@@ -501,6 +509,7 @@ export default function SpriteGenerationLab({
   const handleUploadToLibrary = async () => {
     setUploading(true);
     setUploadStatus('Uploading sprites...');
+    setCanvasStatus('Uploading sprites...');
     setError('');
 
     try {
@@ -513,7 +522,9 @@ export default function SpriteGenerationLab({
         const dataUrl = sprites[stage];
         if (!dataUrl) continue;
 
-        setUploadStatus(`Uploading ${STAGE_LABELS[stage]} sprite (${uploadedCount + 1}/3)...`);
+        const uploadMsg = `Uploading ${STAGE_LABELS[stage]} sprite (${uploadedCount + 1}/3)...`;
+        setUploadStatus(uploadMsg);
+        setCanvasStatus(uploadMsg);
 
         // Convert data URL to blob
         const blob = await dataUrlToBlob(dataUrl);
@@ -565,6 +576,7 @@ export default function SpriteGenerationLab({
 
       // Step 3: Save creature metadata to persist the new sprite URLs
       setUploadStatus('Saving creature metadata...');
+      setCanvasStatus('Saving creature data...');
 
       const saveFormData = new FormData();
       saveFormData.append('creatureId', fish.id);
@@ -604,6 +616,7 @@ export default function SpriteGenerationLab({
       });
 
       setUploadStatus(`Upload complete! ${uploadedCount} sprites saved.`);
+      clearCanvasStatus();
 
       // Step 5: Dispatch refresh event to update canvas with new sprites
       console.log('[SpriteLab] Dispatching refreshFishSprites event');
@@ -617,6 +630,7 @@ export default function SpriteGenerationLab({
       console.error('[SpriteLab] Upload failed:', err);
       setError(err.message || 'Upload failed');
       setUploadStatus('');
+      clearCanvasStatus();
     } finally {
       setUploading(false);
     }

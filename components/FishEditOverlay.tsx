@@ -11,8 +11,10 @@ import { composeFishPrompt } from '@/lib/ai/prompt-builder';
 import type { GrowthSprites, SpriteResolutions, GrowthStage, AnimationAction, CreatureAnimations, AnimationSequence, ANIMATION_CONFIG } from '@/lib/game/types';
 import { ANIMATION_CONFIG as ANIM_CONFIG } from '@/lib/game/types';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
+import { setCanvasStatus, clearCanvasStatus } from '@/lib/ui/canvas-status';
 import { devLogSave, devLogError } from '@/lib/editor/dev-logger';
 import SpriteGenerationLab from './SpriteGenerationLab';
+import { getAnimationAssetManager } from '@/lib/rendering/animation-asset-manager';
 
 /**
  * Minimum time between clip generation requests (ms)
@@ -163,7 +165,7 @@ export default function FishEditOverlay({
   const [activeTab, setActiveTab] = useState<'details' | 'animation'>('details');
   const [selectedClipGrowthStage, setSelectedClipGrowthStage] = useState<GrowthStage>('adult');
   const [showSpriteLab, setShowSpriteLab] = useState(false);
-  
+
   // Animation preview state
   const [previewAnimation, setPreviewAnimation] = useState<{
     stage: GrowthStage;
@@ -352,7 +354,7 @@ export default function FishEditOverlay({
   // Animation preview playback
   useEffect(() => {
     if (!previewAnimation || !isPreviewPlaying) return;
-    
+
     const frameRate = previewAnimation.sequence.frameRate || 12;
     const interval = setInterval(() => {
       setPreviewFrame(prev => {
@@ -498,6 +500,13 @@ export default function FishEditOverlay({
 
         // Final update to parent with confirmed server data
         onSave(savedFish);
+
+        // Dispatch refresh event to update canvas with new data
+        setCanvasStatus('Reloading sprites...');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+          clearCanvasStatus();
+        }, 100);
 
         // Dispatch event to update canvas preview immediately if this is the player fish
         const isPlayerFish = editedFish.id === 'player';
@@ -768,7 +777,9 @@ export default function FishEditOverlay({
 
     setIsGeneratingClip(true);
     const config = ANIM_CONFIG[action];
-    setClipGenerationStatus(`Generating ${action} animation (${config.frameCount} frames)...`);
+    const statusMsg = `Generating ${action} animation...`;
+    setClipGenerationStatus(statusMsg);
+    setCanvasStatus(statusMsg);
 
     try {
       const response = await fetch('/api/generate-animation-frames', {
@@ -789,6 +800,10 @@ export default function FishEditOverlay({
       }
 
       if (data.success && data.sequence) {
+        // Invalidate cached animations for this creature/stage/action
+        // This ensures the new version is loaded fresh
+        getAnimationAssetManager().invalidate(editedFish.id, stage, action);
+
         // Update animations
         const updatedAnimations: CreatureAnimations = {
           ...(editedFish.animations || {}),
@@ -805,6 +820,13 @@ export default function FishEditOverlay({
 
         setEditedFish(updatedFish);
         onSave(updatedFish);
+
+        // Refresh canvas to pick up new animations
+        setCanvasStatus('Reloading sprites...');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+          clearCanvasStatus();
+        }, 100);
 
         setSaveMessage(`✓ ${action} animation generated! ${data.framesGenerated} frames.`);
       } else {
@@ -1239,19 +1261,19 @@ export default function FishEditOverlay({
               {/* Animation Frames Display */}
               <div>
                 <h3 className="text-sm font-bold text-white mb-3">Animation Frames</h3>
-                
+
                 {editedFish.animations && Object.keys(editedFish.animations).length > 0 ? (
                   <div className="space-y-3">
                     {(['juvenile', 'adult', 'elder'] as GrowthStage[]).map((stage) => {
                       const stageAnims = editedFish.animations?.[stage];
                       if (!stageAnims || Object.keys(stageAnims).length === 0) return null;
-                      
+
                       const stageLabels: Record<GrowthStage, string> = {
                         juvenile: 'Juvenile',
                         adult: 'Adult',
                         elder: 'Elder',
                       };
-                      
+
                       return (
                         <div key={stage} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
                           <h4 className="text-sm font-medium text-white mb-2">
@@ -1286,7 +1308,7 @@ export default function FishEditOverlay({
               {/* Animation Preview Modal */}
               {previewAnimation && (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999]" onClick={() => setPreviewAnimation(null)}>
-                  <div 
+                  <div
                     className="bg-gray-900 rounded-xl p-6 max-w-lg w-full mx-4 border border-gray-700"
                     onClick={e => e.stopPropagation()}
                   >
@@ -1348,11 +1370,10 @@ export default function FishEditOverlay({
                             setPreviewFrame(idx);
                             setIsPreviewPlaying(false);
                           }}
-                          className={`flex-shrink-0 w-12 h-12 rounded border-2 transition-colors ${
-                            idx === previewFrame 
-                              ? 'border-blue-500' 
+                          className={`flex-shrink-0 w-12 h-12 rounded border-2 transition-colors ${idx === previewFrame
+                              ? 'border-blue-500'
                               : 'border-gray-700 hover:border-gray-500'
-                          }`}
+                            }`}
                           style={{ backgroundColor: '#FF00FF' }}
                         >
                           <img
@@ -1407,7 +1428,7 @@ export default function FishEditOverlay({
                 <p className="text-xs text-gray-400 mb-4">
                   Generate animation frames using image-to-image. Each action creates 2-6 frame poses.
                 </p>
-                
+
                 {/* Stage selector */}
                 <div className="mb-4">
                   <label className="block text-xs font-medium text-gray-400 mb-2">
@@ -1422,13 +1443,12 @@ export default function FishEditOverlay({
                           key={stage}
                           onClick={() => setSelectedClipGrowthStage(stage)}
                           disabled={!hasSprite}
-                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            selectedClipGrowthStage === stage
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedClipGrowthStage === stage
                               ? 'bg-blue-600 text-white'
                               : hasSprite
                                 ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                 : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                          }`}
+                            }`}
                         >
                           {stage.charAt(0).toUpperCase() + stage.slice(1)}
                           {animCount > 0 && <span className="ml-1 text-green-400">({animCount})</span>}
@@ -1444,19 +1464,18 @@ export default function FishEditOverlay({
                     const hasAnim = hasAnimation(selectedClipGrowthStage, action);
                     const hasSprite = !!getSpriteForStage(selectedClipGrowthStage);
                     const config = ANIM_CONFIG[action];
-                    
+
                     return (
                       <button
                         key={action}
                         onClick={() => handleGenerateAnimation(selectedClipGrowthStage, action)}
                         disabled={isGeneratingClip || !hasSprite}
-                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                          hasAnim
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${hasAnim
                             ? 'bg-green-600/20 text-green-400 border border-green-600/30'
                             : hasSprite
                               ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                               : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                        } disabled:opacity-50`}
+                          } disabled:opacity-50`}
                       >
                         {hasAnim ? '✓' : '+'} {action} ({config.frameCount}f)
                       </button>
@@ -2230,8 +2249,10 @@ export default function FishEditOverlay({
             onSave(updatedFish);
             // Dispatch refresh to update canvas with new sprites
             // Small delay to ensure state has propagated
+            setCanvasStatus('Reloading sprites...');
             setTimeout(() => {
               window.dispatchEvent(new CustomEvent('refreshFishSprites'));
+              clearCanvasStatus();
             }, 100);
             setShowSpriteLab(false);
           }}
