@@ -158,16 +158,14 @@ export class GameEngine {
     this.mutations.clear();
     this.phases.reset();
 
-    // Check if continuing an existing run
+    // Load run state to get player size
     const runState = loadRunState();
     const isNewRun = !runState || runState.currentLevel === '1-1';
     
-    // Determine starting size:
-    // - For new runs: use base size 10
-    // - For continuing runs: use saved size from RunState
-    const startingSize = isNewRun ? 10 : (runState?.fishState?.size ?? 10);
+    // Use saved size from RunState, or default to 10 if no RunState exists
+    const startingSize = runState?.fishState?.size ?? 10;
 
-    // Create player
+    // Create player with saved size
     const startX = this.p5Instance?.width ? this.p5Instance.width / 2 : 400;
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
     this.player = new Player(this.physics, startX, startY, startingSize);
@@ -183,6 +181,12 @@ export class GameEngine {
       const sizeBonus = metaUpgrades.meta_starting_size * 5;
       this.player.stats.size += sizeBonus;
       this.player.size = this.player.stats.size;
+      
+      // Also update the RunState with the new size including meta bonuses
+      if (runState) {
+        const updatedRunState = updateFishState(runState, { size: this.player.stats.size });
+        saveRunState(updatedRunState);
+      }
     }
 
     // Apply starting speed upgrade

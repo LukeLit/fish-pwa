@@ -40,9 +40,9 @@ export function createNewRunState(fishId: string): RunState | null {
     return null;
   }
 
-  // All players start at the same base size for consistent, predictable gameplay.
-  // Creature choice affects speed/health/damage, not starting size.
-  const startSize = PLAYER_BASE_SIZE;
+  // Start at raw base size (10) without meta upgrades.
+  // Meta upgrades will be applied by the engine when the game starts.
+  const startSize = 10;
 
   return {
     runId: `run_${Date.now()}_${crypto.randomUUID ? crypto.randomUUID().slice(0, 9) : Math.random().toString(36).substr(2, 9)}`,
