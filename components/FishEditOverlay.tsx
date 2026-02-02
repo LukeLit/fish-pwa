@@ -616,8 +616,7 @@ export default function FishEditOverlay({
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error('Failed to load image'));
-        const cleanUrl = editedFish.sprite!.split('?')[0];
-        img.src = editedFish.sprite!.startsWith('data:') ? editedFish.sprite! : `${cleanUrl}?flip=${Date.now()}`;
+        img.src = cacheBust(editedFish.sprite!);
       });
 
       const canvas = document.createElement('canvas');

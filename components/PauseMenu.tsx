@@ -49,6 +49,8 @@ interface PauseMenuProps {
   onSpawnFish?: (sprite: string, type: string) => void;
   /** IDs of fish currently spawned in the scene */
   spawnedFishIds?: string[];
+  /** Called when a biome tab is selected - for setting scene to biome */
+  onBiomeSelect?: (biomeId: string, biomeFish: FishData[]) => void;
   // Navigation for edit overlay
   onPreviousFish?: () => void;
   onNextFish?: () => void;
@@ -89,6 +91,7 @@ export default function PauseMenu({
   onSetPlayer,
   onSpawnFish,
   spawnedFishIds = [],
+  onBiomeSelect,
   onPreviousFish,
   onNextFish,
   hasPrevious = false,
@@ -485,6 +488,7 @@ export default function PauseMenu({
                 onSetPlayer={onSetPlayer}
                 onSpawnFish={onSpawnFish}
                 spawnedFishIds={spawnedFishIds}
+                onBiomeSelect={onBiomeSelect}
               />
             ) : selectedFish ? (
               <div className="h-full flex flex-col">

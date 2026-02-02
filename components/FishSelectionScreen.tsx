@@ -19,6 +19,7 @@ import {
   type LoadedBackground,
 } from '@/lib/rendering/background-renderer';
 import type { Creature } from '@/lib/game/types';
+import { cacheBust } from '@/lib/utils/cache-bust';
 
 export default function FishSelectionScreen() {
   const router = useRouter();
@@ -299,7 +300,7 @@ export default function FishSelectionScreen() {
               >
                 {fish.sprite && (
                   <Image
-                    src={fish.sprite}
+                    src={cacheBust(fish.sprite)}
                     alt={`${fish.name} fish`}
                     fill
                     className="object-contain p-1"

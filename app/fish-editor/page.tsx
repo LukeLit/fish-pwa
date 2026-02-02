@@ -343,6 +343,82 @@ export default function FishEditorPage() {
     setZoom(DEFAULT_ZOOM);
   };
 
+  /**
+   * Handle biome selection from the library panel
+   * - Fetches a background for that biome
+   * - Clears existing spawned fish and spawns all fish from that biome
+   * - Sets player to a random playable fish from that biome
+   */
+  const handleBiomeSelect = useCallback(async (biomeId: string, biomeFish: FishData[]) => {
+    console.log(`[FishEditor] Biome selected: ${biomeId}, ${biomeFish.length} fish`);
+    
+    // 1. Fetch and set a background for this biome
+    try {
+      const bgResponse = await fetch(`/api/list-assets?type=background&includeMetadata=true`);
+      const bgData = await bgResponse.json();
+      if (bgData.success && bgData.backgrounds) {
+        // Find backgrounds matching this biome
+        const biomeBackgrounds = bgData.backgrounds.filter(
+          (bg: { biomeId?: string }) => bg.biomeId === biomeId
+        );
+        if (biomeBackgrounds.length > 0) {
+          // Pick a random background from this biome
+          const randomBg = biomeBackgrounds[Math.floor(Math.random() * biomeBackgrounds.length)];
+          setSelectedBackground(randomBg.url);
+          console.log(`[FishEditor] Set background for biome ${biomeId}: ${randomBg.url}`);
+        } else {
+          console.log(`[FishEditor] No backgrounds found for biome ${biomeId}`);
+        }
+      }
+    } catch (error) {
+      console.error('[FishEditor] Failed to fetch biome backgrounds:', error);
+    }
+
+    // 2. Clear existing spawned fish
+    setSpawnedFish([]);
+    setEditMode(false);
+    setSelectedFishId(null);
+    
+    // 3. Filter to fish with sprites and spawn them all
+    const fishWithSprites = biomeFish.filter(fish => fish.sprite);
+    if (fishWithSprites.length === 0) {
+      console.log(`[FishEditor] No fish with sprites in biome ${biomeId}`);
+      return;
+    }
+
+    // Update fishData with all the biome fish
+    setFishData(prev => {
+      const newMap = new Map(prev);
+      fishWithSprites.forEach(fish => {
+        newMap.set(fish.id, fish);
+      });
+      return newMap;
+    });
+
+    // Spawn all fish from the biome with unique instance IDs
+    const newSpawnedFish: Array<{ id: string; sprite: string; type: string; creatureId?: string }> = [];
+    fishWithSprites.forEach((fish, index) => {
+      const instanceId = `${fish.id}_biome_${Date.now()}_${index}`;
+      newSpawnedFish.push({
+        id: instanceId,
+        sprite: fish.sprite!,
+        type: fish.type,
+        creatureId: fish.id,
+      });
+    });
+    setSpawnedFish(newSpawnedFish);
+    console.log(`[FishEditor] Spawned ${newSpawnedFish.length} fish for biome ${biomeId}`);
+
+    // 4. Set player to a random playable fish from this biome (or any fish if none are playable)
+    const playableFish = fishWithSprites.filter(fish => fish.playable);
+    const playerCandidate = playableFish.length > 0
+      ? playableFish[Math.floor(Math.random() * playableFish.length)]
+      : fishWithSprites[Math.floor(Math.random() * fishWithSprites.length)];
+    
+    setPlayerCreatureId(playerCandidate.id);
+    console.log(`[FishEditor] Set player to: ${playerCandidate.name} (${playerCandidate.id})`);
+  }, []);
+
   const handleBackToMenu = () => {
     router.push('/');
   };
@@ -856,6 +932,7 @@ export default function FishEditorPage() {
         onSetPlayer={handleSetPlayerFish}
         onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
         spawnedFishIds={spawnedFish.map(f => f.creatureId || f.id)}
+        onBiomeSelect={handleBiomeSelect}
         onPreviousFish={handlePreviousFish}
         onNextFish={handleNextFish}
         hasPrevious={hasPrevious}

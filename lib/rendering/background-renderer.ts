@@ -10,6 +10,8 @@
  * - Single source of truth for future visual enhancements
  */
 
+import { cacheBust } from '@/lib/utils/cache-bust';
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -79,7 +81,8 @@ export async function loadBackground(url: string): Promise<LoadedBackground> {
       reject(new Error(`Failed to load background: ${url}`));
     };
 
-    img.src = url;
+    // Always use cache busting to ensure fresh images
+    img.src = cacheBust(url);
   });
 }
 

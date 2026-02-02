@@ -10,6 +10,8 @@
  * - Single source of truth for future animation enhancements
  */
 
+import { cacheBust } from '@/lib/utils/cache-bust';
+
 // Default chroma key tolerance
 export const DEFAULT_CHROMA_TOLERANCE = 50;
 
@@ -355,13 +357,31 @@ export function getClipMode(
 
 /**
  * Check if a creature has usable animations
+ * Checks for actual frame URLs, not just empty objects
  * 
  * @param animations - CreatureAnimations object or undefined
  * @returns boolean indicating if animations are available
  */
 export function hasUsableAnimations(animations: object | undefined | null): boolean {
   if (!animations) return false;
-  return Object.keys(animations).length > 0;
+  
+  // Check each growth stage
+  for (const stage of Object.values(animations)) {
+    if (!stage || typeof stage !== 'object') continue;
+    
+    // Check each action in the stage
+    for (const sequence of Object.values(stage as object)) {
+      if (!sequence || typeof sequence !== 'object') continue;
+      
+      // Check if the sequence has actual frames
+      const seq = sequence as { frames?: string[] };
+      if (seq.frames && Array.isArray(seq.frames) && seq.frames.length > 0) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
 }
 
 /**
@@ -506,7 +526,8 @@ export function loadFishSprite(spriteUrl: string, tolerance: number = DEFAULT_CH
       resolve(processed);
     };
     img.onerror = () => reject(new Error(`Failed to load sprite: ${spriteUrl}`));
-    img.src = spriteUrl;
+    // Always use cache busting to ensure fresh images
+    img.src = cacheBust(spriteUrl);
   });
 }
 

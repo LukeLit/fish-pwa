@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { FishData } from './FishEditOverlay';
+import { cacheBust } from '@/lib/utils/cache-bust';
 
 // Biome color configuration
 const BIOME_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -62,11 +63,13 @@ interface FishLibraryPanelProps {
   onSpawnFish?: (sprite: string, type: string) => void;
   /** IDs of fish currently spawned in the scene */
   spawnedFishIds?: string[];
+  /** Called when a biome tab is selected - provides biome ID and all creatures for that biome */
+  onBiomeSelect?: (biomeId: string, biomeFish: FishData[]) => void;
 }
 
 type SubTab = 'all' | 'in_scene' | string; // string for biome IDs
 
-export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, onSpawnFish, spawnedFishIds = [] }: FishLibraryPanelProps) {
+export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, onSpawnFish, spawnedFishIds = [], onBiomeSelect }: FishLibraryPanelProps) {
   const [creatures, setCreatures] = useState<FishData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -220,11 +223,7 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
                     {creature.sprite && (
                       <img
                         key={`${creature.id}-${creature.sprite}-v${thumbnailVersion}`}
-                        src={
-                          creature.sprite.startsWith('data:')
-                            ? creature.sprite
-                            : `${creature.sprite.split('?')[0]}?v=${thumbnailVersion}`
-                        }
+                        src={cacheBust(creature.sprite)}
                         alt={creature.name}
                         className="w-full h-full object-contain"
                         onError={(e) => {
@@ -385,12 +384,19 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
           {/* Biome tabs */}
           {availableBiomes.map(biomeId => {
             const colors = getBiomeColors(biomeId);
-            const count = creatures.filter(c => c.biomeId === biomeId).length;
+            const biomeFish = creatures.filter(c => c.biomeId === biomeId);
+            const count = biomeFish.length;
             const isActive = activeSubTab === biomeId;
             return (
               <button
                 key={biomeId}
-                onClick={() => setActiveSubTab(biomeId)}
+                onClick={() => {
+                  setActiveSubTab(biomeId);
+                  // Notify parent when biome is selected
+                  if (onBiomeSelect) {
+                    onBiomeSelect(biomeId, biomeFish);
+                  }
+                }}
                 className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${isActive
                   ? `${colors.bg.replace('/20', '')} text-white`
                   : `${colors.text} hover:text-white ${colors.bg} border ${colors.border}/50`

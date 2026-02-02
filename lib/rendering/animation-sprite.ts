@@ -12,6 +12,8 @@ import type {
   GrowthStage
 } from '@/lib/game/types';
 import { ANIMATION_CONFIG as CONFIG } from '@/lib/game/types';
+import { cacheBust } from '@/lib/utils/cache-bust';
+import { removeBackground, DEFAULT_CHROMA_TOLERANCE } from '@/lib/rendering/fish-renderer';
 
 export interface AnimationSpriteOptions {
   /** Initial growth stage (default: 'adult') */
@@ -20,6 +22,8 @@ export interface AnimationSpriteOptions {
   defaultAction?: AnimationAction;
   /** Whether to preload all frames on creation (default: true) */
   preload?: boolean;
+  /** Chroma tolerance for background removal (default: DEFAULT_CHROMA_TOLERANCE) */
+  chromaTolerance?: number;
 }
 
 export interface AnimationSpriteState {
@@ -41,9 +45,10 @@ export class AnimationSprite {
   private lastFrameTime: number = 0;
   private isPlaying: boolean = true;
   private defaultAction: AnimationAction;
+  private chromaTolerance: number;
   
-  // Cached image elements
-  private frameImages: Map<string, HTMLImageElement> = new Map();
+  // Cached processed frames (with chroma key removed)
+  private frameImages: Map<string, CanvasImageSource> = new Map();
   private loadedFrames: Set<string> = new Set();
 
   // Callbacks
@@ -54,6 +59,12 @@ export class AnimationSprite {
     this.currentStage = options.initialStage ?? 'adult';
     this.defaultAction = options.defaultAction ?? 'idle';
     this.currentAction = this.defaultAction;
+    this.chromaTolerance = options.chromaTolerance ?? DEFAULT_CHROMA_TOLERANCE;
+
+    // Debug: log what animations we received
+    console.log(`[AnimationSprite] Created with stage=${this.currentStage}, animations:`, 
+      Object.keys(animations).map(stage => `${stage}: ${Object.keys(animations[stage as GrowthStage] || {}).join(', ')}`).join(' | ')
+    );
 
     // Preload if requested
     if (options.preload !== false) {
@@ -99,7 +110,7 @@ export class AnimationSprite {
   }
 
   /**
-   * Load a single frame image
+   * Load a single frame image and apply chroma key removal
    */
   private async loadFrame(url: string): Promise<void> {
     if (this.loadedFrames.has(url)) return;
@@ -109,7 +120,9 @@ export class AnimationSprite {
       img.crossOrigin = 'anonymous';
       
       img.onload = () => {
-        this.frameImages.set(url, img);
+        // Apply chroma key removal to get transparent background
+        const processedCanvas = removeBackground(img, this.chromaTolerance);
+        this.frameImages.set(url, processedCanvas);
         this.loadedFrames.add(url);
         resolve();
       };
@@ -119,7 +132,8 @@ export class AnimationSprite {
         reject(new Error(`Failed to load frame: ${url}`));
       };
 
-      img.src = url;
+      // Always use cache busting to ensure fresh images
+      img.src = cacheBust(url);
     });
   }
 
@@ -171,7 +185,9 @@ export class AnimationSprite {
    * Trigger a one-shot action then return to default
    */
   triggerAction(action: AnimationAction): void {
+    console.log(`[AnimationSprite] triggerAction: ${action}, stage=${this.currentStage}`);
     const sequence = this.getSequence(this.currentStage, action);
+    console.log(`[AnimationSprite] sequence for ${action}:`, sequence ? `${sequence.frames?.length} frames` : 'null');
     if (!sequence || sequence.loop) {
       this.playAction(action);
       return;
@@ -214,9 +230,10 @@ export class AnimationSprite {
         if (sequence.loop) {
           this.currentFrame = 0;
         } else {
-          // Non-looping animation completed
-          this.currentFrame = sequence.frames.length - 1;
+          // Non-looping animation completed - return to default action
+          console.log(`[AnimationSprite] Action ${this.currentAction} completed, returning to ${this.defaultAction}`);
           this.onActionComplete?.(this.currentAction);
+          this.playAction(this.defaultAction);
           
           // Return to default action
           if (this.currentAction !== this.defaultAction) {
@@ -232,9 +249,9 @@ export class AnimationSprite {
   }
 
   /**
-   * Get the current frame image
+   * Get the current frame image (processed with chroma key removal)
    */
-  getCurrentFrameImage(): HTMLImageElement | null {
+  getCurrentFrameImage(): CanvasImageSource | null {
     const sequence = this.getSequence(this.currentStage, this.currentAction);
     if (!sequence || !sequence.frames.length) return null;
 
