@@ -307,7 +307,7 @@ export default function FishEditOverlay({
       editedFish.rarity !== original.rarity ||
       editedFish.playable !== original.playable ||
       editedFish.type !== original.type ||
-      JSON.stringify(editedFish.sprites) !== JSON.stringify(original.sprites) ||
+      editedFish.sprite !== original.sprite ||
       JSON.stringify(editedFish.animations) !== JSON.stringify(original.animations) ||
       JSON.stringify(editedFish.essence) !== JSON.stringify(original.essence);
     setHasPendingChanges(hasChanges);
