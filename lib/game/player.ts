@@ -51,7 +51,7 @@ export class Player extends Entity {
     if (initialSize !== 10) {
       Matter.Body.scale(this.body, initialSize / 10, initialSize / 10);
     }
-    
+
     // Update this.size to match the actual size
     this.size = initialSize;
   }
