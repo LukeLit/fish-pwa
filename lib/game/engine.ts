@@ -161,11 +161,6 @@ export class GameEngine {
     // Load run state to get player size
     const runState = loadRunState();
     
-    // Determine if this is a new run (level 1-1) or continuing
-    // Note: runState should always exist at this point (created by GameCanvas)
-    // but we handle the null case defensively
-    const isNewRun = !runState || runState.currentLevel === '1-1';
-    
     // Use saved size from RunState, or default to 10 if no RunState exists
     const startingSize = runState?.fishState?.size ?? 10;
 
@@ -175,13 +170,14 @@ export class GameEngine {
     this.player = new Player(this.physics, startX, startY, startingSize);
 
     // Apply meta upgrades from player state (purchased with Evo Points)
-    // ONLY for new runs (level 1-1), not for continued runs
+    // ONLY if size is still at base value (10), meaning meta upgrades haven't been applied yet
     const { loadPlayerState } = await import('./player-state');
     const playerState = loadPlayerState();
     const metaUpgrades = playerState.metaUpgrades;
 
-    // Apply starting size upgrade ONLY for new runs
-    if (isNewRun && metaUpgrades.meta_starting_size) {
+    // Apply starting size upgrade ONLY if size is still at base (10)
+    // This ensures meta upgrades are applied exactly once per run
+    if (startingSize === 10 && metaUpgrades.meta_starting_size) {
       const sizeBonus = metaUpgrades.meta_starting_size * 5;
       this.player.stats.size += sizeBonus;
       this.player.size = this.player.stats.size;
