@@ -160,6 +160,10 @@ export class GameEngine {
 
     // Load run state to get player size
     const runState = loadRunState();
+    
+    // Determine if this is a new run (level 1-1) or continuing
+    // Note: runState should always exist at this point (created by GameCanvas)
+    // but we handle the null case defensively
     const isNewRun = !runState || runState.currentLevel === '1-1';
     
     // Use saved size from RunState, or default to 10 if no RunState exists
@@ -182,10 +186,16 @@ export class GameEngine {
       this.player.stats.size += sizeBonus;
       this.player.size = this.player.stats.size;
       
-      // Also update the RunState with the new size including meta bonuses
-      if (runState) {
-        const updatedRunState = updateFishState(runState, { size: this.player.stats.size });
-        saveRunState(updatedRunState);
+      // Save the size with meta bonuses back to RunState
+      // This ensures the size is persisted even if RunState didn't exist before
+      let currentRunState = loadRunState();
+      if (currentRunState) {
+        currentRunState = updateFishState(currentRunState, { size: this.player.stats.size });
+        saveRunState(currentRunState);
+      } else {
+        // Edge case: if RunState somehow doesn't exist, log a warning
+        // This shouldn't happen in normal flow (GameCanvas creates it)
+        console.warn('RunState not found when saving meta upgrade size - this is unexpected');
       }
     }
 
