@@ -6,6 +6,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { FishData } from './FishEditOverlay';
 import { cacheBust } from '@/lib/utils/cache-bust';
+import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
 
 // Biome color configuration
 const BIOME_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -44,10 +45,10 @@ const getBiomeColors = (biomeId: string) => {
  */
 function formatRelativeTime(timestamp: number | undefined): string {
   if (!timestamp) return '';
-  
+
   const now = Date.now();
   const diff = now - timestamp;
-  
+
   if (diff < 1000) return 'Just now';
   if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
   if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
@@ -65,15 +66,17 @@ interface FishLibraryPanelProps {
   spawnedFishIds?: string[];
   /** Called when a biome tab is selected - provides biome ID and all creatures for that biome */
   onBiomeSelect?: (biomeId: string, biomeFish: FishData[]) => void;
+  /** Initial sub-tab to select (e.g. 'shallow' for first biome) */
+  initialSubTab?: SubTab;
 }
 
 type SubTab = 'all' | 'in_scene' | string; // string for biome IDs
 
-export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, onSpawnFish, spawnedFishIds = [], onBiomeSelect }: FishLibraryPanelProps) {
+export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, onSpawnFish, spawnedFishIds = [], onBiomeSelect, initialSubTab = 'all' }: FishLibraryPanelProps) {
   const [creatures, setCreatures] = useState<FishData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('all');
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>(initialSubTab);
   // Cache buster version - increments when sprites are refreshed
   const [thumbnailVersion, setThumbnailVersion] = useState(0);
 
@@ -222,8 +225,8 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
                   <div className="w-16 h-16 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
                     {creature.sprite && (
                       <img
-                        key={`${creature.id}-${creature.sprite}-v${thumbnailVersion}`}
-                        src={cacheBust(creature.sprite)}
+                        key={`${creature.id}-${getSpriteUrlForSize(creature, creature.stats?.size ?? 60)}-v${thumbnailVersion}`}
+                        src={cacheBust(getSpriteUrlForSize(creature, creature.stats?.size ?? 60))}
                         alt={creature.name}
                         className="w-full h-full object-contain"
                         onError={(e) => {

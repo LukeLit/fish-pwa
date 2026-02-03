@@ -187,14 +187,22 @@ export function getResolutionKey(screenSize: number): 'high' | 'medium' | 'low' 
 }
 
 // =============================================================================
-// Growth Stage Sprite Selection
+// Growth Stage Sprite Selection (unified 20-300 art scale)
 // =============================================================================
 
-/** Default size ranges for growth stages */
+/** Art size bounds - used by editor slider and growth stage logic */
+export const ART_SIZE_MIN = 20;
+export const ART_SIZE_MAX = 300;
+
+/**
+ * Default size ranges for growth stages.
+ * Single source of truth: editor slider (20-300), game spawn, and saved growthSprites
+ * all use this scale so juvenile/adult/elder match everywhere.
+ */
 export const DEFAULT_GROWTH_RANGES = {
-  juvenile: { min: 0, max: 60 },
-  adult: { min: 61, max: 150 },
-  elder: { min: 151, max: Infinity },
+  juvenile: { min: ART_SIZE_MIN, max: 99 },    // 20-99: small / young
+  adult: { min: 100, max: 199 },               // 100-199: mature (adult starts at 100)
+  elder: { min: 200, max: ART_SIZE_MAX },     // 200-300: large / elder (elder starts at 200)
 };
 
 // Debug flag for growth stage logging
@@ -222,10 +230,24 @@ export function isGrowthDebugEnabled(): boolean {
  * @param growthSprites - Optional growth sprites with custom size ranges
  * @returns The growth stage ('juvenile', 'adult', or 'elder')
  */
+/** Canonical elder start; stored ranges below this are treated as legacy and ignored */
+const CANONICAL_ELDER_MIN = 200;
+
 export function getGrowthStage(fishSize: number, growthSprites?: GrowthSprites): GrowthStage {
-  // Use custom ranges from growthSprites if available, otherwise use defaults
-  const juvenileRange = growthSprites?.juvenile?.sizeRange || DEFAULT_GROWTH_RANGES.juvenile;
-  const elderRange = growthSprites?.elder?.sizeRange || DEFAULT_GROWTH_RANGES.elder;
+  // Use custom ranges only if they match our 20-300 scale (elder starts at 200)
+  // Legacy saved data (e.g. elder 70-150) would show elder too early; use defaults instead
+  const elderRangeStored = growthSprites?.elder?.sizeRange;
+  const useStoredRanges =
+    elderRangeStored != null && elderRangeStored.min >= CANONICAL_ELDER_MIN;
+
+  const juvenileRange =
+    useStoredRanges && growthSprites?.juvenile?.sizeRange
+      ? growthSprites.juvenile.sizeRange
+      : DEFAULT_GROWTH_RANGES.juvenile;
+  const elderRange =
+    useStoredRanges && elderRangeStored
+      ? elderRangeStored
+      : DEFAULT_GROWTH_RANGES.elder;
 
   if (fishSize <= juvenileRange.max) {
     return 'juvenile';
@@ -279,6 +301,22 @@ export function getGrowthStageSprite(
     sprite: creature.sprite,
     spriteResolutions: creature.spriteResolutions,
   };
+}
+
+/**
+ * Single source of truth: get the sprite URL for a creature at a given size.
+ * Use this everywhere we display a fish (fish select, thumbnails, pause menu, game, editor).
+ * Growth stage (juvenile/adult/elder) is derived from size; falls back to base sprite if no growthSprites.
+ */
+export function getSpriteUrlForSize(
+  creature: {
+    sprite: string;
+    growthSprites?: GrowthSprites;
+  },
+  fishSize: number
+): string {
+  const { sprite } = getGrowthStageSprite(creature, fishSize);
+  return sprite;
 }
 
 /**
@@ -364,15 +402,15 @@ export function getClipMode(
  */
 export function hasUsableAnimations(animations: object | undefined | null): boolean {
   if (!animations) return false;
-  
+
   // Check each growth stage
   for (const stage of Object.values(animations)) {
     if (!stage || typeof stage !== 'object') continue;
-    
+
     // Check each action in the stage
     for (const sequence of Object.values(stage as object)) {
       if (!sequence || typeof sequence !== 'object') continue;
-      
+
       // Check if the sequence has actual frames
       const seq = sequence as { frames?: string[] };
       if (seq.frames && Array.isArray(seq.frames) && seq.frames.length > 0) {
@@ -380,7 +418,7 @@ export function hasUsableAnimations(animations: object | undefined | null): bool
       }
     }
   }
-  
+
   return false;
 }
 

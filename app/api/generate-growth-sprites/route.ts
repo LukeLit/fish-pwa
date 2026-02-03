@@ -9,19 +9,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import sharp from 'sharp';
 import type { GrowthSprites, GrowthStage, SpriteResolutions } from '@/lib/game/types';
+import { DEFAULT_GROWTH_RANGES } from '@/lib/rendering/fish-renderer';
+
+// Use same growth ranges as game/editor (20-300 scale)
+const DEFAULT_SIZE_RANGES = DEFAULT_GROWTH_RANGES;
 
 // Growth stage prompts
 const GROWTH_STAGE_PROMPTS: Record<GrowthStage, string> = {
   juvenile: 'young, juvenile version, smaller, rounder, cuter proportions, bigger eyes relative to body',
   adult: '', // Adult uses the base sprite
   elder: 'mature, elder version, larger, more weathered, experienced, battle-scarred, ancient',
-};
-
-// Default size ranges for growth stages
-const DEFAULT_SIZE_RANGES = {
-  juvenile: { min: 0, max: 60 },
-  adult: { min: 61, max: 150 },
-  elder: { min: 151, max: 999 },
 };
 
 interface GenerateGrowthSpritesRequest {

@@ -23,7 +23,8 @@ import {
   getGrowthStage,
   setGrowthDebug,
 } from '@/lib/rendering/fish-renderer';
-import type { GrowthStage, GrowthSprites, AnimationAction } from '@/lib/game/types';
+import type { GrowthStage, GrowthSprites, AnimationAction, Creature } from '@/lib/game/types';
+import { loadAllCreatures, normalizeCreature } from '@/lib/game/data/creature-loader';
 
 // Animation actions available for preview
 const PREVIEW_ANIMATIONS: AnimationAction[] = ['idle', 'swim', 'dash', 'bite', 'hurt', 'death'];
@@ -32,11 +33,13 @@ const PREVIEW_ANIMATIONS: AnimationAction[] = ['idle', 'swim', 'dash', 'bite', '
 const DEFAULT_ZOOM = 1.0;
 const MAX_EDIT_ZOOM = 3.0;
 
+type SpawnedCreature = Creature & { creatureId?: string };
+
 export default function FishEditorPage() {
   const router = useRouter();
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerCreatureId, setPlayerCreatureId] = useState<string | null>(null); // ID of creature being controlled as player
-  const [spawnedFish, setSpawnedFish] = useState<Array<{ id: string; sprite: string; type: string; creatureId?: string }>>([]);
+  const [spawnedFish, setSpawnedFish] = useState<SpawnedCreature[]>([]);
   const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
   const [chromaTolerance, setChromaTolerance] = useState<number>(50);
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
@@ -59,6 +62,21 @@ export default function FishEditorPage() {
   const [isGeneratingGrowth, setIsGeneratingGrowth] = useState(false);
   const [growthGenerationStatus, setGrowthGenerationStatus] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const createSpawnedCreatureInstance = useCallback(
+    (fish: FishData, instanceId: string): SpawnedCreature | null => {
+      const normalized = normalizeCreature(fish);
+      if (!normalized) return null;
+      const size = fish.stats?.size ?? normalized.stats.size;
+      return {
+        ...normalized,
+        id: instanceId,
+        creatureId: fish.id,
+        stats: { ...normalized.stats, size },
+      };
+    },
+    []
+  );
 
   // Helper to get resolution tier from size
   const getResolutionTier = useCallback((size: number, currentZoom: number): 'high' | 'medium' | 'low' => {
@@ -121,23 +139,13 @@ export default function FishEditorPage() {
         devLog('Refresh', 'localStorage clear skipped', err, 'warn');
       }
 
-      // 4. Refetch creature list from API (force no-cache)
-      devLogFetch('Refetching creature list from API...');
-      const response = await fetch('/api/list-creatures', {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-        },
-      });
-      const result = await response.json();
-
-      if (result.success && result.creatures) {
-        devLogFetch(`Loaded ${result.creatures.length} creatures from API`);
-
-        // Update fishData with fresh data
+      // 4. Refetch creature list via shared loader
+      devLogFetch('Refetching creature list from shared loader...');
+      const creatures = await loadAllCreatures();
+      if (creatures.length > 0) {
+        devLogFetch(`Loaded ${creatures.length} creatures from shared loader`);
         const newFishData = new Map<string, FishData>();
-        (result.creatures as FishData[]).forEach((creature) => {
+        creatures.forEach((creature) => {
           newFishData.set(creature.id, creature);
         });
         setFishData(newFishData);
@@ -179,174 +187,6 @@ export default function FishEditorPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // Load random background, player fish, and spawn default prey on mount
-  useEffect(() => {
-    function createDefaultPreyDataUrl(): string {
-      const c = document.createElement('canvas');
-      c.width = 80;
-      c.height = 40;
-      const ctx = c.getContext('2d')!;
-      ctx.fillStyle = '#4ade80';
-      ctx.beginPath();
-      ctx.ellipse(35, 20, 25, 12, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#22c55e';
-      ctx.beginPath();
-      ctx.moveTo(10, 20);
-      ctx.lineTo(0, 8);
-      ctx.lineTo(0, 32);
-      ctx.closePath();
-      ctx.fill();
-      return c.toDataURL('image/png');
-    }
-
-    const loadRandomAssets = async () => {
-      try {
-        // Backgrounds still use the generic asset listing
-        const bgResponse = await fetch('/api/list-assets?type=background');
-        const bgData = await bgResponse.json();
-        if (bgData.success && bgData.assets.length > 0) {
-          const randomBg = bgData.assets[Math.floor(Math.random() * bgData.assets.length)];
-          setSelectedBackground(randomBg.url);
-        }
-        // NOTE: We no longer load fish sprites directly from /api/list-assets.
-        // All fish now come from blob-stored creature metadata via /api/list-creatures.
-      } catch (error) {
-        console.error('Failed to load random assets:', error);
-      }
-    };
-
-    loadRandomAssets();
-
-    // Load all creatures from blob storage
-    const loadCreaturesFromBlob = async () => {
-      try {
-        const response = await fetch('/api/list-creatures');
-        const result = await response.json();
-
-        if (result.success && result.creatures && result.creatures.length > 0) {
-          console.log(`[FishEditor] Loaded ${result.creatures.length} creatures from blob storage`);
-
-          // Seed fishData from blob creatures only (no legacy raw sprites)
-          const newFishData = new Map<string, FishData>();
-          (result.creatures as FishData[]).forEach((creature) => {
-            newFishData.set(creature.id, creature);
-          });
-          setFishData(newFishData);
-
-          // Set player creature from real data - prefer a playable creature
-          if (!playerCreatureId) {
-            const creatures: FishData[] = result.creatures;
-            const playable = creatures.find((c) => c.playable && c.sprite);
-            const firstWithSprite = creatures.find((c) => c.sprite);
-            const chosen = playable || firstWithSprite;
-            if (chosen) {
-              setPlayerCreatureId(chosen.id);
-            }
-          }
-
-          // If nothing is spawned yet, spawn a few prey from the creature list for convenience
-          if (spawnedFish.length === 0) {
-            const creatures: FishData[] = result.creatures;
-            const preyCandidates = creatures.filter((c) => c.type === 'prey' && c.sprite);
-            const pool = preyCandidates.length > 0 ? preyCandidates : creatures.filter((c) => c.sprite);
-            const defaults: { id: string; sprite: string; type: string; creatureId?: string }[] = [];
-
-            for (let i = 0; i < Math.min(4, pool.length); i++) {
-              const c = pool[i];
-              // Use unique instance ID so multiple fish of same species can be edited independently
-              const instanceId = `${c.id}_inst_${Date.now()}_${i}`;
-              defaults.push({
-                id: instanceId,
-                sprite: c.sprite!,
-                type: c.type,
-                creatureId: c.id, // Track original creature ID for data lookup
-              });
-            }
-
-            if (defaults.length > 0) {
-              setSpawnedFish(defaults);
-            }
-          }
-        } else {
-          // No blob creatures yet: fall back to simple green placeholder prey so the editor isn't empty
-          const fallbackSprite = createDefaultPreyDataUrl();
-          const defaults: Array<{ id: string; sprite: string; type: 'prey' }> = [];
-          const newFishData = new Map<string, FishData>();
-
-          for (let i = 0; i < 4; i++) {
-            const newId = `default_prey_${Date.now()}_${i}`;
-            defaults.push({
-              id: newId,
-              sprite: fallbackSprite,
-              type: 'prey',
-            });
-
-            newFishData.set(newId, {
-              id: newId,
-              name: `Prey Fish ${i + 1}`,
-              description: 'A small, swift prey fish.',
-              type: 'prey',
-              stats: {
-                size: 60,
-                speed: 5,
-                health: 20,
-                damage: 5,
-              },
-              sprite: fallbackSprite,
-            });
-          }
-
-          setSpawnedFish(defaults);
-          setFishData(newFishData);
-        }
-      } catch (error) {
-        console.error('[FishEditor] Failed to load creatures from blob storage:', error);
-      }
-    };
-
-    loadCreaturesFromBlob();
-  }, []);
-
-  const handleSpawnFish = (sprite: string, type: string) => {
-    const newId = `fish_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const newFish = {
-      id: newId,
-      sprite,
-      type,
-    };
-    setSpawnedFish((prev) => [...prev, newFish]);
-
-    // Initialize fish data
-    const defaultName = type.charAt(0).toUpperCase() + type.slice(1) + ' Fish';
-    const defaultData: FishData = {
-      id: newId,
-      name: defaultName,
-      description: `A ${type} fish with unique characteristics.`,
-      type: type as 'prey' | 'predator' | 'mutant',
-      stats: {
-        size: type === 'prey' ? 60 : type === 'predator' ? 120 : 90,
-        speed: type === 'prey' ? 5 : type === 'predator' ? 3 : 4,
-        health: type === 'prey' ? 20 : type === 'predator' ? 50 : 35,
-        damage: type === 'prey' ? 5 : type === 'predator' ? 20 : 12,
-      },
-      sprite,
-    };
-    setFishData((prev) => {
-      const newMap = new Map(prev);
-      newMap.set(newId, defaultData);
-      return newMap;
-    });
-  };
-
-  const handleClearFish = () => {
-    setSpawnedFish([]);
-    setFishData(new Map());
-    setEditMode(false);
-    setSelectedFishId(null);
-    setZoom(DEFAULT_ZOOM);
-  };
 
   /**
    * Handle biome selection from the library panel
@@ -400,16 +240,14 @@ export default function FishEditorPage() {
       return newMap;
     });
 
-    // Spawn all fish from the biome with unique instance IDs
-    const newSpawnedFish: Array<{ id: string; sprite: string; type: string; creatureId?: string }> = [];
+    // Spawn all fish from the biome with unique instance IDs (full creature data)
+    const newSpawnedFish: SpawnedCreature[] = [];
     fishWithSprites.forEach((fish, index) => {
       const instanceId = `${fish.id}_biome_${Date.now()}_${index}`;
-      newSpawnedFish.push({
-        id: instanceId,
-        sprite: fish.sprite!,
-        type: fish.type,
-        creatureId: fish.id,
-      });
+      const spawned = createSpawnedCreatureInstance(fish, instanceId);
+      if (spawned) {
+        newSpawnedFish.push(spawned);
+      }
     });
     setSpawnedFish(newSpawnedFish);
     console.log(`[FishEditor] Spawned ${newSpawnedFish.length} fish for biome ${biomeId}`);
@@ -423,6 +261,161 @@ export default function FishEditorPage() {
     setPlayerCreatureId(playerCandidate.id);
     console.log(`[FishEditor] Set player to: ${playerCandidate.name} (${playerCandidate.id})`);
   }, []);
+
+  // Load all creatures and apply first biome (shallows) on mount
+  useEffect(() => {
+    function createDefaultPreyDataUrl(): string {
+      const c = document.createElement('canvas');
+      c.width = 80;
+      c.height = 40;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#4ade80';
+      ctx.beginPath();
+      ctx.ellipse(35, 20, 25, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.moveTo(10, 20);
+      ctx.lineTo(0, 8);
+      ctx.lineTo(0, 32);
+      ctx.closePath();
+      ctx.fill();
+      return c.toDataURL('image/png');
+    }
+
+    const loadRandomAssets = async () => {
+      try {
+        const bgResponse = await fetch('/api/list-assets?type=background');
+        const bgData = await bgResponse.json();
+        if (bgData.success && bgData.assets.length > 0) {
+          const randomBg = bgData.assets[Math.floor(Math.random() * bgData.assets.length)];
+          setSelectedBackground(randomBg.url);
+        }
+      } catch (error) {
+        console.error('Failed to load random assets:', error);
+      }
+    };
+
+    // Load all creatures from shared loader
+    const loadCreaturesFromBlob = async () => {
+      try {
+        const creatures = await loadAllCreatures();
+
+        if (creatures.length > 0) {
+          console.log(`[FishEditor] Loaded ${creatures.length} creatures from shared loader`);
+
+          const newFishData = new Map<string, FishData>();
+          creatures.forEach((creature) => {
+            newFishData.set(creature.id, creature);
+          });
+          setFishData(newFishData);
+
+          // Start with first biome (shallows): set bg + spawn all shallow fish + set player
+          const shallowFish = creatures.filter((c) => c.biomeId === 'shallow');
+          if (shallowFish.length > 0) {
+            handleBiomeSelect('shallow', shallowFish);
+            return;
+          }
+
+          // No shallow fish: fall back to random background + a few prey
+          await loadRandomAssets();
+          const preyCandidates = creatures.filter((c) => c.type === 'prey' && c.sprite);
+          const pool = preyCandidates.length > 0 ? preyCandidates : creatures.filter((c) => c.sprite);
+          const defaults: SpawnedCreature[] = [];
+          for (let i = 0; i < Math.min(4, pool.length); i++) {
+            const c = pool[i];
+            const instanceId = `${c.id}_inst_${Date.now()}_${i}`;
+            const spawned = createSpawnedCreatureInstance(c, instanceId);
+            if (spawned) {
+              defaults.push(spawned);
+            }
+          }
+          if (defaults.length > 0) {
+            setSpawnedFish(defaults);
+          }
+          const playable = creatures.find((c) => c.playable && c.sprite);
+          const firstWithSprite = creatures.find((c) => c.sprite);
+          const chosen = playable || firstWithSprite;
+          if (chosen) {
+            setPlayerCreatureId(chosen.id);
+          }
+        } else {
+          // No creatures yet: fall back to simple green placeholder prey so the editor isn't empty
+          const fallbackSprite = createDefaultPreyDataUrl();
+          const defaults: SpawnedCreature[] = [];
+          const newFishData = new Map<string, FishData>();
+
+          for (let i = 0; i < 4; i++) {
+            const newId = `default_prey_${Date.now()}_${i}`;
+            const fallbackFish: FishData = {
+              id: newId,
+              name: `Prey Fish ${i + 1}`,
+              description: 'A small, swift prey fish.',
+              type: 'prey',
+              stats: {
+                size: 60,
+                speed: 5,
+                health: 20,
+                damage: 5,
+              },
+              sprite: fallbackSprite,
+            };
+            newFishData.set(newId, fallbackFish);
+            const spawned = createSpawnedCreatureInstance(fallbackFish, newId);
+            if (spawned) {
+              defaults.push(spawned);
+            }
+          }
+
+          setSpawnedFish(defaults);
+          setFishData(newFishData);
+        }
+      } catch (error) {
+        console.error('[FishEditor] Failed to load creatures from shared loader:', error);
+      }
+    };
+
+    loadCreaturesFromBlob();
+  }, [handleBiomeSelect]);
+
+  const handleSpawnFish = (sprite: string, type: string) => {
+    const newId = `fish_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // Initialize fish data
+    const defaultName = type.charAt(0).toUpperCase() + type.slice(1) + ' Fish';
+    const defaultData: FishData = {
+      id: newId,
+      name: defaultName,
+      description: `A ${type} fish with unique characteristics.`,
+      type: type as 'prey' | 'predator' | 'mutant',
+      stats: {
+        size: type === 'prey' ? 60 : type === 'predator' ? 120 : 90,
+        speed: type === 'prey' ? 5 : type === 'predator' ? 3 : 4,
+        health: type === 'prey' ? 20 : type === 'predator' ? 50 : 35,
+        damage: type === 'prey' ? 5 : type === 'predator' ? 20 : 12,
+      },
+      sprite,
+    };
+
+    const spawned = createSpawnedCreatureInstance(defaultData, newId);
+    if (spawned) {
+      setSpawnedFish((prev) => [...prev, spawned]);
+    }
+
+    setFishData((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(newId, defaultData);
+      return newMap;
+    });
+  };
+
+  const handleClearFish = () => {
+    setSpawnedFish([]);
+    setFishData(new Map());
+    setEditMode(false);
+    setSelectedFishId(null);
+    setZoom(DEFAULT_ZOOM);
+  };
 
   const handleBackToMenu = () => {
     router.push('/');
@@ -462,15 +455,11 @@ export default function FishEditorPage() {
     // Create unique instance ID for this spawn
     const instanceId = `${fish.id}_inst_${Date.now()}`;
 
-    // Spawn the fish to canvas with unique instance ID
-    setSpawnedFish((prev) => {
-      return [...prev, {
-        id: instanceId,
-        sprite: fish.sprite,
-        type: fish.type,
-        creatureId: fish.id // Track original creature ID for metadata lookup
-      }];
-    });
+    // Spawn the fish to canvas with unique instance ID (full creature data)
+    const spawned = createSpawnedCreatureInstance(fish, instanceId);
+    if (spawned) {
+      setSpawnedFish((prev) => [...prev, spawned]);
+    }
 
     // Enter edit mode for this fish instance
     setSelectedFishId(instanceId);
@@ -529,11 +518,11 @@ export default function FishEditorPage() {
       return newMap;
     });
 
-    // Spawn the fish to the canvas so it's visible
-    setSpawnedFish((prev) => [
-      ...prev,
-      { id: newId, sprite: placeholderSprite, type: 'prey' }
-    ]);
+    // Spawn the fish to the canvas so it's visible (full creature data)
+    const spawned = createSpawnedCreatureInstance({ ...newFish, sprite: placeholderSprite }, newId);
+    if (spawned) {
+      setSpawnedFish((prev) => [...prev, spawned]);
+    }
 
     setSelectedFishId(newId);
     setEditMode(true);
@@ -574,13 +563,22 @@ export default function FishEditorPage() {
       newMap.set(fish.id, fish);
       return newMap;
     });
-    // Update spawned fish sprite and type if changed - match by creatureId OR id
-    setSpawnedFish((prev) =>
-      prev.map((f) => {
-        const matchesCreature = f.creatureId === fish.id || f.id === fish.id;
-        return matchesCreature ? { ...f, sprite: fish.sprite, type: fish.type } : f;
-      })
-    );
+    // Update spawned fish with the latest creature data (preserve instance size)
+    const normalized = normalizeCreature(fish);
+    if (normalized) {
+      setSpawnedFish((prev) =>
+        prev.map((f) => {
+          const matchesCreature = f.creatureId === fish.id || f.id === fish.id;
+          if (!matchesCreature) return f;
+          return {
+            ...normalized,
+            id: f.id,
+            creatureId: f.creatureId ?? fish.id,
+            stats: { ...normalized.stats, size: f.stats.size },
+          };
+        })
+      );
+    }
   };
 
   // Generate growth sprites for the selected fish
@@ -758,11 +756,10 @@ export default function FishEditorPage() {
             <button
               onClick={() => handleSaveFish(selectedFish)}
               disabled={!hasPendingChanges}
-              className={`w-10 h-10 rounded-lg shadow-lg border flex items-center justify-center transition-colors ${
-                hasPendingChanges 
-                  ? 'bg-green-700 hover:bg-green-600 border-green-500 text-white' 
+              className={`w-10 h-10 rounded-lg shadow-lg border flex items-center justify-center transition-colors ${hasPendingChanges
+                  ? 'bg-green-700 hover:bg-green-600 border-green-500 text-white'
                   : 'bg-gray-700 border-gray-600 text-gray-500 cursor-not-allowed'
-              }`}
+                }`}
               title={hasPendingChanges ? "Save Creature" : "No changes to save"}
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -961,8 +958,8 @@ export default function FishEditorPage() {
                   }
                 }}
                 className={`text-xs font-medium min-w-[70px] text-center transition-colors ${hasCurrentAnimation
-                    ? 'text-green-400 hover:text-green-300'
-                    : 'text-gray-500'
+                  ? 'text-green-400 hover:text-green-300'
+                  : 'text-gray-500'
                   }`}
                 title={hasCurrentAnimation ? "Click to play" : "No animation generated"}
                 disabled={!hasCurrentAnimation}
@@ -1027,6 +1024,7 @@ export default function FishEditorPage() {
           onSpawnFish={(sprite, type) => handleSpawnFish(sprite, type)}
           spawnedFishIds={spawnedFish.map(f => f.creatureId || f.id)}
           onBiomeSelect={handleBiomeSelect}
+          initialLibrarySubTab="shallow"
           onPreviousFish={handlePreviousFish}
           onNextFish={handleNextFish}
           hasPrevious={hasPrevious}

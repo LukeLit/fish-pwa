@@ -15,10 +15,13 @@ import {
   saveRunState,
   createNewRunState,
   clearRunState,
+  updateFishState,
+  updateRunStats,
 } from '@/lib/game/run-state';
-import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
-import { getCreaturesByBiome, getBlobCreaturesByBiome, getCreatureById } from '@/lib/game/data/creatures';
-import { computeEncounterSize, PLAYER_BASE_SIZE } from '@/lib/game/spawn-fish';
+import { DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
+import { loadCreatureById, loadCreaturesByBiome } from '@/lib/game/data/creature-loader';
+import { computeEncounterSize } from '@/lib/game/spawn-fish';
+import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -34,7 +37,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
   const [playerCreature, setPlayerCreature] = useState<Creature | null>(null);
-  const [spawnedFish, setSpawnedFish] = useState<Creature[]>([]);
+  const [spawnedFish, setSpawnedFish] = useState<Array<Creature & { creatureId?: string }>>([]);
   const [levelDuration, setLevelDuration] = useState<number>(60000);
   const [currentLevel, setCurrentLevel] = useState<string>('1-1');
 
@@ -70,10 +73,17 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Handle stats update from canvas
+  // Handle stats update from canvas - persist size, sprite (growth-stage), and stats to run state
   const handleStatsUpdate = useCallback((stats: PlayerGameStats) => {
     setPlayerStats(stats);
-  }, []);
+    const rs = loadRunState();
+    if (!rs) return;
+    const spriteUrl = playerCreature ? getSpriteUrlForSize(playerCreature, stats.size) : rs.fishState.sprite;
+    let updated = updateFishState(rs, { size: stats.size, sprite: spriteUrl });
+    updated = updateRunStats(updated, { fishEaten: stats.fishEaten, timeSurvived: stats.timeSurvived });
+    saveRunState(updated);
+    setRunState(updated);
+  }, [playerCreature]);
 
   // Load fish library for pause menu
   useEffect(() => {
@@ -147,67 +157,62 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           }
         }
 
-        // Try to load the player creature from blob storage first
+        // Load the player creature via the shared creature loader
         let playerSprite: string | null = null;
-        let startSize: number | undefined; // Track computed player start size for AI fish scaling
-        try {
-          const blobCreature = await getCreatureById(selectedFishId);
-          if (blobCreature?.sprite) {
-            playerSprite = blobCreature.sprite;
+        const requestedCreature = await loadCreatureById(selectedFishId);
+        const fallbackCreature =
+          requestedCreature || (selectedFishId !== DEFAULT_STARTER_FISH_ID
+            ? await loadCreatureById(DEFAULT_STARTER_FISH_ID)
+            : null);
+        const playerCreatureData = requestedCreature || fallbackCreature;
 
-            // Debug: Check if growthSprites exist
-            console.log(`[GameCanvas] Loaded player creature: ${blobCreature.id}, hasGrowthSprites:`, !!blobCreature.growthSprites, blobCreature.growthSprites ? Object.keys(blobCreature.growthSprites) : 'none');
+        if (playerCreatureData?.sprite) {
+          playerSprite = playerCreatureData.sprite;
 
-            // Store full creature for clip state machine
-            setPlayerCreature(blobCreature);
+          // Debug: Check if growthSprites exist
+          console.log(
+            `[GameCanvas] Loaded player creature: ${playerCreatureData.id}, hasGrowthSprites:`,
+            !!playerCreatureData.growthSprites,
+            playerCreatureData.growthSprites ? Object.keys(playerCreatureData.growthSprites) : 'none'
+          );
 
-            // Set player fish data for pause menu
-            setPlayerFishData({
-              id: blobCreature.id,
-              name: blobCreature.name,
-              description: blobCreature.description || '',
-              type: blobCreature.type,
-              stats: blobCreature.stats,
-              sprite: blobCreature.sprite,
-              rarity: blobCreature.rarity,
-              playable: blobCreature.playable,
-              biomeId: blobCreature.biomeId,
-            });
+          // Store full creature for clip state machine
+          setPlayerCreature(playerCreatureData);
 
-            // All players start at fixed base size for consistent gameplay.
-            // Creature choice affects speed/health/damage, not starting size.
-            startSize = PLAYER_BASE_SIZE;
+          // Set player fish data for pause menu
+          setPlayerFishData({
+            id: playerCreatureData.id,
+            name: playerCreatureData.name,
+            description: playerCreatureData.description || '',
+            type: playerCreatureData.type,
+            stats: playerCreatureData.stats,
+            sprite: playerCreatureData.sprite,
+            rarity: playerCreatureData.rarity,
+            playable: playerCreatureData.playable,
+            biomeId: playerCreatureData.biomeId,
+          });
 
-            const updatedRunState: RunState = {
-              ...currentRunState,
-              selectedFishId,
-              fishState: {
-                size: startSize,
-                speed: blobCreature.stats.speed,
-                health: blobCreature.stats.health,
-                damage: blobCreature.stats.damage,
-                sprite: blobCreature.sprite,
-              },
-            };
-            setRunState(updatedRunState);
-            saveRunState(updatedRunState);
-          }
-        } catch (err) {
-          console.error('Failed to load player creature from blob storage:', err);
+          // Preserve existing fishState (e.g. size from previous level); only update creature-derived fields
+          // Sprite must match current size (growth-stage) so EvolutionScreen and others show correct stage
+          const spriteUrl = getSpriteUrlForSize(playerCreatureData, currentRunState.fishState.size);
+          const updatedRunState: RunState = {
+            ...currentRunState,
+            selectedFishId,
+            fishState: {
+              ...currentRunState.fishState,
+              speed: playerCreatureData.stats.speed,
+              health: playerCreatureData.stats.health,
+              damage: playerCreatureData.stats.damage,
+              sprite: spriteUrl,
+            },
+          };
+          setRunState(updatedRunState);
+          saveRunState(updatedRunState);
         }
 
-        // Fallback to static/local creature data if needed
+        // Last resort: use whatever sprite is already in run state
         if (!playerSprite) {
-          const fallbackCreature =
-            getCreature(selectedFishId) || getCreature(DEFAULT_STARTER_FISH_ID);
-          if (fallbackCreature?.sprite) {
-            playerSprite = fallbackCreature.sprite;
-            // Store full creature for clip state machine
-            setPlayerCreature(fallbackCreature);
-          } else {
-            // Last resort: use whatever sprite is already in run state
-            playerSprite = currentRunState.fishState.sprite;
-          }
+          playerSprite = currentRunState.fishState.sprite;
         }
 
         setPlayerFishSprite(playerSprite);
@@ -215,13 +220,14 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         // Spawn fish based on current level using blob-backed creature definitions
         // TODO: Dynamically determine biome based on current level/run state
         // For now, using 'shallow' as the default starter biome
-        const biomeCreatures = await getBlobCreaturesByBiome('shallow');
+        const biomeCreatures = await loadCreaturesByBiome('shallow');
         if (biomeCreatures.length > 0) {
           // Separate creatures by type
           const preyCreatures = biomeCreatures.filter(c => c.type === 'prey');
           const predatorCreatures = biomeCreatures.filter(c => c.type === 'predator');
 
           const spawned: Creature[] = [];
+          let spawnIndex = 0;
 
           // Always spawn 1-2 apex predators (scales with level)
           const apexCount = Math.min(1 + Math.floor((level.levelNum - 1) / 2), 3);
@@ -236,8 +242,10 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             });
             spawned.push({
               ...creature,
+              id: `${creature.id}_inst_${spawnIndex++}`,
+              creatureId: creature.id,
               stats: { ...creature.stats, size: encounterSize },
-            });
+            } as Creature & { creatureId: string });
           }
 
           // Fill remaining slots with prey (varied sizes)
@@ -256,8 +264,10 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             });
             spawned.push({
               ...creature,
+              id: `${creature.id}_inst_${spawnIndex++}`,
+              creatureId: creature.id,
               stats: { ...creature.stats, size: encounterSize },
-            });
+            } as Creature & { creatureId: string });
           }
 
           setSpawnedFish(spawned);
@@ -381,6 +391,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         playerFishSprite={playerFishSprite}
         playerCreature={playerCreature || undefined}
         spawnedFish={spawnedFish}
+        fishData={fishData}
         chromaTolerance={50}
         zoom={1}
         enableWaterDistortion={false}
@@ -395,12 +406,18 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             onGameOver(stats);
           }
         }}
-        onLevelComplete={(score) => {
-          // Save run state on level complete
-          if (runState) {
+        onLevelComplete={(score, finalStats) => {
+          // Merge final stats and growth-stage sprite into run state
+          let rs = loadRunState();
+          if (rs && finalStats) {
+            const spriteUrl = playerCreature ? getSpriteUrlForSize(playerCreature, finalStats.size) : rs.fishState.sprite;
+            rs = updateFishState(rs, { size: finalStats.size, sprite: spriteUrl });
+            rs = updateRunStats(rs, { fishEaten: finalStats.fishEaten, timeSurvived: finalStats.timeSurvived });
+            saveRunState(rs);
+            setRunState(rs);
+          } else if (runState) {
             saveRunState(runState);
           }
-          // Trigger digestion sequence instead of old flow
           if (onLevelComplete) {
             onLevelComplete();
           } else if (onGameEnd) {

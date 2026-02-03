@@ -11,7 +11,7 @@ import Image from 'next/image';
 import { loadPlayerState } from '@/lib/game/player-state';
 import { getPlayableCreaturesFromLocal } from '@/lib/storage/local-fish-storage';
 import { clearRunState } from '@/lib/game/run-state';
-import { loadFishSprite, drawFishWithDeformation } from '@/lib/rendering/fish-renderer';
+import { loadFishSprite, drawFishWithDeformation, getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
 import {
   loadBackground,
   drawBiomeFallback,
@@ -83,12 +83,14 @@ export default function FishSelectionScreen() {
     }
   }, [selectedFishId, playableFish]);
 
-  // Load sprite and biome background when selected fish changes
+  // Load sprite and biome background when selected fish changes (growth-stage aware)
   useEffect(() => {
     if (!selectedFish?.sprite) return;
 
-    // Load fish sprite using shared renderer (handles chroma key removal)
-    loadFishSprite(selectedFish.sprite).then(processedSprite => {
+    const size = selectedFish.stats?.size ?? 60;
+    const spriteUrl = getSpriteUrlForSize(selectedFish, size);
+
+    loadFishSprite(spriteUrl).then(processedSprite => {
       spriteRef.current = processedSprite;
     }).catch(err => {
       console.error('Failed to load fish sprite:', err);
@@ -300,7 +302,7 @@ export default function FishSelectionScreen() {
               >
                 {fish.sprite && (
                   <Image
-                    src={cacheBust(fish.sprite)}
+                    src={cacheBust(getSpriteUrlForSize(fish, fish.stats?.size ?? 60))}
                     alt={`${fish.name} fish`}
                     fill
                     className="object-contain p-1"

@@ -23,6 +23,7 @@ import {
 import type { FishData } from './FishEditOverlay';
 import type { GrowthStage, GrowthSprites, SpriteResolutions } from '@/lib/game/types';
 import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
+import { DEFAULT_GROWTH_RANGES } from '@/lib/rendering/fish-renderer';
 
 interface SpriteGenerationLabProps {
   fish: FishData;
@@ -70,12 +71,8 @@ DO NOT draw multiple fish. ONE fish only.`,
 DO NOT draw multiple fish. DO NOT draw a comparison. ONE fish only.`,
 };
 
-// Default size ranges for growth stages
-const DEFAULT_SIZE_RANGES: Record<GrowthStage, { min: number; max: number }> = {
-  juvenile: { min: 0, max: 30 },
-  adult: { min: 30, max: 70 },
-  elder: { min: 70, max: 150 },
-};
+// Use same growth ranges as game/editor (20-300 scale) so sprites match everywhere
+const DEFAULT_SIZE_RANGES = DEFAULT_GROWTH_RANGES as Record<GrowthStage, { min: number; max: number }>;
 
 export default function SpriteGenerationLab({
   fish,
@@ -681,10 +678,10 @@ export default function SpriteGenerationLab({
   const isGenerating = generatingStage !== null;
 
   // Wrapper classes based on embedded mode
-  const outerClassName = embedded 
-    ? "flex flex-col h-full -mx-4 -my-4" 
+  const outerClassName = embedded
+    ? "flex flex-col h-full -mx-4 -my-4"
     : "fixed inset-0 bg-black/90 flex items-center justify-center";
-  
+
   const innerClassName = embedded
     ? "flex-1 flex flex-col overflow-hidden"
     : "w-full h-full max-w-6xl max-h-[95vh] bg-gray-900 rounded-xl overflow-hidden flex flex-col m-4";

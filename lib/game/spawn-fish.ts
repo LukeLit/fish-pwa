@@ -17,6 +17,7 @@ import type { PhysicsEngine } from './physics';
 import type { Creature } from './types';
 import { FishData } from '@/components/FishEditOverlay';
 import type { SizeTier } from './data/creatures';
+import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
 
 /**
  * Options for spawning a fish entity (game engine)
@@ -125,8 +126,9 @@ export function spawnFish(options: SpawnFishOptions): Fish {
     id
   );
 
-  // Store creature metadata on the fish for reference
-  // This allows game systems to access essence types, abilities, etc.
+  // Store creature metadata on the fish for reference. Use growth-stage sprite (juvenile/adult/elder)
+  // so AI fish at juvenile size get juvenile sprites, not adult.
+  const spriteUrl = getSpriteUrlForSize(creature, finalSize);
   Object.assign(fish, {
     creatureId: creature.id,
     creatureName: creature.name,
@@ -134,7 +136,7 @@ export function spawnFish(options: SpawnFishOptions): Fish {
     biomeId: creature.biomeId,
     essenceTypes: creature.essenceTypes,
     grantedAbilities: creature.grantedAbilities ?? [],
-    sprite: creature.sprite,
+    sprite: spriteUrl,
   });
 
   return fish;
@@ -217,17 +219,19 @@ export function spawnAIFish(
 
 /**
  * Fixed player starting size - consistent for all creatures.
- * Creature choice affects speed/health/damage, not starting size.
- * This makes gameplay predictable and balanced.
+ * Set so player can eat smallest prey (art min 20; ~30 gives edible targets at start).
  */
-export const PLAYER_BASE_SIZE = 45;
+export const PLAYER_BASE_SIZE = 30;
+
+/** Art max size; used for growth cap and encounter clamp. */
+export const PLAYER_MAX_SIZE = 300;
 
 /**
  * Absolute size ranges per tier - simple and predictable.
  * No complex multipliers or player-relative blending.
  */
 export const TIER_SIZE_RANGES: Record<string, { min: number; max: number }> = {
-  prey: { min: 25, max: 38 },      // Clearly smaller than player
+  prey: { min: 20, max: 38 },      // Smallest edible (20 = art min); player at 30 can eat
   mid: { min: 42, max: 58 },       // Similar to player, some eatable
   predator: { min: 70, max: 95 },  // Dangerous, need to grow first
   boss: { min: 110, max: 150 },    // End-goal, very threatening
@@ -274,8 +278,8 @@ export function computeEncounterSize(options: {
   const levelMult = 1 + (levelNumber - 1) * 0.10;
   size *= levelMult;
 
-  // Clamp to reasonable bounds
-  return Math.round(Math.max(20, Math.min(size, 200)));
+  // Clamp to art bounds (min 20, max 300)
+  return Math.round(Math.max(20, Math.min(size, PLAYER_MAX_SIZE)));
 }
 
 /**
@@ -318,6 +322,9 @@ export function spawnFishFromData(
 
   // Merge overrides
   const data: FishData = { ...fishData, ...overrides };
+  const size = data.stats.size;
+  // Use growth-stage sprite so juvenile-sized fish get juvenile sprites
+  const sprite = getSpriteUrlForSize(data, size);
 
   // Core entity structure (add more as needed for game/physics)
   return {
@@ -325,12 +332,12 @@ export function spawnFishFromData(
     name: data.name,
     type: data.type,
     stats: { ...data.stats },
-    sprite: data.sprite,
+    sprite,
     x: position.x,
     y: position.y,
     vx: 0,
     vy: 0,
-    size: data.stats.size,
+    size,
     health: data.stats.health,
     damage: data.stats.damage,
     facingRight: true,

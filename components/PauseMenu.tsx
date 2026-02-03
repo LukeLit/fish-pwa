@@ -14,6 +14,7 @@ import JobsPanel from './JobsPanel';
 import { Accordion } from './ui';
 import type { BackgroundAsset } from '@/lib/game/types';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
+import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
 
 interface PlayerStats {
   size: number;
@@ -51,6 +52,8 @@ interface PauseMenuProps {
   spawnedFishIds?: string[];
   /** Called when a biome tab is selected - for setting scene to biome */
   onBiomeSelect?: (biomeId: string, biomeFish: FishData[]) => void;
+  /** Initial library sub-tab (e.g. 'shallow' for first biome) */
+  initialLibrarySubTab?: string;
   // Navigation for edit overlay
   onPreviousFish?: () => void;
   onNextFish?: () => void;
@@ -94,6 +97,7 @@ export default function PauseMenu({
   onSpawnFish,
   spawnedFishIds = [],
   onBiomeSelect,
+  initialLibrarySubTab,
   onPreviousFish,
   onNextFish,
   hasPrevious = false,
@@ -360,7 +364,10 @@ export default function PauseMenu({
                     {playerFish.sprite && (
                       <div className="w-20 h-20 bg-gray-900 rounded-lg overflow-hidden flex-shrink-0">
                         <img
-                          src={playerFish.sprite.startsWith('data:') ? playerFish.sprite : playerFish.sprite.split('?')[0]}
+                          src={(() => {
+                            const url = getSpriteUrlForSize(playerFish, playerStats?.size ?? playerFish.stats?.size ?? 60);
+                            return url.startsWith('data:') ? url : url.split('?')[0];
+                          })()}
                           alt={playerFish.name}
                           className="w-full h-full object-contain"
                         />
@@ -438,6 +445,7 @@ export default function PauseMenu({
                 onSpawnFish={onSpawnFish}
                 spawnedFishIds={spawnedFishIds}
                 onBiomeSelect={onBiomeSelect}
+                initialSubTab={initialLibrarySubTab}
               />
             ) : selectedFish ? (
               <div className="h-full flex flex-col">
