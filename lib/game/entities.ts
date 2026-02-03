@@ -15,6 +15,8 @@ export interface EntityData {
   speed?: number;
   stamina?: number;
   maxStamina?: number;
+  health?: number;
+  maxHealth?: number;
 }
 
 export abstract class Entity {
@@ -31,6 +33,8 @@ export abstract class Entity {
   public stamina: number = 100;
   public maxStamina: number = 100;
   public staminaRegenRate: number = 0.1; // stamina per millisecond
+  public health: number = 100;
+  public maxHealth: number = 100;
   public lastChompTime: number = 0;
   public chompCooldown: number = 500; // ms between chomps
   public isDashing: boolean = false;
@@ -50,6 +54,8 @@ export abstract class Entity {
     this.speed = data.speed || 2;
     this.stamina = data.stamina ?? 100;
     this.maxStamina = data.maxStamina ?? 100;
+    this.health = data.health ?? 100;
+    this.maxHealth = data.maxHealth ?? 100;
 
     // Create physics body
     this.body = physics.createCircle(data.x, data.y, data.size, {
@@ -135,6 +141,50 @@ export abstract class Entity {
     this.lastChompTime = now;
     
     return true;
+  }
+  
+  /**
+   * Deal damage to this entity
+   * Returns true if entity was killed
+   */
+  takeDamage(damage: number): boolean {
+    this.health -= damage;
+    
+    if (this.health <= 0) {
+      this.health = 0;
+      this.alive = false;
+      return true; // Entity killed
+    }
+    
+    return false; // Entity survived
+  }
+  
+  /**
+   * Calculate damage dealt to another entity based on size
+   */
+  calculateDamage(target: Entity): number {
+    const sizeRatio = this.size / target.size;
+    
+    // Base damage scales with attacker size
+    let baseDamage = this.size * 2;
+    
+    // Size advantage multiplier
+    if (sizeRatio >= 1.5) {
+      baseDamage *= 1.5; // Much larger = more damage
+    } else if (sizeRatio >= 1.2) {
+      baseDamage *= 1.2; // Somewhat larger = bonus damage
+    } else if (sizeRatio < 0.8) {
+      baseDamage *= 0.5; // Smaller = reduced damage
+    }
+    
+    return baseDamage;
+  }
+  
+  /**
+   * Check if this entity can swallow another whole
+   */
+  canSwallow(target: Entity): boolean {
+    return this.size >= target.size * 2.0; // SWALLOW_SIZE_RATIO
   }
 
   abstract render(p5: p5): void;

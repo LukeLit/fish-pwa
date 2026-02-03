@@ -489,53 +489,90 @@ export class GameEngine {
         const isPlayerFrontCollision = this.player.isFrontCollision(entity);
         const isEntityFrontCollision = entity.isFrontCollision(this.player);
 
-        const sizeDiff = Math.abs(this.player.stats.size - entity.size);
-        const sizeRatio = this.player.stats.size / entity.size;
-
-        // Battle mechanic: if similar size (within 20%), engage in battle
-        if (sizeDiff < this.player.stats.size * 0.2 && entity instanceof Fish) {
-          // Battle - try to chomp each other
-          if (isPlayerFrontCollision && this.player.chomp(entity)) {
-            this.createParticles(entity.x, entity.y, '#ff0000', 5);
-            this.audio.playSound('bite', 0.2);
-          }
-          if (isEntityFrontCollision && entity.chomp(this.player)) {
-            this.createParticles(this.player.x, this.player.y, '#ff0000', 5);
-            this.audio.playSound('bite', 0.2);
-          }
-
-          // Check if either lost all stamina
-          if (this.player.stamina <= 0) {
-            // Player loses battle
-            this.gameOver();
-          }
-          if (entity.stamina <= 0) {
-            // Entity loses battle, player can eat it
+        // ATTACK vs EAT SPLIT:
+        // - Can SWALLOW if ≥2x target size (instant eat)
+        // - Can ATTACK if ≥1.2x target size but <2x (deal damage)
+        // - BATTLE if similar size (within 20%, stamina-based)
+        
+        if (isPlayerFrontCollision) {
+          // Player attacking entity
+          if (this.player.canSwallow(entity)) {
+            // SWALLOW WHOLE - instant eat
             this.player.eat(entity);
             this.dropEssenceFromFish(entity as Fish);
             entity.destroy(this.physics);
             this.createParticles(entity.x, entity.y, entity.color, 10);
             this.audio.playSound('bite', 0.3);
-          }
-        } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
-          // Player eats entity (only from front and when dashing)
-          this.player.eat(entity);
-          this.dropEssenceFromFish(entity as Fish);
-          entity.destroy(this.physics);
-          this.createParticles(entity.x, entity.y, entity.color, 10);
-          this.audio.playSound('bite', 0.3);
 
-          // Chance for mutation
-          if (Math.random() < 0.05) {
-            const mutation = this.mutations.applyRandomMutation(this.player);
-            if (mutation) {
-              this.createParticles(this.player.x, this.player.y, '#ff00ff', 20);
-              this.audio.playSound('mutation', 0.5);
+            // Chance for mutation
+            if (Math.random() < 0.05) {
+              const mutation = this.mutations.applyRandomMutation(this.player);
+              if (mutation) {
+                this.createParticles(this.player.x, this.player.y, '#ff00ff', 20);
+                this.audio.playSound('mutation', 0.5);
+              }
+            }
+          } else if (this.player.stats.size >= entity.size * 1.2) {
+            // ATTACK - deal damage but can't swallow
+            const damage = this.player.calculateDamage(entity);
+            const killed = entity.takeDamage(damage);
+            
+            this.createParticles(entity.x, entity.y, '#ff0000', 8);
+            this.audio.playSound('bite', 0.25);
+            
+            if (killed) {
+              // Enemy defeated, can now eat
+              this.player.eat(entity);
+              this.dropEssenceFromFish(entity as Fish);
+              entity.destroy(this.physics);
+              this.createParticles(entity.x, entity.y, entity.color, 15);
+            }
+          } else {
+            // BATTLE - similar size, stamina-based combat
+            if (entity instanceof Fish && this.player.chomp(entity)) {
+              this.createParticles(entity.x, entity.y, '#ff0000', 5);
+              this.audio.playSound('bite', 0.2);
+              
+              // Check if entity lost all stamina
+              if (entity.stamina <= 0) {
+                this.player.eat(entity);
+                this.dropEssenceFromFish(entity);
+                entity.destroy(this.physics);
+                this.createParticles(entity.x, entity.y, entity.color, 10);
+              }
             }
           }
-        } else if (this.player.isEatenBy(entity) && isEntityFrontCollision && entity.isDashing) {
-          // Player is eaten (only from front and if entity is dashing)
-          this.gameOver();
+        }
+        
+        if (isEntityFrontCollision && entity.isDashing) {
+          // Entity attacking player
+          if (entity.canSwallow(this.player)) {
+            // Player swallowed whole - game over
+            this.gameOver();
+          } else if (entity.size >= this.player.stats.size * 1.2) {
+            // Entity attacks player - deal damage
+            const damage = entity.calculateDamage(this.player);
+            this.player.stats.hunger = Math.max(0, this.player.stats.hunger - damage);
+            
+            this.createParticles(this.player.x, this.player.y, '#ff0000', 8);
+            this.audio.playSound('bite', 0.25);
+            
+            // Check if player died from damage
+            if (this.player.stats.hunger <= 0) {
+              this.gameOver();
+            }
+          } else {
+            // Battle - similar size
+            if (entity instanceof Fish && entity.chomp(this.player)) {
+              this.createParticles(this.player.x, this.player.y, '#ff0000', 5);
+              this.audio.playSound('bite', 0.2);
+              
+              // Check if player lost all stamina
+              if (this.player.stamina <= 0) {
+                this.gameOver();
+              }
+            }
+          }
         }
       }
     });
@@ -560,20 +597,54 @@ export class GameEngine {
           const fish2Dashing = fish2.isDashing;
           
           // Check which fish is predator and which is prey
-          if (fish1Dashing && fish1.type === 'predator' && fish1.size >= fish2.size * 1.2 && fish1.isFrontCollision(fish2)) {
-            // fish1 eats fish2 - diminishing returns for AI too
-            const sizeRatio = fish1.size / fish2.size;
-            const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
-            fish1.size += fish2.size * 0.1 * efficiencyMult;
-            fish2.destroy(this.physics);
-            this.createParticles(fish2.x, fish2.y, fish2.color, 5);
-          } else if (fish2Dashing && fish2.type === 'predator' && fish2.size >= fish1.size * 1.2 && fish2.isFrontCollision(fish1)) {
-            // fish2 eats fish1 - diminishing returns for AI too
-            const sizeRatio = fish2.size / fish1.size;
-            const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
-            fish2.size += fish1.size * 0.1 * efficiencyMult;
-            fish1.destroy(this.physics);
-            this.createParticles(fish1.x, fish1.y, fish1.color, 5);
+          if (fish1Dashing && fish1.type === 'predator' && fish1.isFrontCollision(fish2)) {
+            // Fish1 attacking fish2
+            if (fish1.canSwallow(fish2)) {
+              // Swallow whole - diminishing returns
+              const sizeRatio = fish1.size / fish2.size;
+              const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+              fish1.size += fish2.size * 0.1 * efficiencyMult;
+              fish2.destroy(this.physics);
+              this.createParticles(fish2.x, fish2.y, fish2.color, 5);
+            } else if (fish1.size >= fish2.size * 1.2) {
+              // Attack - deal damage
+              const damage = fish1.calculateDamage(fish2);
+              const killed = fish2.takeDamage(damage);
+              this.createParticles(fish2.x, fish2.y, '#ff0000', 5);
+              
+              if (killed) {
+                // Can now eat defeated fish
+                const sizeRatio = fish1.size / fish2.size;
+                const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+                fish1.size += fish2.size * 0.1 * efficiencyMult;
+                fish2.destroy(this.physics);
+                this.createParticles(fish2.x, fish2.y, fish2.color, 8);
+              }
+            }
+          } else if (fish2Dashing && fish2.type === 'predator' && fish2.isFrontCollision(fish1)) {
+            // Fish2 attacking fish1
+            if (fish2.canSwallow(fish1)) {
+              // Swallow whole - diminishing returns
+              const sizeRatio = fish2.size / fish1.size;
+              const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+              fish2.size += fish1.size * 0.1 * efficiencyMult;
+              fish1.destroy(this.physics);
+              this.createParticles(fish1.x, fish1.y, fish1.color, 5);
+            } else if (fish2.size >= fish1.size * 1.2) {
+              // Attack - deal damage
+              const damage = fish2.calculateDamage(fish1);
+              const killed = fish1.takeDamage(damage);
+              this.createParticles(fish1.x, fish1.y, '#ff0000', 5);
+              
+              if (killed) {
+                // Can now eat defeated fish
+                const sizeRatio = fish2.size / fish1.size;
+                const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+                fish2.size += fish1.size * 0.1 * efficiencyMult;
+                fish1.destroy(this.physics);
+                this.createParticles(fish1.x, fish1.y, fish1.color, 8);
+              }
+            }
           }
           // If neither is dashing, they pass peacefully (no interaction)
         }
