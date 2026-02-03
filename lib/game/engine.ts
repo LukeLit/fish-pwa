@@ -160,6 +160,7 @@ export class GameEngine {
 
     // Load run state to get player size (for persistence across levels)
     const runState = loadRunState();
+    console.log('[Engine.start] Loading runState, fishState.size:', runState?.fishState?.size);
     
     // Load player state for meta upgrades
     const { loadPlayerState } = await import('./player-state');
@@ -171,14 +172,17 @@ export class GameEngine {
     if (runState?.fishState?.size) {
       // Use saved size from RunState (continuing a run or level transition)
       startingSize = runState.fishState.size;
+      console.log('[Engine.start] Using saved size from RunState:', startingSize);
     } else {
       // New run: start at base size (20) + meta upgrades
       startingSize = 20; // Base size
+      console.log('[Engine.start] New run, starting at base size 20');
       
       // Apply meta starting size upgrade for NEW runs only
       if (metaUpgrades.meta_starting_size) {
         const sizeBonus = metaUpgrades.meta_starting_size * 5;
         startingSize += sizeBonus;
+        console.log('[Engine.start] Applied meta upgrades, final starting size:', startingSize);
       }
       
       // Save the starting size with meta bonuses to RunState
@@ -186,12 +190,14 @@ export class GameEngine {
       if (runState) {
         const updated = updateFishState(runState, { size: startingSize });
         saveRunState(updated);
+        console.log('[Engine.start] Saved meta-upgraded size to RunState:', startingSize);
       }
     }
 
     // Create player with computed size
     const startX = this.p5Instance?.width ? this.p5Instance.width / 2 : 400;
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
+    console.log('[Engine.start] Creating Player with size:', startingSize);
     this.player = new Player(this.physics, startX, startY, startingSize);
 
     // Apply other meta upgrades
@@ -631,6 +637,7 @@ export class GameEngine {
     
     const runState = loadRunState();
     if (runState) {
+      console.log('[Engine.syncPlayerSizeToRunState] Saving player size:', this.player.stats.size);
       const updated = updateFishState(runState, { size: this.player.stats.size });
       saveRunState(updated);
     }

@@ -177,6 +177,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
             // Preserve existing size from RunState (for level progression)
             // Only use PLAYER_START_SIZE as fallback for brand new runs
             const preservedSize = currentRunState.fishState?.size ?? PLAYER_START_SIZE;
+            console.log('[GameCanvas] Loading player creature - preserving size:', preservedSize, 'from runState:', currentRunState.fishState?.size);
             startSize = preservedSize;
 
             const updatedRunState: RunState = {
@@ -190,6 +191,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
                 sprite: blobCreature.sprite,
               },
             };
+            console.log('[GameCanvas] Saving updated RunState with fishState.size:', updatedRunState.fishState.size);
             setRunState(updatedRunState);
             saveRunState(updatedRunState);
           }
