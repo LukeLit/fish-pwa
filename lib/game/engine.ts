@@ -23,7 +23,7 @@ import {
 } from './hunger-constants';
 import { getBiome } from './data/biomes';
 import { getCreaturesByBiome } from './data/creatures';
-import { spawnAIFish } from './spawn-fish';
+import { spawnAIFish, PLAYER_BASE_SIZE } from './spawn-fish';
 
 const DEFAULT_ESSENCE_COLOR = '#4ade80'; // Fallback color for essence orbs
 
@@ -161,39 +161,21 @@ export class GameEngine {
     // Load run state to get player size
     const runState = loadRunState();
     
-    // Use saved size from RunState, or default to 10 if no RunState exists
-    const startingSize = runState?.fishState?.size ?? 10;
+    // Use saved size from RunState, or default to PLAYER_BASE_SIZE if no RunState exists
+    const startingSize = runState?.fishState?.size ?? PLAYER_BASE_SIZE;
 
     // Create player with saved size
     const startX = this.p5Instance?.width ? this.p5Instance.width / 2 : 400;
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
     this.player = new Player(this.physics, startX, startY, startingSize);
 
-    // Apply meta upgrades from player state (purchased with Evo Points)
-    // ONLY if size is still at base value (10), meaning meta upgrades haven't been applied yet
+    // NOTE: We no longer apply meta size upgrades here because PLAYER_BASE_SIZE already
+    // includes expected meta bonuses. The size in RunState is the source of truth.
+    
+    // Load player state for other meta upgrades (speed, hunger, etc.)
     const { loadPlayerState } = await import('./player-state');
     const playerState = loadPlayerState();
     const metaUpgrades = playerState.metaUpgrades;
-
-    // Apply starting size upgrade ONLY if size is still at base (10)
-    // This ensures meta upgrades are applied exactly once per run
-    if (startingSize === 10 && metaUpgrades.meta_starting_size) {
-      const sizeBonus = metaUpgrades.meta_starting_size * 5;
-      this.player.stats.size += sizeBonus;
-      // Note: Don't set this.player.size here - let Player.update() handle the scaling
-      
-      // Save the size with meta bonuses back to RunState
-      // This ensures the size is persisted even if RunState didn't exist before
-      let currentRunState = loadRunState();
-      if (currentRunState) {
-        currentRunState = updateFishState(currentRunState, { size: this.player.stats.size });
-        saveRunState(currentRunState);
-      } else {
-        // Edge case: if RunState somehow doesn't exist, log a warning
-        // This shouldn't happen in normal flow (GameCanvas creates it)
-        console.warn('RunState not found when saving meta upgrade size - this is unexpected');
-      }
-    }
 
     // Apply starting speed upgrade
     if (metaUpgrades.meta_starting_speed) {
