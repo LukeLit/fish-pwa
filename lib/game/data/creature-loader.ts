@@ -1,4 +1,4 @@
-import type { Creature, GrowthSprites } from '../types';
+import type { Creature, GrowthSprites, SpriteResolutions, CreatureAnimations } from '../types';
 import { getAllCreaturesFromBlob, getAllCreatures, getCreatureById as getCreatureByIdRaw } from './creatures';
 import { loadCreatureFromLocal } from '../../storage/local-fish-storage';
 import {
@@ -96,9 +96,9 @@ export function normalizeCreature(raw: unknown): Creature | null {
     grantedAbilities,
     playable: typeof raw.playable === 'boolean' ? raw.playable : false,
     sizeTier: typeof raw.sizeTier === 'string' ? raw.sizeTier : undefined,
-    spriteResolutions: isRecord(raw.spriteResolutions) ? raw.spriteResolutions : undefined,
+    spriteResolutions: isRecord(raw.spriteResolutions) ? raw.spriteResolutions as SpriteResolutions : undefined,
     growthSprites,
-    animations: isRecord(raw.animations) ? raw.animations : undefined,
+    animations: isRecord(raw.animations) ? raw.animations as CreatureAnimations : undefined,
     essence: raw.essence,
     descriptionChunks: Array.isArray(raw.descriptionChunks) ? raw.descriptionChunks : undefined,
     visualMotif: typeof raw.visualMotif === 'string' ? raw.visualMotif : undefined,
