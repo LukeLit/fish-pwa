@@ -26,11 +26,11 @@ export class Player extends Entity {
   private useSprite: boolean = false;
 
   constructor(physics: PhysicsEngine, x: number, y: number, initialSize: number = 10) {
-    // Always create the physics body with base size 10, then scale to desired size
+    // Create the physics body with the correct initial size
     super(physics, {
       x,
       y,
-      size: 10, // Base body size
+      size: initialSize, // Create body with correct size
       type: 'neutral',
       color: '#3b82f6',
       speed: 3,
@@ -46,14 +46,7 @@ export class Player extends Entity {
       hungerDrainRate: HUNGER_DRAIN_RATE,
     };
 
-    // Scale the body to match the desired initial size
-    // Body starts at radius 10, scale to reach initialSize
-    if (initialSize !== 10) {
-      Matter.Body.scale(this.body, initialSize / 10, initialSize / 10);
-    }
-
-    // Update this.size to match the actual size
-    this.size = initialSize;
+    // this.size is already set correctly by Entity constructor
   }
 
   handleKeyDown(key: string): void {

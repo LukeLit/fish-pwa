@@ -180,7 +180,7 @@ export class GameEngine {
     if (startingSize === 10 && metaUpgrades.meta_starting_size) {
       const sizeBonus = metaUpgrades.meta_starting_size * 5;
       this.player.stats.size += sizeBonus;
-      this.player.size = this.player.stats.size;
+      // Note: Don't set this.player.size here - let Player.update() handle the scaling
       
       // Save the size with meta bonuses back to RunState
       // This ensures the size is persisted even if RunState didn't exist before
