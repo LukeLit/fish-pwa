@@ -986,7 +986,9 @@ export default function FishEditorCanvas({
     const isSpawnedCreature = (item: SpawnedCreature | LegacySpawnItem): item is SpawnedCreature => {
       return 'stats' in item && 'rarity' in item;
     };
-    spawnPoolRef.current = spawnedFish.length ? spawnedFish.filter(isSpawnedCreature) : [];
+    spawnPoolRef.current = spawnedFish.length 
+      ? (spawnedFish.filter(isSpawnedCreature) as SpawnedCreature[])
+      : [];
 
     // Helper to load and process a sprite with resolution awareness
     const loadSprite = (
