@@ -4,6 +4,7 @@
 import Matter from 'matter-js';
 import type p5 from 'p5';
 import { PhysicsEngine } from './physics';
+import { EntityState } from './types';
 
 export interface EntityData {
   x: number;
@@ -14,6 +15,8 @@ export interface EntityData {
   speed?: number;
   stamina?: number;
   maxStamina?: number;
+  health?: number;
+  maxHealth?: number;
 }
 
 export abstract class Entity {
@@ -30,8 +33,12 @@ export abstract class Entity {
   public stamina: number = 100;
   public maxStamina: number = 100;
   public staminaRegenRate: number = 0.1; // stamina per millisecond
+  public health: number = 100;
+  public maxHealth: number = 100;
   public lastChompTime: number = 0;
   public chompCooldown: number = 500; // ms between chomps
+  public isDashing: boolean = false;
+  public entityState: EntityState = EntityState.ALIVE;
 
   constructor(
     physics: PhysicsEngine,
@@ -47,6 +54,8 @@ export abstract class Entity {
     this.speed = data.speed || 2;
     this.stamina = data.stamina ?? 100;
     this.maxStamina = data.maxStamina ?? 100;
+    this.health = data.health ?? 100;
+    this.maxHealth = data.maxHealth ?? 100;
 
     // Create physics body
     this.body = physics.createCircle(data.x, data.y, data.size, {
@@ -69,12 +78,36 @@ export abstract class Entity {
   }
 
   update(deltaTime: number, physics?: PhysicsEngine): void {
-    if (!this.alive) return;
+    if (!this.alive && this.entityState !== EntityState.KNOCKED_OUT) return;
 
     this.age += deltaTime;
     
-    // Regenerate stamina over time
-    this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime);
+    // Handle knocked out state
+    if (this.entityState === EntityState.KNOCKED_OUT) {
+      // Slower stamina regeneration when knocked out (50%)
+      this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime * 0.5);
+      
+      // Wake up if stamina reaches threshold (40%)
+      if (this.stamina >= this.maxStamina * 0.4) {
+        this.entityState = EntityState.ALIVE;
+        this.alive = true;
+        // Restore some health on recovery
+        this.health = Math.min(this.maxHealth, this.health + 20);
+      }
+      
+      // Drift slowly while knocked out
+      if (physics) {
+        const driftSpeed = 0.5;
+        const angle = this.body.angle || 0;
+        physics.applyForce(this.body, {
+          x: Math.cos(angle) * driftSpeed * 0.001,
+          y: Math.sin(angle + Math.PI / 2) * driftSpeed * 0.001, // Spiral drift
+        });
+      }
+    } else {
+      // Normal stamina regeneration
+      this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime);
+    }
     
     // Sync position from physics body
     this.x = this.body.position.x;
@@ -133,6 +166,77 @@ export abstract class Entity {
     
     return true;
   }
+  
+  /**
+   * Deal damage to this entity
+   * Returns true if entity was killed, false if survived or KO'd
+   */
+  takeDamage(damage: number): boolean {
+    this.health -= damage;
+    
+    if (this.health <= 0) {
+      this.health = 0;
+      
+      // Check if has stamina - if so, enter KO state instead of dying
+      if (this.stamina > 0) {
+        this.entityState = EntityState.KNOCKED_OUT;
+        this.alive = false; // Can't move normally
+        this.isDashing = false; // Stop dashing
+        return false; // Not fully dead yet
+      } else {
+        // No stamina - actual death
+        this.alive = false;
+        return true; // Entity killed
+      }
+    }
+    
+    return false; // Entity survived
+  }
+  
+  /**
+   * Calculate damage dealt to another entity based on size
+   */
+  calculateDamage(target: Entity): number {
+    const sizeRatio = this.size / target.size;
+    
+    // Base damage scales with attacker size
+    let baseDamage = this.size * 2;
+    
+    // Size advantage multiplier
+    if (sizeRatio >= 1.5) {
+      baseDamage *= 1.5; // Much larger = more damage
+    } else if (sizeRatio >= 1.2) {
+      baseDamage *= 1.2; // Somewhat larger = bonus damage
+    } else if (sizeRatio < 0.8) {
+      baseDamage *= 0.5; // Smaller = reduced damage
+    }
+    
+    return baseDamage;
+  }
+  
+  /**
+   * Check if this entity can swallow another whole
+   */
+  canSwallow(target: Entity): boolean {
+    return this.size >= target.size * 2.0; // SWALLOW_SIZE_RATIO
+  }
+  
+  /**
+   * Check if entity is knocked out
+   */
+  isKnockedOut(): boolean {
+    return this.entityState === EntityState.KNOCKED_OUT;
+  }
+  
+  /**
+   * Force entity into knocked out state
+   */
+  knockOut(): void {
+    this.entityState = EntityState.KNOCKED_OUT;
+    this.alive = false;
+    this.isDashing = false;
+    this.health = 0;
+  }
 
   abstract render(p5: p5): void;
 }
@@ -158,9 +262,9 @@ export class Fish extends Entity {
     if (!this.alive) return;
 
     const detectionRange = this.size * 10; // Detection range for AI
-    let nearbyPrey: Fish[] = [];
-    let nearbySchoolMates: Fish[] = [];
-    let nearbyPredators: Fish[] = [];
+    const nearbyPrey: Fish[] = [];
+    const nearbySchoolMates: Fish[] = [];
+    const nearbyPredators: Fish[] = [];
 
     // Find nearby entities
     if (allEntities) {
@@ -212,6 +316,17 @@ export class Fish extends Entity {
       if (targetEntity) {
         this.targetX = targetEntity.x;
         this.targetY = targetEntity.y;
+        
+        // DASH MECHANIC: Predators dash when close to prey
+        const distToTarget = Math.sqrt(
+          (targetEntity.x - this.x) ** 2 + (targetEntity.y - this.y) ** 2
+        );
+        this.isDashing = distToTarget < this.size * 5 && this.stamina > 20;
+        
+        // Drain stamina while dashing
+        if (this.isDashing) {
+          this.stamina = Math.max(0, this.stamina - (8 * deltaTime / 1000));
+        }
       } else {
         // Wander if no prey
         this.targetX = undefined;
@@ -224,10 +339,15 @@ export class Fish extends Entity {
       if (nearbyPredators.length > 0) {
         let fleeX = 0;
         let fleeY = 0;
+        let nearestPredatorDist = Infinity;
+        
         nearbyPredators.forEach(predator => {
           const dx = this.x - predator.x;
           const dy = this.y - predator.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestPredatorDist) {
+            nearestPredatorDist = dist;
+          }
           if (dist > 0) {
             fleeX += dx / dist;
             fleeY += dy / dist;
@@ -238,24 +358,38 @@ export class Fish extends Entity {
           this.targetX = this.x + (fleeX / magnitude) * 100;
           this.targetY = this.y + (fleeY / magnitude) * 100;
         }
-      } else if (nearbySchoolMates.length > 0) {
-        // School with nearby fish of same type
-        let avgX = 0;
-        let avgY = 0;
-        nearbySchoolMates.forEach(mate => {
-          avgX += mate.x;
-          avgY += mate.y;
-        });
-        avgX /= nearbySchoolMates.length;
-        avgY /= nearbySchoolMates.length;
         
-        // Move toward center of school
-        this.targetX = avgX;
-        this.targetY = avgY;
+        // DASH MECHANIC: Prey dash when predator is close or dashing
+        const nearbyDashingPredators = nearbyPredators.some(p => p.isDashing);
+        this.isDashing = (nearestPredatorDist < this.size * 6 || nearbyDashingPredators) && this.stamina > 20;
+        
+        // Drain stamina while dashing
+        if (this.isDashing) {
+          this.stamina = Math.max(0, this.stamina - (8 * deltaTime / 1000));
+        }
       } else {
-        // Wander if alone
-        this.targetX = undefined;
-        this.targetY = undefined;
+        // Not fleeing, don't dash
+        this.isDashing = false;
+        
+        if (nearbySchoolMates.length > 0) {
+          // School with nearby fish of same type
+          let avgX = 0;
+          let avgY = 0;
+          nearbySchoolMates.forEach(mate => {
+            avgX += mate.x;
+            avgY += mate.y;
+          });
+          avgX /= nearbySchoolMates.length;
+          avgY /= nearbySchoolMates.length;
+          
+          // Move toward center of school
+          this.targetX = avgX;
+          this.targetY = avgY;
+        } else {
+          // Wander if alone
+          this.targetX = undefined;
+          this.targetY = undefined;
+        }
       }
     }
 
@@ -267,8 +401,9 @@ export class Fish extends Entity {
       
       if (distance > 5) {
         const angle = Math.atan2(dy, dx);
-        const forceX = Math.cos(angle) * this.speed * 0.01;
-        const forceY = Math.sin(angle) * this.speed * 0.01;
+        const speedMult = this.isDashing ? 1.75 : 1.0; // Dash speed boost
+        const forceX = Math.cos(angle) * this.speed * 0.01 * speedMult;
+        const forceY = Math.sin(angle) * this.speed * 0.01 * speedMult;
         physics.applyForce(this.body, { x: forceX, y: forceY });
       }
     } else {
@@ -279,8 +414,8 @@ export class Fish extends Entity {
       physics.applyForce(this.body, { x: forceX, y: forceY });
     }
 
-    // Limit velocity
-    const maxVel = this.speed;
+    // Limit velocity (higher when dashing)
+    const maxVel = this.isDashing ? this.speed * 1.75 : this.speed;
     if (Math.abs(this.body.velocity.x) > maxVel) {
       Matter.Body.setVelocity(this.body, {
         x: Math.sign(this.body.velocity.x) * maxVel,

@@ -72,7 +72,7 @@ DO NOT draw multiple fish. DO NOT draw a comparison. ONE fish only.`,
 };
 
 // Use same growth ranges as game/editor (20-300 scale) so sprites match everywhere
-const DEFAULT_SIZE_RANGES = DEFAULT_GROWTH_RANGES as Record<GrowthStage, { min: number; max: number }>;
+const DEFAULT_SIZE_RANGES = DEFAULT_GROWTH_RANGES;
 
 export default function SpriteGenerationLab({
   fish,
