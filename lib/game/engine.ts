@@ -20,10 +20,12 @@ import {
   HUNGER_WARNING_PULSE_FREQUENCY,
   HUNGER_WARNING_PULSE_BASE,
   HUNGER_WARNING_INTENSITY,
+  HUNGER_MAX,
 } from './hunger-constants';
 import { getBiome } from './data/biomes';
 import { getCreaturesByBiome } from './data/creatures';
 import { spawnAIFish } from './spawn-fish';
+import { EntityState } from './types';
 
 const DEFAULT_ESSENCE_COLOR = '#4ade80'; // Fallback color for essence orbs
 
@@ -481,7 +483,10 @@ export class GameEngine {
 
         // DASH MECHANIC: Only aggressive interactions if dashing
         // If player is not dashing, fish pass through peacefully
-        if (!this.player.isDashing) {
+        // Exception: Can interact with knocked out fish without dashing
+        const canInteract = this.player.isDashing || entity.isKnockedOut();
+        
+        if (!canInteract) {
           return; // Peaceful passing - no interaction
         }
 
@@ -493,10 +498,19 @@ export class GameEngine {
         // - Can SWALLOW if ≥2x target size (instant eat)
         // - Can ATTACK if ≥1.2x target size but <2x (deal damage)
         // - BATTLE if similar size (within 20%, stamina-based)
+        // - Can bite KNOCKED OUT fish for chunks (future: Phase 5)
         
-        if (isPlayerFrontCollision) {
-          // Player attacking entity
-          if (this.player.canSwallow(entity)) {
+        if (isPlayerFrontCollision || entity.isKnockedOut()) {
+          // Player attacking entity (or approaching KO fish)
+          
+          if (entity.isKnockedOut()) {
+            // Can eat knocked out fish regardless of size
+            this.player.eat(entity);
+            this.dropEssenceFromFish(entity as Fish);
+            entity.destroy(this.physics);
+            this.createParticles(entity.x, entity.y, entity.color, 10);
+            this.audio.playSound('bite', 0.3);
+          } else if (this.player.canSwallow(entity)) {
             // SWALLOW WHOLE - instant eat
             this.player.eat(entity);
             this.dropEssenceFromFish(entity as Fish);
@@ -515,13 +529,14 @@ export class GameEngine {
           } else if (this.player.stats.size >= entity.size * 1.2) {
             // ATTACK - deal damage but can't swallow
             const damage = this.player.calculateDamage(entity);
-            const killed = entity.takeDamage(damage);
+            entity.takeDamage(damage);
             
             this.createParticles(entity.x, entity.y, '#ff0000', 8);
             this.audio.playSound('bite', 0.25);
             
-            if (killed) {
-              // Enemy defeated, can now eat
+            // If entity was knocked out (not killed), it can be eaten next frame
+            // If entity has no stamina, it's truly dead and can be eaten now
+            if (entity.stamina <= 0) {
               this.player.eat(entity);
               this.dropEssenceFromFish(entity as Fish);
               entity.destroy(this.physics);
@@ -550,16 +565,24 @@ export class GameEngine {
             // Player swallowed whole - game over
             this.gameOver();
           } else if (entity.size >= this.player.stats.size * 1.2) {
-            // Entity attacks player - deal damage
+            // Entity attacks player - deal damage to hunger (player's health proxy)
             const damage = entity.calculateDamage(this.player);
             this.player.stats.hunger = Math.max(0, this.player.stats.hunger - damage);
             
             this.createParticles(this.player.x, this.player.y, '#ff0000', 8);
             this.audio.playSound('bite', 0.25);
             
-            // Check if player died from damage
+            // Check if player knocked out from hunger depletion
             if (this.player.stats.hunger <= 0) {
-              this.gameOver();
+              // Player has stamina? Enter KO state with chance to recover
+              if (this.player.stamina > 0) {
+                this.player.knockOut();
+                // Player is now vulnerable but can potentially recover
+                // Will game over if bitten again while KO'd
+              } else {
+                // No stamina - instant game over
+                this.gameOver();
+              }
             }
           } else {
             // Battle - similar size
@@ -569,10 +592,26 @@ export class GameEngine {
               
               // Check if player lost all stamina
               if (this.player.stamina <= 0) {
-                this.gameOver();
+                // KO from stamina depletion
+                this.player.knockOut();
               }
             }
           }
+        }
+        
+        // Check if player recovered from KO
+        if (this.player.isKnockedOut() && this.player.stamina >= this.player.maxStamina * 0.4) {
+          // Player recovered! Restore some health
+          this.player.entityState = EntityState.ALIVE;
+          this.player.alive = true;
+          this.player.stats.hunger = Math.min(HUNGER_MAX, this.player.stats.hunger + 30);
+          this.createParticles(this.player.x, this.player.y, '#00ff00', 20);
+          this.audio.playSound('mutation', 0.4); // Recovery sound
+        }
+        
+        // Player bitten while KO'd = game over
+        if (this.player.isKnockedOut() && isEntityFrontCollision && entity.isDashing) {
+          this.gameOver();
         }
       }
     });
@@ -599,7 +638,14 @@ export class GameEngine {
           // Check which fish is predator and which is prey
           if (fish1Dashing && fish1.type === 'predator' && fish1.isFrontCollision(fish2)) {
             // Fish1 attacking fish2
-            if (fish1.canSwallow(fish2)) {
+            if (fish2.isKnockedOut()) {
+              // Can eat KO'd fish
+              const sizeRatio = fish1.size / fish2.size;
+              const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+              fish1.size += fish2.size * 0.1 * efficiencyMult;
+              fish2.destroy(this.physics);
+              this.createParticles(fish2.x, fish2.y, fish2.color, 8);
+            } else if (fish1.canSwallow(fish2)) {
               // Swallow whole - diminishing returns
               const sizeRatio = fish1.size / fish2.size;
               const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
@@ -609,11 +655,11 @@ export class GameEngine {
             } else if (fish1.size >= fish2.size * 1.2) {
               // Attack - deal damage
               const damage = fish1.calculateDamage(fish2);
-              const killed = fish2.takeDamage(damage);
+              fish2.takeDamage(damage);
               this.createParticles(fish2.x, fish2.y, '#ff0000', 5);
               
-              if (killed) {
-                // Can now eat defeated fish
+              // If knocked out or dead with no stamina, can eat
+              if (fish2.isKnockedOut() && fish2.stamina <= 0) {
                 const sizeRatio = fish1.size / fish2.size;
                 const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
                 fish1.size += fish2.size * 0.1 * efficiencyMult;
@@ -623,7 +669,14 @@ export class GameEngine {
             }
           } else if (fish2Dashing && fish2.type === 'predator' && fish2.isFrontCollision(fish1)) {
             // Fish2 attacking fish1
-            if (fish2.canSwallow(fish1)) {
+            if (fish1.isKnockedOut()) {
+              // Can eat KO'd fish
+              const sizeRatio = fish2.size / fish1.size;
+              const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+              fish2.size += fish1.size * 0.1 * efficiencyMult;
+              fish1.destroy(this.physics);
+              this.createParticles(fish1.x, fish1.y, fish1.color, 8);
+            } else if (fish2.canSwallow(fish1)) {
               // Swallow whole - diminishing returns
               const sizeRatio = fish2.size / fish1.size;
               const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
@@ -633,11 +686,11 @@ export class GameEngine {
             } else if (fish2.size >= fish1.size * 1.2) {
               // Attack - deal damage
               const damage = fish2.calculateDamage(fish1);
-              const killed = fish1.takeDamage(damage);
+              fish1.takeDamage(damage);
               this.createParticles(fish1.x, fish1.y, '#ff0000', 5);
               
-              if (killed) {
-                // Can now eat defeated fish
+              // If knocked out or dead with no stamina, can eat
+              if (fish1.isKnockedOut() && fish1.stamina <= 0) {
                 const sizeRatio = fish2.size / fish1.size;
                 const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
                 fish2.size += fish1.size * 0.1 * efficiencyMult;

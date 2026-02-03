@@ -78,12 +78,36 @@ export abstract class Entity {
   }
 
   update(deltaTime: number, physics?: PhysicsEngine): void {
-    if (!this.alive) return;
+    if (!this.alive && this.entityState !== EntityState.KNOCKED_OUT) return;
 
     this.age += deltaTime;
     
-    // Regenerate stamina over time
-    this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime);
+    // Handle knocked out state
+    if (this.entityState === EntityState.KNOCKED_OUT) {
+      // Slower stamina regeneration when knocked out (50%)
+      this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime * 0.5);
+      
+      // Wake up if stamina reaches threshold (40%)
+      if (this.stamina >= this.maxStamina * 0.4) {
+        this.entityState = EntityState.ALIVE;
+        this.alive = true;
+        // Restore some health on recovery
+        this.health = Math.min(this.maxHealth, this.health + 20);
+      }
+      
+      // Drift slowly while knocked out
+      if (physics) {
+        const driftSpeed = 0.5;
+        const angle = this.body.angle || 0;
+        physics.applyForce(this.body, {
+          x: Math.cos(angle) * driftSpeed * 0.001,
+          y: Math.sin(angle + Math.PI / 2) * driftSpeed * 0.001, // Spiral drift
+        });
+      }
+    } else {
+      // Normal stamina regeneration
+      this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime);
+    }
     
     // Sync position from physics body
     this.x = this.body.position.x;
@@ -145,15 +169,25 @@ export abstract class Entity {
   
   /**
    * Deal damage to this entity
-   * Returns true if entity was killed
+   * Returns true if entity was killed, false if survived or KO'd
    */
   takeDamage(damage: number): boolean {
     this.health -= damage;
     
     if (this.health <= 0) {
       this.health = 0;
-      this.alive = false;
-      return true; // Entity killed
+      
+      // Check if has stamina - if so, enter KO state instead of dying
+      if (this.stamina > 0) {
+        this.entityState = EntityState.KNOCKED_OUT;
+        this.alive = false; // Can't move normally
+        this.isDashing = false; // Stop dashing
+        return false; // Not fully dead yet
+      } else {
+        // No stamina - actual death
+        this.alive = false;
+        return true; // Entity killed
+      }
     }
     
     return false; // Entity survived
@@ -185,6 +219,23 @@ export abstract class Entity {
    */
   canSwallow(target: Entity): boolean {
     return this.size >= target.size * 2.0; // SWALLOW_SIZE_RATIO
+  }
+  
+  /**
+   * Check if entity is knocked out
+   */
+  isKnockedOut(): boolean {
+    return this.entityState === EntityState.KNOCKED_OUT;
+  }
+  
+  /**
+   * Force entity into knocked out state
+   */
+  knockOut(): void {
+    this.entityState = EntityState.KNOCKED_OUT;
+    this.alive = false;
+    this.isDashing = false;
+    this.health = 0;
   }
 
   abstract render(p5: p5): void;
