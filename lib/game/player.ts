@@ -6,6 +6,7 @@ import type p5 from 'p5';
 import { PhysicsEngine } from './physics';
 import { Entity } from './entities';
 import { HUNGER_RESTORE_MULTIPLIER, HUNGER_DRAIN_RATE, HUNGER_MAX } from './hunger-constants';
+import { DASH_SPEED_MULTIPLIER, DASH_STAMINA_DRAIN_RATE } from './dash-constants';
 
 export interface PlayerStats {
   size: number;
@@ -22,6 +23,7 @@ export class Player extends Entity {
   public keys: { [key: string]: boolean } = {};
   public growthTarget: number = 10;
   public mutations: string[] = [];
+  public isDashing: boolean = false;
   private sprite: p5.Image | null = null;
   private useSprite: boolean = false;
 
@@ -63,8 +65,22 @@ export class Player extends Entity {
     // Update hunger (drain over time)
     this.stats.hunger = Math.max(0, this.stats.hunger - (this.stats.hungerDrainRate * deltaTime / 1000));
 
+    // Check if dashing (Shift or Space key)
+    this.isDashing = this.keys['shift'] || this.keys[' '] || this.keys['space'];
+
+    // Drain stamina while dashing
+    if (this.isDashing && this.stamina > 0) {
+      this.stamina = Math.max(0, this.stamina - (DASH_STAMINA_DRAIN_RATE * deltaTime / 1000));
+    }
+
+    // Can't dash if no stamina
+    if (this.stamina <= 0) {
+      this.isDashing = false;
+    }
+
     // Handle movement input
-    const moveSpeed = this.stats.speed * 0.02;
+    const baseSpeed = this.stats.speed * 0.02;
+    const moveSpeed = this.isDashing ? baseSpeed * DASH_SPEED_MULTIPLIER : baseSpeed;
     let forceX = 0;
     let forceY = 0;
 
@@ -85,8 +101,8 @@ export class Player extends Entity {
       physics.applyForce(this.body, { x: forceX, y: forceY });
     }
 
-    // Limit velocity
-    const maxVel = this.stats.speed;
+    // Limit velocity (higher when dashing)
+    const maxVel = this.isDashing ? this.stats.speed * DASH_SPEED_MULTIPLIER : this.stats.speed;
     const vel = this.body.velocity;
     if (Math.abs(vel.x) > maxVel || Math.abs(vel.y) > maxVel) {
       const angle = Math.atan2(vel.y, vel.x);

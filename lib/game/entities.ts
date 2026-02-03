@@ -4,6 +4,7 @@
 import Matter from 'matter-js';
 import type p5 from 'p5';
 import { PhysicsEngine } from './physics';
+import { EntityState } from './types';
 
 export interface EntityData {
   x: number;
@@ -32,6 +33,8 @@ export abstract class Entity {
   public staminaRegenRate: number = 0.1; // stamina per millisecond
   public lastChompTime: number = 0;
   public chompCooldown: number = 500; // ms between chomps
+  public isDashing: boolean = false;
+  public entityState: EntityState = EntityState.ALIVE;
 
   constructor(
     physics: PhysicsEngine,
@@ -158,9 +161,9 @@ export class Fish extends Entity {
     if (!this.alive) return;
 
     const detectionRange = this.size * 10; // Detection range for AI
-    let nearbyPrey: Fish[] = [];
-    let nearbySchoolMates: Fish[] = [];
-    let nearbyPredators: Fish[] = [];
+    const nearbyPrey: Fish[] = [];
+    const nearbySchoolMates: Fish[] = [];
+    const nearbyPredators: Fish[] = [];
 
     // Find nearby entities
     if (allEntities) {
@@ -212,6 +215,17 @@ export class Fish extends Entity {
       if (targetEntity) {
         this.targetX = targetEntity.x;
         this.targetY = targetEntity.y;
+        
+        // DASH MECHANIC: Predators dash when close to prey
+        const distToTarget = Math.sqrt(
+          (targetEntity.x - this.x) ** 2 + (targetEntity.y - this.y) ** 2
+        );
+        this.isDashing = distToTarget < this.size * 5 && this.stamina > 20;
+        
+        // Drain stamina while dashing
+        if (this.isDashing) {
+          this.stamina = Math.max(0, this.stamina - (8 * deltaTime / 1000));
+        }
       } else {
         // Wander if no prey
         this.targetX = undefined;
@@ -224,10 +238,15 @@ export class Fish extends Entity {
       if (nearbyPredators.length > 0) {
         let fleeX = 0;
         let fleeY = 0;
+        let nearestPredatorDist = Infinity;
+        
         nearbyPredators.forEach(predator => {
           const dx = this.x - predator.x;
           const dy = this.y - predator.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestPredatorDist) {
+            nearestPredatorDist = dist;
+          }
           if (dist > 0) {
             fleeX += dx / dist;
             fleeY += dy / dist;
@@ -238,24 +257,38 @@ export class Fish extends Entity {
           this.targetX = this.x + (fleeX / magnitude) * 100;
           this.targetY = this.y + (fleeY / magnitude) * 100;
         }
-      } else if (nearbySchoolMates.length > 0) {
-        // School with nearby fish of same type
-        let avgX = 0;
-        let avgY = 0;
-        nearbySchoolMates.forEach(mate => {
-          avgX += mate.x;
-          avgY += mate.y;
-        });
-        avgX /= nearbySchoolMates.length;
-        avgY /= nearbySchoolMates.length;
         
-        // Move toward center of school
-        this.targetX = avgX;
-        this.targetY = avgY;
+        // DASH MECHANIC: Prey dash when predator is close or dashing
+        const nearbyDashingPredators = nearbyPredators.some(p => p.isDashing);
+        this.isDashing = (nearestPredatorDist < this.size * 6 || nearbyDashingPredators) && this.stamina > 20;
+        
+        // Drain stamina while dashing
+        if (this.isDashing) {
+          this.stamina = Math.max(0, this.stamina - (8 * deltaTime / 1000));
+        }
       } else {
-        // Wander if alone
-        this.targetX = undefined;
-        this.targetY = undefined;
+        // Not fleeing, don't dash
+        this.isDashing = false;
+        
+        if (nearbySchoolMates.length > 0) {
+          // School with nearby fish of same type
+          let avgX = 0;
+          let avgY = 0;
+          nearbySchoolMates.forEach(mate => {
+            avgX += mate.x;
+            avgY += mate.y;
+          });
+          avgX /= nearbySchoolMates.length;
+          avgY /= nearbySchoolMates.length;
+          
+          // Move toward center of school
+          this.targetX = avgX;
+          this.targetY = avgY;
+        } else {
+          // Wander if alone
+          this.targetX = undefined;
+          this.targetY = undefined;
+        }
       }
     }
 
@@ -267,8 +300,9 @@ export class Fish extends Entity {
       
       if (distance > 5) {
         const angle = Math.atan2(dy, dx);
-        const forceX = Math.cos(angle) * this.speed * 0.01;
-        const forceY = Math.sin(angle) * this.speed * 0.01;
+        const speedMult = this.isDashing ? 1.75 : 1.0; // Dash speed boost
+        const forceX = Math.cos(angle) * this.speed * 0.01 * speedMult;
+        const forceY = Math.sin(angle) * this.speed * 0.01 * speedMult;
         physics.applyForce(this.body, { x: forceX, y: forceY });
       }
     } else {
@@ -279,8 +313,8 @@ export class Fish extends Entity {
       physics.applyForce(this.body, { x: forceX, y: forceY });
     }
 
-    // Limit velocity
-    const maxVel = this.speed;
+    // Limit velocity (higher when dashing)
+    const maxVel = this.isDashing ? this.speed * 1.75 : this.speed;
     if (Math.abs(this.body.velocity.x) > maxVel) {
       Matter.Body.setVelocity(this.body, {
         x: Math.sign(this.body.velocity.x) * maxVel,

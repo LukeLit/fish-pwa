@@ -151,6 +151,15 @@ export interface MutationMetadata {
 }
 
 /**
+ * Entity State - Life state of an entity
+ */
+export enum EntityState {
+  ALIVE = 'alive',
+  KNOCKED_OUT = 'knocked_out',
+  CARCASS = 'carcass',
+}
+
+/**
  * Animation Action Types - The different animation poses a creature can have
  */
 export type AnimationAction = 'idle' | 'swim' | 'dash' | 'bite' | 'hurt' | 'death';

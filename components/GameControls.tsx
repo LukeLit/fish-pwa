@@ -8,9 +8,10 @@ import { useRef, useState, useEffect } from 'react';
 
 interface GameControlsProps {
   onMove: (direction: 'up' | 'down' | 'left' | 'right' | null) => void;
+  onDash?: (dashing: boolean) => void;
 }
 
-export default function GameControls({ onMove }: GameControlsProps) {
+export default function GameControls({ onMove, onDash }: GameControlsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isActive, setIsActive] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -18,6 +19,10 @@ export default function GameControls({ onMove }: GameControlsProps) {
   const touchIdRef = useRef<number | null>(null);
   const centerRef = useRef({ x: 0, y: 0 });
   const maxDistance = 50;
+  
+  // Dash button state
+  const [isDashing, setIsDashing] = useState(false);
+  const dashTouchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Calculate center position
@@ -144,43 +149,99 @@ export default function GameControls({ onMove }: GameControlsProps) {
     }
   };
 
-  return (
-    <div
-      className="absolute bottom-6 right-6 z-10"
-      style={{ touchAction: 'none' }}
-    >
-      <div
-        ref={containerRef}
-        className="relative w-32 h-32"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        {/* Outer ring */}
-        <div className="absolute inset-0 rounded-full bg-blue-600/30 border-2 border-blue-400/50 backdrop-blur-sm" />
-        
-        {/* Center dot */}
-        <div
-          className="absolute w-6 h-6 rounded-full bg-blue-500 transition-all duration-100"
-          style={{
-            left: `${position.x - 12}px`,
-            top: `${position.y - 12}px`,
-            transform: isActive ? 'scale(1.2)' : 'scale(1)',
-            boxShadow: isActive ? '0 0 20px rgba(59, 130, 246, 0.6)' : 'none',
-          }}
-        />
+  // Dash button handlers
+  const handleDashStart = (e: React.TouchEvent | React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if ('touches' in e && e.touches.length > 0) {
+      dashTouchIdRef.current = e.touches[0].identifier;
+    }
+    
+    setIsDashing(true);
+    if (onDash) onDash(true);
+  };
 
-        {/* Direction indicators */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-blue-300/40 text-xs font-bold">
-            {currentDirection === 'up' && '↑'}
-            {currentDirection === 'down' && '↓'}
-            {currentDirection === 'left' && '←'}
-            {currentDirection === 'right' && '→'}
+  const handleDashEnd = (e: React.TouchEvent | React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if ('changedTouches' in e) {
+      const touch = Array.from(e.changedTouches).find(t => t.identifier === dashTouchIdRef.current);
+      if (!touch) return;
+      dashTouchIdRef.current = null;
+    }
+    
+    setIsDashing(false);
+    if (onDash) onDash(false);
+  };
+
+  return (
+    <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-between px-6">
+      {/* Movement joystick - left side */}
+      <div
+        className="relative"
+        style={{ touchAction: 'none' }}
+      >
+        <div
+          ref={containerRef}
+          className="relative w-32 h-32"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
+          {/* Outer ring */}
+          <div className="absolute inset-0 rounded-full bg-blue-600/30 border-2 border-blue-400/50 backdrop-blur-sm" />
+          
+          {/* Center dot */}
+          <div
+            className="absolute w-6 h-6 rounded-full bg-blue-500 transition-all duration-100"
+            style={{
+              left: `${position.x - 12}px`,
+              top: `${position.y - 12}px`,
+              transform: isActive ? 'scale(1.2)' : 'scale(1)',
+              boxShadow: isActive ? '0 0 20px rgba(59, 130, 246, 0.6)' : 'none',
+            }}
+          />
+
+          {/* Direction indicators */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-blue-300/40 text-xs font-bold">
+              {currentDirection === 'up' && '↑'}
+              {currentDirection === 'down' && '↓'}
+              {currentDirection === 'left' && '←'}
+              {currentDirection === 'right' && '→'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Dash button - right side */}
+      <div
+        className="relative"
+        style={{ touchAction: 'none' }}
+      >
+        <div
+          className={`
+            w-20 h-20 rounded-full border-2 flex items-center justify-center
+            transition-all duration-100 select-none
+            ${isDashing 
+              ? 'bg-orange-500 border-orange-400 scale-110 shadow-[0_0_20px_rgba(249,115,22,0.6)]' 
+              : 'bg-orange-600/30 border-orange-400/50 backdrop-blur-sm'
+            }
+          `}
+          onTouchStart={handleDashStart}
+          onTouchEnd={handleDashEnd}
+          onMouseDown={handleDashStart}
+          onMouseUp={handleDashEnd}
+          onMouseLeave={handleDashEnd}
+        >
+          <div className="text-white font-bold text-sm">
+            DASH
           </div>
         </div>
       </div>

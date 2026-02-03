@@ -473,10 +473,16 @@ export class GameEngine {
       const collisionDistance = this.player.stats.size + entity.size;
 
       if (distance < collisionDistance) {
-        // Check for essence orb collection
+        // Check for essence orb collection (no dash required)
         if (entity instanceof EssenceOrb) {
           this.collectEssenceOrb(entity);
           return;
+        }
+
+        // DASH MECHANIC: Only aggressive interactions if dashing
+        // If player is not dashing, fish pass through peacefully
+        if (!this.player.isDashing) {
+          return; // Peaceful passing - no interaction
         }
 
         // Check if collision is from the front
@@ -512,7 +518,7 @@ export class GameEngine {
             this.audio.playSound('bite', 0.3);
           }
         } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
-          // Player eats entity (only from front)
+          // Player eats entity (only from front and when dashing)
           this.player.eat(entity);
           this.dropEssenceFromFish(entity as Fish);
           entity.destroy(this.physics);
@@ -527,8 +533,8 @@ export class GameEngine {
               this.audio.playSound('mutation', 0.5);
             }
           }
-        } else if (this.player.isEatenBy(entity) && isEntityFrontCollision) {
-          // Player is eaten (only from front)
+        } else if (this.player.isEatenBy(entity) && isEntityFrontCollision && entity.isDashing) {
+          // Player is eaten (only from front and if entity is dashing)
           this.gameOver();
         }
       }
@@ -549,15 +555,19 @@ export class GameEngine {
         const collisionDistance = fish1.size + fish2.size;
 
         if (distance < collisionDistance) {
+          // DASH MECHANIC: Both fish must be dashing for aggressive interaction
+          const fish1Dashing = fish1.isDashing;
+          const fish2Dashing = fish2.isDashing;
+          
           // Check which fish is predator and which is prey
-          if (fish1.type === 'predator' && fish1.size >= fish2.size * 1.2 && fish1.isFrontCollision(fish2)) {
+          if (fish1Dashing && fish1.type === 'predator' && fish1.size >= fish2.size * 1.2 && fish1.isFrontCollision(fish2)) {
             // fish1 eats fish2 - diminishing returns for AI too
             const sizeRatio = fish1.size / fish2.size;
             const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
             fish1.size += fish2.size * 0.1 * efficiencyMult;
             fish2.destroy(this.physics);
             this.createParticles(fish2.x, fish2.y, fish2.color, 5);
-          } else if (fish2.type === 'predator' && fish2.size >= fish1.size * 1.2 && fish2.isFrontCollision(fish1)) {
+          } else if (fish2Dashing && fish2.type === 'predator' && fish2.size >= fish1.size * 1.2 && fish2.isFrontCollision(fish1)) {
             // fish2 eats fish1 - diminishing returns for AI too
             const sizeRatio = fish2.size / fish1.size;
             const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
@@ -565,6 +575,7 @@ export class GameEngine {
             fish1.destroy(this.physics);
             this.createParticles(fish1.x, fish1.y, fish1.color, 5);
           }
+          // If neither is dashing, they pass peacefully (no interaction)
         }
       }
     }
