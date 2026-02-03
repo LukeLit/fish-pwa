@@ -40,8 +40,8 @@ export function createNewRunState(fishId: string): RunState | null {
     return null;
   }
 
-  // Start at PLAYER_BASE_SIZE for consistent gameplay
-  // This is the expected starting size including meta bonuses
+  // All players start at the same base size for consistent, predictable gameplay.
+  // Creature choice affects speed/health/damage, not starting size.
   const startSize = PLAYER_BASE_SIZE;
 
   return {

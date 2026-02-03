@@ -176,15 +176,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
             // All players start at fixed base size for consistent gameplay.
             // Creature choice affects speed/health/damage, not starting size.
-            // HOWEVER, preserve the existing size if the run has already started
-            const preservedSize = currentRunState.fishState?.size || PLAYER_BASE_SIZE;
-            startSize = preservedSize;
+            startSize = PLAYER_BASE_SIZE;
 
             const updatedRunState: RunState = {
               ...currentRunState,
               selectedFishId,
               fishState: {
-                size: preservedSize, // Preserve existing size or use default
+                size: startSize,
                 speed: blobCreature.stats.speed,
                 health: blobCreature.stats.health,
                 damage: blobCreature.stats.damage,

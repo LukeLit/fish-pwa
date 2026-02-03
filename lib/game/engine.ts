@@ -14,7 +14,7 @@ import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
 import { ESSENCE_TYPES } from './data/essence-types';
-import { loadRunState, saveRunState, addEssenceToRun, updateFishState } from './run-state';
+import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
 import {
   HUNGER_LOW_THRESHOLD,
   HUNGER_WARNING_PULSE_FREQUENCY,
@@ -23,7 +23,7 @@ import {
 } from './hunger-constants';
 import { getBiome } from './data/biomes';
 import { getCreaturesByBiome } from './data/creatures';
-import { spawnAIFish, PLAYER_BASE_SIZE } from './spawn-fish';
+import { spawnAIFish } from './spawn-fish';
 
 const DEFAULT_ESSENCE_COLOR = '#4ade80'; // Fallback color for essence orbs
 
@@ -158,24 +158,22 @@ export class GameEngine {
     this.mutations.clear();
     this.phases.reset();
 
-    // Load run state to get player size
-    const runState = loadRunState();
-    
-    // Use saved size from RunState, or default to PLAYER_BASE_SIZE if no RunState exists
-    const startingSize = runState?.fishState?.size ?? PLAYER_BASE_SIZE;
-
-    // Create player with saved size
+    // Create player
     const startX = this.p5Instance?.width ? this.p5Instance.width / 2 : 400;
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
-    this.player = new Player(this.physics, startX, startY, startingSize);
+    this.player = new Player(this.physics, startX, startY, 10);
 
-    // NOTE: We no longer apply meta size upgrades here because PLAYER_BASE_SIZE already
-    // includes expected meta bonuses. The size in RunState is the source of truth.
-    
-    // Load player state for other meta upgrades (speed, hunger, etc.)
+    // Apply meta upgrades from player state (purchased with Evo Points)
     const { loadPlayerState } = await import('./player-state');
     const playerState = loadPlayerState();
     const metaUpgrades = playerState.metaUpgrades;
+
+    // Apply starting size upgrade
+    if (metaUpgrades.meta_starting_size) {
+      const sizeBonus = metaUpgrades.meta_starting_size * 5;
+      this.player.stats.size += sizeBonus;
+      this.player.size = this.player.stats.size;
+    }
 
     // Apply starting speed upgrade
     if (metaUpgrades.meta_starting_speed) {
@@ -508,7 +506,6 @@ export class GameEngine {
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
             this.player.eat(entity);
-            this.syncPlayerSizeToRunState(); // Persist size to RunState
             this.dropEssenceFromFish(entity as Fish);
             entity.destroy(this.physics);
             this.createParticles(entity.x, entity.y, entity.color, 10);
@@ -517,7 +514,6 @@ export class GameEngine {
         } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
           // Player eats entity (only from front)
           this.player.eat(entity);
-          this.syncPlayerSizeToRunState(); // Persist size to RunState
           this.dropEssenceFromFish(entity as Fish);
           entity.destroy(this.physics);
           this.createParticles(entity.x, entity.y, entity.color, 10);
@@ -601,20 +597,6 @@ export class GameEngine {
 
     // Destroy orb
     orb.destroy(this.physics);
-  }
-
-  /**
-   * Sync player size to run state
-   * Called after player grows to persist size between levels
-   */
-  private syncPlayerSizeToRunState(): void {
-    if (!this.player) return;
-    
-    let runState = loadRunState();
-    if (runState) {
-      runState = updateFishState(runState, { size: this.player.stats.size });
-      saveRunState(runState);
-    }
   }
 
   /**
