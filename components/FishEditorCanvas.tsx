@@ -982,7 +982,11 @@ export default function FishEditorCanvas({
     if (!canvas) return;
 
     // Keep spawn pool in sync for respawn (use full list so weighting matches initial spawn)
-    spawnPoolRef.current = spawnedFish.length ? [...spawnedFish] : [];
+    // Filter to only SpawnedCreature items (not LegacySpawnItem)
+    const isSpawnedCreature = (item: SpawnedCreature | LegacySpawnItem): item is SpawnedCreature => {
+      return 'stats' in item && 'rarity' in item;
+    };
+    spawnPoolRef.current = spawnedFish.length ? spawnedFish.filter(isSpawnedCreature) : [];
 
     // Helper to load and process a sprite with resolution awareness
     const loadSprite = (
