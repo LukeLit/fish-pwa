@@ -199,7 +199,7 @@ export const ART_SIZE_MAX = 300;
  * Single source of truth: editor slider (20-300), game spawn, and saved growthSprites
  * all use this scale so juvenile/adult/elder match everywhere.
  */
-export const DEFAULT_GROWTH_RANGES = {
+export const DEFAULT_GROWTH_RANGES: Record<GrowthStage, { min: number; max: number }> = {
   juvenile: { min: ART_SIZE_MIN, max: 99 },    // 20-99: small / young
   adult: { min: 100, max: 199 },               // 100-199: mature (adult starts at 100)
   elder: { min: 200, max: ART_SIZE_MAX },     // 200-300: large / elder (elder starts at 200)
