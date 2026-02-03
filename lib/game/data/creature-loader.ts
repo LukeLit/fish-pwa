@@ -1,4 +1,4 @@
-import type { Creature, GrowthSprites, SpriteResolutions, CreatureAnimations } from '../types';
+import type { Creature, GrowthSprites, SpriteResolutions, CreatureAnimations, EssenceData } from '../types';
 import { getAllCreaturesFromBlob, getAllCreatures, getCreatureById as getCreatureByIdRaw } from './creatures';
 import { loadCreatureFromLocal } from '../../storage/local-fish-storage';
 import {
@@ -35,6 +35,15 @@ function asString(value: unknown, fallback: string): string {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string');
+}
+
+function asTimestamp(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function asSpriteResolutions(value: unknown): SpriteResolutions | undefined {
@@ -81,6 +90,35 @@ function asCreatureAnimations(value: unknown): CreatureAnimations | undefined {
     return value as CreatureAnimations;
   }
   return undefined;
+}
+
+function asEssenceData(value: unknown): EssenceData | undefined {
+  if (!isRecord(value) || !isRecord(value.primary)) return undefined;
+  const primary = value.primary;
+  if (typeof primary.type !== 'string' || typeof primary.baseYield !== 'number' || !Number.isFinite(primary.baseYield)) {
+    return undefined;
+  }
+  const result: EssenceData = {
+    primary: {
+      type: primary.type,
+      baseYield: primary.baseYield,
+      visualChunks: Array.isArray(primary.visualChunks)
+        ? primary.visualChunks.filter((c): c is string => typeof c === 'string')
+        : undefined,
+    },
+  };
+  if (Array.isArray(value.secondary)) {
+    result.secondary = value.secondary
+      .filter((entry): entry is Record<string, unknown> => isRecord(entry) && typeof entry.type === 'string' && typeof entry.baseYield === 'number' && Number.isFinite(entry.baseYield))
+      .map((entry) => ({
+        type: entry.type as string,
+        baseYield: entry.baseYield as number,
+        visualChunks: Array.isArray(entry.visualChunks)
+          ? entry.visualChunks.filter((c): c is string => typeof c === 'string')
+          : undefined,
+      }));
+  }
+  return result;
 }
 
 export function normalizeCreature(raw: unknown): Creature | null {
@@ -145,11 +183,11 @@ export function normalizeCreature(raw: unknown): Creature | null {
     spriteResolutions: asSpriteResolutions(raw.spriteResolutions),
     growthSprites,
     animations: asCreatureAnimations(raw.animations),
-    essence: raw.essence,
+    essence: asEssenceData(raw.essence),
     descriptionChunks: Array.isArray(raw.descriptionChunks) ? raw.descriptionChunks : undefined,
     visualMotif: typeof raw.visualMotif === 'string' ? raw.visualMotif : undefined,
-    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : undefined,
-    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
+    updatedAt: asTimestamp(raw.updatedAt),
+    createdAt: asTimestamp(raw.createdAt),
   };
 }
 
