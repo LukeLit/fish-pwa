@@ -216,21 +216,22 @@ export function spawnAIFish(
 }
 
 /**
- * Fixed player starting size - consistent for all creatures.
- * Creature choice affects speed/health/damage, not starting size.
- * This makes gameplay predictable and balanced.
+ * Player size constants based on art asset specifications
+ * Art supports min scale 20, max scale 300
+ * Players start small and grow to defeat bosses by level 1-4
  */
-export const PLAYER_BASE_SIZE = 45;
+export const PLAYER_START_SIZE = 20;  // Starting size for new runs
+export const PLAYER_MAX_SIZE = 300;    // Target size by level 1-4
 
 /**
  * Absolute size ranges per tier - simple and predictable.
  * No complex multipliers or player-relative blending.
  */
 export const TIER_SIZE_RANGES: Record<string, { min: number; max: number }> = {
-  prey: { min: 25, max: 38 },      // Clearly smaller than player
-  mid: { min: 42, max: 58 },       // Similar to player, some eatable
-  predator: { min: 70, max: 95 },  // Dangerous, need to grow first
-  boss: { min: 110, max: 150 },    // End-goal, very threatening
+  prey: { min: 15, max: 25 },      // Smaller than player start
+  mid: { min: 25, max: 50 },       // Similar to player start, some eatable
+  predator: { min: 60, max: 120 },  // Dangerous early, eatable later
+  boss: { min: 200, max: 350 },    // End-goal, requires growth to defeat
 };
 
 /**

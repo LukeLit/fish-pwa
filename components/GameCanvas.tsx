@@ -18,7 +18,7 @@ import {
 } from '@/lib/game/run-state';
 import { getCreature, DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { getCreaturesByBiome, getBlobCreaturesByBiome, getCreatureById } from '@/lib/game/data/creatures';
-import { computeEncounterSize, PLAYER_BASE_SIZE } from '@/lib/game/spawn-fish';
+import { computeEncounterSize, PLAYER_START_SIZE } from '@/lib/game/spawn-fish';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -174,15 +174,16 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
               biomeId: blobCreature.biomeId,
             });
 
-            // All players start at fixed base size for consistent gameplay.
-            // Creature choice affects speed/health/damage, not starting size.
-            startSize = PLAYER_BASE_SIZE;
+            // Preserve existing size from RunState (for level progression)
+            // Only use PLAYER_START_SIZE as fallback for brand new runs
+            const preservedSize = currentRunState.fishState?.size ?? PLAYER_START_SIZE;
+            startSize = preservedSize;
 
             const updatedRunState: RunState = {
               ...currentRunState,
               selectedFishId,
               fishState: {
-                size: startSize,
+                size: preservedSize, // Preserve size across levels
                 speed: blobCreature.stats.speed,
                 health: blobCreature.stats.health,
                 damage: blobCreature.stats.damage,

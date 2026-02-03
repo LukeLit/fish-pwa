@@ -25,7 +25,7 @@ export class Player extends Entity {
   private sprite: p5.Image | null = null;
   private useSprite: boolean = false;
 
-  constructor(physics: PhysicsEngine, x: number, y: number, initialSize: number = 10) {
+  constructor(physics: PhysicsEngine, x: number, y: number, initialSize: number = 20) {
     super(physics, {
       x,
       y,
@@ -45,8 +45,8 @@ export class Player extends Entity {
       hungerDrainRate: HUNGER_DRAIN_RATE,
     };
 
-    // Make player body larger
-    Matter.Body.scale(this.body, initialSize / 10, initialSize / 10);
+    // Note: Body is already created with correct size by Entity constructor
+    // No scaling needed - size is used directly as radius
   }
 
   handleKeyDown(key: string): void {

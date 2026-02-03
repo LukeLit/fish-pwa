@@ -158,22 +158,23 @@ export class GameEngine {
     this.mutations.clear();
     this.phases.reset();
 
-    // Create player
+    // Load run state to get player size (for persistence across levels)
+    const runState = loadRunState();
+    const startingSize = runState?.fishState?.size ?? 20; // Default to 20 for new runs
+
+    // Create player with saved size
     const startX = this.p5Instance?.width ? this.p5Instance.width / 2 : 400;
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
-    this.player = new Player(this.physics, startX, startY, 10);
+    this.player = new Player(this.physics, startX, startY, startingSize);
 
     // Apply meta upgrades from player state (purchased with Evo Points)
     const { loadPlayerState } = await import('./player-state');
     const playerState = loadPlayerState();
     const metaUpgrades = playerState.metaUpgrades;
 
-    // Apply starting size upgrade
-    if (metaUpgrades.meta_starting_size) {
-      const sizeBonus = metaUpgrades.meta_starting_size * 5;
-      this.player.stats.size += sizeBonus;
-      this.player.size = this.player.stats.size;
-    }
+    // Note: We no longer apply size meta upgrades here
+    // The size in RunState is the single source of truth
+    // Players start at 20 and grow through eating
 
     // Apply starting speed upgrade
     if (metaUpgrades.meta_starting_speed) {
@@ -506,6 +507,7 @@ export class GameEngine {
           if (entity.stamina <= 0) {
             // Entity loses battle, player can eat it
             this.player.eat(entity);
+            this.syncPlayerSizeToRunState(); // Persist size after growth
             this.dropEssenceFromFish(entity as Fish);
             entity.destroy(this.physics);
             this.createParticles(entity.x, entity.y, entity.color, 10);
@@ -514,6 +516,7 @@ export class GameEngine {
         } else if (this.player.canEat(entity) && isPlayerFrontCollision) {
           // Player eats entity (only from front)
           this.player.eat(entity);
+          this.syncPlayerSizeToRunState(); // Persist size after growth
           this.dropEssenceFromFish(entity as Fish);
           entity.destroy(this.physics);
           this.createParticles(entity.x, entity.y, entity.color, 10);
@@ -597,6 +600,20 @@ export class GameEngine {
 
     // Destroy orb
     orb.destroy(this.physics);
+  }
+
+  /**
+   * Sync player size to run state
+   * Called after player eats and grows to persist size across level transitions
+   */
+  private syncPlayerSizeToRunState(): void {
+    if (!this.player) return;
+    
+    const runState = loadRunState();
+    if (runState) {
+      const updated = updateFishState(runState, { size: this.player.stats.size });
+      saveRunState(updated);
+    }
   }
 
   /**
