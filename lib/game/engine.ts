@@ -160,21 +160,43 @@ export class GameEngine {
 
     // Load run state to get player size (for persistence across levels)
     const runState = loadRunState();
-    const startingSize = runState?.fishState?.size ?? 20; // Default to 20 for new runs
+    
+    // Determine starting size
+    let startingSize: number;
+    if (runState?.fishState?.size) {
+      // Use saved size from RunState (continuing a run or level transition)
+      startingSize = runState.fishState.size;
+    } else {
+      // New run: start at base size (20) + meta upgrades
+      const { loadPlayerState } = await import('./player-state');
+      const playerState = loadPlayerState();
+      const metaUpgrades = playerState.metaUpgrades;
+      
+      startingSize = 20; // Base size
+      
+      // Apply meta starting size upgrade for NEW runs only
+      if (metaUpgrades.meta_starting_size) {
+        const sizeBonus = metaUpgrades.meta_starting_size * 5;
+        startingSize += sizeBonus;
+      }
+      
+      // Save the starting size with meta bonuses to RunState
+      // This ensures it persists if the page reloads before the first eat
+      if (runState) {
+        const updated = updateFishState(runState, { size: startingSize });
+        saveRunState(updated);
+      }
+    }
 
-    // Create player with saved size
+    // Create player with computed size
     const startX = this.p5Instance?.width ? this.p5Instance.width / 2 : 400;
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
     this.player = new Player(this.physics, startX, startY, startingSize);
 
-    // Apply meta upgrades from player state (purchased with Evo Points)
+    // Apply other meta upgrades from player state (purchased with Evo Points)
     const { loadPlayerState } = await import('./player-state');
     const playerState = loadPlayerState();
     const metaUpgrades = playerState.metaUpgrades;
-
-    // Note: We no longer apply size meta upgrades here
-    // The size in RunState is the single source of truth
-    // Players start at 20 and grow through eating
 
     // Apply starting speed upgrade
     if (metaUpgrades.meta_starting_speed) {

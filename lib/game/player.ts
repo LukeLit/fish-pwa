@@ -101,10 +101,6 @@ export class Player extends Entity {
       const scale = this.stats.size / this.size;
       Matter.Body.scale(this.body, scale, scale);
       this.size = this.stats.size;
-      
-      // Update physics body size
-      Matter.Body.scale(this.body, this.stats.size / this.size, this.stats.size / this.size);
-      this.size = this.stats.size;
     }
   }
 
