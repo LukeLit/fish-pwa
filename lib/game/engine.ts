@@ -14,7 +14,7 @@ import { GameStorage } from '../meta/storage';
 import { getAudioManager } from './audio';
 import { getFxhash } from '../blockchain/fxhash';
 import { ESSENCE_TYPES } from './data/essence-types';
-import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
+import { loadRunState, saveRunState, addEssenceToRun, updateFishState } from './run-state';
 import {
   HUNGER_LOW_THRESHOLD,
   HUNGER_WARNING_PULSE_FREQUENCY,
