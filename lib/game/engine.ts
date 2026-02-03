@@ -161,6 +161,11 @@ export class GameEngine {
     // Load run state to get player size (for persistence across levels)
     const runState = loadRunState();
     
+    // Load player state for meta upgrades
+    const { loadPlayerState } = await import('./player-state');
+    const playerState = loadPlayerState();
+    const metaUpgrades = playerState.metaUpgrades;
+    
     // Determine starting size
     let startingSize: number;
     if (runState?.fishState?.size) {
@@ -168,10 +173,6 @@ export class GameEngine {
       startingSize = runState.fishState.size;
     } else {
       // New run: start at base size (20) + meta upgrades
-      const { loadPlayerState } = await import('./player-state');
-      const playerState = loadPlayerState();
-      const metaUpgrades = playerState.metaUpgrades;
-      
       startingSize = 20; // Base size
       
       // Apply meta starting size upgrade for NEW runs only
@@ -193,10 +194,7 @@ export class GameEngine {
     const startY = this.p5Instance?.height ? this.p5Instance.height / 2 : 400;
     this.player = new Player(this.physics, startX, startY, startingSize);
 
-    // Apply other meta upgrades from player state (purchased with Evo Points)
-    const { loadPlayerState } = await import('./player-state');
-    const playerState = loadPlayerState();
-    const metaUpgrades = playerState.metaUpgrades;
+    // Apply other meta upgrades
 
     // Apply starting speed upgrade
     if (metaUpgrades.meta_starting_speed) {
