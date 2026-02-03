@@ -37,6 +37,52 @@ function asStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string');
 }
 
+function asSpriteResolutions(value: unknown): SpriteResolutions | undefined {
+  if (!isRecord(value)) return undefined;
+  const high = typeof value.high === 'string' ? value.high : undefined;
+  const medium = typeof value.medium === 'string' ? value.medium : undefined;
+  const low = typeof value.low === 'string' ? value.low : undefined;
+  
+  // Only return if we have at least one valid resolution
+  if (high || medium || low) {
+    return { high: high || '', medium: medium || '', low: low || '' };
+  }
+  return undefined;
+}
+
+function asGrowthSprites(value: unknown): GrowthSprites | undefined {
+  if (!isRecord(value)) return undefined;
+  
+  // GrowthSprites can have juvenile, adult, elder properties
+  // Each is a GrowthSpriteData object with sprite, spriteResolutions, sizeRange
+  const hasValidStructure =
+    (value.juvenile !== undefined && isRecord(value.juvenile)) ||
+    (value.adult !== undefined && isRecord(value.adult)) ||
+    (value.elder !== undefined && isRecord(value.elder));
+  
+  if (hasValidStructure) {
+    return value as GrowthSprites;
+  }
+  return undefined;
+}
+
+function asCreatureAnimations(value: unknown): CreatureAnimations | undefined {
+  if (!isRecord(value)) return undefined;
+  
+  // CreatureAnimations can have juvenile, adult, elder properties
+  // Each can be a Partial<Record<AnimationAction, AnimationSequence>>
+  // We'll just pass through the object if it looks valid
+  const hasValidStructure = 
+    (value.juvenile !== undefined && isRecord(value.juvenile)) ||
+    (value.adult !== undefined && isRecord(value.adult)) ||
+    (value.elder !== undefined && isRecord(value.elder));
+  
+  if (hasValidStructure) {
+    return value as CreatureAnimations;
+  }
+  return undefined;
+}
+
 export function normalizeCreature(raw: unknown): Creature | null {
   if (!isRecord(raw)) return null;
 
@@ -56,7 +102,7 @@ export function normalizeCreature(raw: unknown): Creature | null {
     damage: asNumber(rawStats.damage, DEFAULT_STATS.damage),
   };
 
-  const growthSprites = isRecord(raw.growthSprites) ? (raw.growthSprites as GrowthSprites) : undefined;
+  const growthSprites = asGrowthSprites(raw.growthSprites);
   const spriteFromGrowth =
     growthSprites?.adult?.sprite ||
     growthSprites?.juvenile?.sprite ||
@@ -96,9 +142,9 @@ export function normalizeCreature(raw: unknown): Creature | null {
     grantedAbilities,
     playable: typeof raw.playable === 'boolean' ? raw.playable : false,
     sizeTier: typeof raw.sizeTier === 'string' ? raw.sizeTier : undefined,
-    spriteResolutions: isRecord(raw.spriteResolutions) ? raw.spriteResolutions as SpriteResolutions : undefined,
+    spriteResolutions: asSpriteResolutions(raw.spriteResolutions),
     growthSprites,
-    animations: isRecord(raw.animations) ? raw.animations as CreatureAnimations : undefined,
+    animations: asCreatureAnimations(raw.animations),
     essence: raw.essence,
     descriptionChunks: Array.isArray(raw.descriptionChunks) ? raw.descriptionChunks : undefined,
     visualMotif: typeof raw.visualMotif === 'string' ? raw.visualMotif : undefined,
