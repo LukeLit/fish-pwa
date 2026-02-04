@@ -6,7 +6,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import FishEditorCanvas, { type PlayerGameStats } from './FishEditorCanvas';
-import GameControls from './GameControls';
+import { DashButton } from './GameControls';
 import PauseMenu from './PauseMenu';
 import SettingsDrawer from './SettingsDrawer';
 import { type FishData } from './FishEditOverlay';
@@ -368,8 +368,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
       </div>
 
-      {/* Pause Button - offset right to make room for settings menu button */}
-      <div className="absolute top-4 right-16 z-40 flex gap-2">
+      {/* HUD: Pause button (z-40 above AnalogJoystick overlay) */}
+      <div className="absolute top-4 right-16 z-40 flex gap-2 items-center">
         <button
           onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
           className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
@@ -387,18 +387,19 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         </button>
       </div>
 
+      {/* Dash button - bottom right, z-40 above AnalogJoystick overlay so it stays clickable */}
+      {!paused && (
+        <div className="absolute bottom-6 right-6 z-40">
+          <DashButton
+            onDash={(dashing) => {
+              dashFromControlsRef.current = dashing;
+            }}
+          />
+        </div>
+      )}
+
       {/* Settings Menu - Rendered at page level to avoid stacking context issues */}
       <SettingsDrawer mode="game" />
-
-      {/* Mobile controls: joystick + dash button */}
-      {!paused && (
-        <GameControls
-          onMove={() => { }}
-          onDash={(dashing) => {
-            dashFromControlsRef.current = dashing;
-          }}
-        />
-      )}
 
       <FishEditorCanvas
         background={selectedBackground}
