@@ -84,6 +84,8 @@ interface FishEditorCanvasProps {
   onCacheRefreshed?: () => void;
   // Ref for mobile dash button state (set by parent GameControls)
   dashFromControlsRef?: React.MutableRefObject<boolean>;
+  // Auto-dash feature for mobile (always dash when moving)
+  autoDashEnabled?: boolean;
 }
 
 export default function FishEditorCanvas({
@@ -108,6 +110,7 @@ export default function FishEditorCanvas({
   paused = false,
   onCacheRefreshed,
   dashFromControlsRef: dashFromControlsRefProp,
+  autoDashEnabled = false,
 }: FishEditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1411,7 +1414,13 @@ export default function FishEditorCanvas({
 
       // Dash mechanic (game mode only): Shift/Space or mobile dash button
       const STAMINA_REGEN_RATE = 100; // per second
-      const wantsDash = hasKey('shift') || hasKey(' ') || (dashFromControlsRefProp?.current ?? false);
+      
+      // Dash input (Shift, Space, mobile dash button, or auto-dash when moving)
+      const isMoving = hasKey('w') || hasKey('s') || hasKey('a') || hasKey('d') ||
+                       hasKey('arrowup') || hasKey('arrowdown') || hasKey('arrowleft') || hasKey('arrowright');
+      const manualDash = hasKey('shift') || hasKey(' ') || (dashFromControlsRefProp?.current ?? false);
+      const wantsDash = manualDash || (autoDashEnabled && isMoving);
+      
       if (gameMode) {
         player.isDashing = wantsDash && player.stamina > 0;
         if (player.isDashing) {

@@ -417,6 +417,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         levelDuration={levelDuration}
         paused={paused}
         dashFromControlsRef={dashFromControlsRef}
+        autoDashEnabled={autoDashEnabled}
         onStatsUpdate={handleStatsUpdate}
         onGameOver={(stats) => {
           clearRunState();
