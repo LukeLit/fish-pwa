@@ -1167,16 +1167,10 @@ export default function FishEditorCanvas({
           let fishType: string;
           let creatureData: Creature | undefined;
 
-          // Use creature's base size directly from data, clamped to config min/max
-          // Config provides global constraints, creature data is single source of truth
+          // Use instance size (fishSizeForSprite) with optional config multiplier
           const szCfg = gameConfigRef.current;
-          if (szCfg && szCfg.fishSizeMin !== undefined && szCfg.fishSizeMax !== undefined) {
-            // Clamp creature size to config range
-            fishSize = Math.max(szCfg.fishSizeMin, Math.min(szCfg.fishSizeMax, fishSizeForSprite));
-          } else {
-            // Use creature's base size
-            fishSize = fishSizeForSprite;
-          }
+          const szMult = szCfg ? (szCfg.fishSizeMin + Math.random() * (szCfg.fishSizeMax - szCfg.fishSizeMin)) : 1;
+          fishSize = fishSizeForSprite * szMult;
           baseSpeed = creatureForSprite?.stats.speed ?? 2;
           fishType = creatureForSprite?.type ?? (fishItem as { type?: string }).type ?? 'prey';
           creatureData = creatureForSprite;
@@ -1795,121 +1789,20 @@ export default function FishEditorCanvas({
             const autoEat = cfg?.autoEat ?? false;
             const canSwallow = player.size >= fish.size * SWALLOW_SIZE_RATIO;
             const canAttack = player.size > fish.size * ATTACK_SIZE_RATIO;
-            
-            // Auto-eat/auto-attack: bypass dash requirement entirely
-            // When enabled, player can eat/attack without dashing based purely on size
-            const canAutoEat = autoEat && canSwallow;
-            const canAutoAttack = autoAttack && canAttack;
-            
-            // Dash-based attacking: traditional mechanic requiring dash
-            const dashAttacking = player.isDashing && (canAttack || canSwallow);
-            
-            // Player is attacking if either auto-mode or dashing
-            const playerAttacking = canAutoEat || canAutoAttack || dashAttacking;
+            const playerAttacking = (player.isDashing || autoAttack) && canAttack
+              || (autoEat && canSwallow);
             const fishAttacking = fish.isDashing && fish.size > player.size * ATTACK_SIZE_RATIO;
-            
             const sizeRatio = player.size / fish.size;
             const evenlyMatched = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;
             const bothDashing = player.isDashing && fish.isDashing;
-            
-            // One-sided attack: only when DASHING (not auto-mode)
-            // Auto-eat/auto-attack skip the stamina system entirely
-            const oneSidedAttack = evenlyMatched && player.isDashing && !fish.isDashing && dashAttacking;
+            const oneSidedAttack = evenlyMatched && (player.isDashing !== fish.isDashing);
 
             if (!playerAttacking && !fishAttacking && !(evenlyMatched && bothDashing) && !oneSidedAttack) continue;
 
-            // Priority 1: Auto-eat/auto-attack - bypass stamina system, eat directly
-            if (canAutoEat || (canAutoAttack && canSwallow)) {
-              // Player eats fish directly (no stamina battle)
-              fishEatenRef.current += 1;
-              eatenIdsRef.current.add(fish.id);
-              fishListRef.current.splice(idx, 1);
-
-              // Diminishing returns: bigger fish relative to prey = less growth
-              const sizeRatio = player.size / fish.size;
-              const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
-              const sizeGain = fish.size * 0.15 * efficiencyMult;
-              const oldPlayerSize = player.size;
-              player.size = Math.min(PLAYER_MAX_SIZE, player.size + sizeGain);
-
-              // Check if player crossed a growth stage threshold
-              if (playerCreature?.growthSprites) {
-                const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
-                const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
-
-                if (Math.floor(player.size / 5) !== Math.floor(oldPlayerSize / 5)) {
-                  console.log(`[Growth] Player size: ${player.size.toFixed(1)}, stage: ${newStage}, has growthSprites:`, Object.keys(playerCreature.growthSprites));
-                }
-
-                if (oldStage !== newStage) {
-                  console.log(`[Growth] Player grew from ${oldStage} to ${newStage} (size: ${oldPlayerSize.toFixed(1)} -> ${player.size.toFixed(1)})`);
-                  const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
-                  console.log(`[Growth] Loading new sprite: ${spriteUrl.substring(0, 80)}...`);
-                  const growthImg = new Image();
-                  growthImg.crossOrigin = 'anonymous';
-                  growthImg.onload = () => {
-                    console.log(`[Growth] Sprite loaded successfully for ${newStage}`);
-                    player.sprite = removeBackground(growthImg, chromaToleranceRef.current);
-                  };
-                  growthImg.onerror = (e) => {
-                    console.error(`[Growth] Failed to load sprite for ${newStage}:`, e);
-                  };
-                  growthImg.src = spriteUrl;
-
-                  if (animationSpriteManagerRef.current.hasSprite('player')) {
-                    const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
-                    animSprite.setGrowthStage(newStage);
-                    console.log(`[Growth] Updated animation sprite to ${newStage} stage`);
-                  }
-                }
-              } else {
-                if (Math.floor(player.size / 10) !== Math.floor(oldPlayerSize / 10)) {
-                  console.log(`[Growth] Player size: ${player.size.toFixed(1)}, NO growthSprites available`);
-                }
-              }
-
-              const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger);
-              player.hunger = Math.min(HUNGER_MAX, player.hunger + hungerRestore);
-
-              player.chompPhase = 1;
-              player.chompEndTime = now + 280;
-              const eatX = (fish.x + player.x) * 0.5;
-              const eatY = (fish.y + player.y) * 0.5;
-
-              const hasBiteSprite = animationSpriteManagerRef.current.hasSprite('player');
-              if (hasBiteSprite) {
-                const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
-                sprite.triggerAction('bite');
-              }
-
-              for (let b = 0; b < 10; b++) {
-                bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
-              }
-
-              if (fish.creatureData?.essenceTypes) {
-                fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }, i: number) => {
-                  const et = ESSENCE_TYPES[ec.type];
-                  if (et) {
-                    chompParticlesRef.current.push({
-                      x: eatX + (Math.random() - 0.5) * 24,
-                      y: eatY - 20 - (i * 18),
-                      life: 1.5,
-                      scale: 1.4,
-                      text: `+${ec.baseYield} ${et.name}`,
-                      color: et.color,
-                      punchScale: 1.8,
-                    });
-                  }
-                });
-              }
-              continue;
-            }
-
-            // Priority 2: One-sided dash attack (stamina damage)
             if (oneSidedAttack) {
-              // One-sided: attacking entity deals damage to non-attacking target
-              const attacker = playerAttacking ? player : fish;
-              const target = playerAttacking ? fish : player;
+              // One-sided: dashing attacker deals damage to non-dashing target
+              const attacker = player.isDashing ? player : fish;
+              const target = player.isDashing ? fish : player;
               // Size-based stamina penalty: attacking larger target costs more
               const targetSizeRatio = (attacker as { size: number }).size / (target as { size: number }).size;
               const staminaMult = targetSizeRatio < 1 ? ATTACK_LARGER_STAMINA_MULTIPLIER : 1;
@@ -1937,7 +1830,6 @@ export default function FishEditorCanvas({
                   return;
                 }
               }
-            // Priority 3: Stamina battle (both dashing, evenly matched)
             } else if (evenlyMatched && bothDashing) {
               // Stamina battle
               player.stamina = Math.max(0, player.stamina - DASH_ATTACK_STAMINA_COST);
@@ -1964,7 +1856,6 @@ export default function FishEditorCanvas({
                 }
                 return;
               }
-            // Priority 4: Fish attacking player
             } else if (fishAttacking) {
               // Predator ate player - GAME OVER
               // Trigger death animation on player before game over
@@ -1989,8 +1880,7 @@ export default function FishEditorCanvas({
                 }
               }
               return; // Stop game loop
-            // Priority 5: Player dash-eating (when dashing and can eat)
-            } else if (playerAttacking && player.isDashing) {
+            } else if (playerAttacking) {
               // Player eats fish
               fishEatenRef.current += 1;
               eatenIdsRef.current.add(fish.id);

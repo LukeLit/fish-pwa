@@ -248,16 +248,11 @@ export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameC
                         <span className="text-xs text-gray-500">Min</span>
                         <input
                           type="number"
-                          min="20"
-                          max="300"
-                          step="10"
+                          min="0.2"
+                          max="1"
+                          step="0.1"
                           value={gameConfig.fishSizeMin}
-                          onChange={(e) => {
-                            const value = parseFloat(e.target.value) || 20;
-                            // Ensure min doesn't exceed max
-                            const safeValue = Math.min(value, gameConfig.fishSizeMax - 10);
-                            onGameConfigChange({ fishSizeMin: Math.max(20, safeValue) });
-                          }}
+                          onChange={(e) => onGameConfigChange({ fishSizeMin: parseFloat(e.target.value) || 0.5 })}
                           className="w-14 bg-gray-700 rounded px-2 py-1 text-sm text-white"
                         />
                       </div>
@@ -265,16 +260,11 @@ export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameC
                         <span className="text-xs text-gray-500">Max</span>
                         <input
                           type="number"
-                          min="20"
-                          max="300"
-                          step="10"
+                          min="1"
+                          max="4"
+                          step="0.25"
                           value={gameConfig.fishSizeMax}
-                          onChange={(e) => {
-                            const value = parseFloat(e.target.value) || 300;
-                            // Ensure max doesn't go below min
-                            const safeValue = Math.max(value, gameConfig.fishSizeMin + 10);
-                            onGameConfigChange({ fishSizeMax: Math.min(300, safeValue) });
-                          }}
+                          onChange={(e) => onGameConfigChange({ fishSizeMax: parseFloat(e.target.value) || 2 })}
                           className="w-14 bg-gray-700 rounded px-2 py-1 text-sm text-white"
                         />
                       </div>
