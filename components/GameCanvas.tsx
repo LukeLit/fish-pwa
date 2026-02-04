@@ -51,6 +51,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
   // Dash state from mobile GameControls (passed to FishEditorCanvas)
   const dashFromControlsRef = useRef(false);
+  const [autoDashEnabled, setAutoDashEnabled] = useState(false);
 
   // Close pause menu and reset state
   const handleClosePauseMenu = useCallback(() => {
@@ -397,6 +398,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           onDash={(dashing) => {
             dashFromControlsRef.current = dashing;
           }}
+          autoDashEnabled={autoDashEnabled}
+          onAutoDashToggle={setAutoDashEnabled}
         />
       )}
 

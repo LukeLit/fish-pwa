@@ -9,9 +9,16 @@ import { useRef, useState, useEffect } from 'react';
 interface GameControlsProps {
   onMove: (direction: 'up' | 'down' | 'left' | 'right' | null) => void;
   onDash?: (dashing: boolean) => void;
+  autoDashEnabled?: boolean;
+  onAutoDashToggle?: (enabled: boolean) => void;
 }
 
-export default function GameControls({ onMove, onDash }: GameControlsProps) {
+export default function GameControls({ 
+  onMove, 
+  onDash,
+  autoDashEnabled = false,
+  onAutoDashToggle
+}: GameControlsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isActive, setIsActive] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -177,10 +184,10 @@ export default function GameControls({ onMove, onDash }: GameControlsProps) {
   };
 
   return (
-    <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-between px-6">
+    <div className="absolute bottom-6 left-0 right-0 z-20 flex justify-between px-6 pointer-events-none">
       {/* Movement joystick - left side */}
       <div
-        className="relative"
+        className="relative pointer-events-auto"
         style={{ touchAction: 'none' }}
       >
         <div
@@ -220,28 +227,49 @@ export default function GameControls({ onMove, onDash }: GameControlsProps) {
         </div>
       </div>
 
-      {/* Dash button - right side */}
-      <div
-        className="relative"
-        style={{ touchAction: 'none' }}
-      >
+      {/* Dash button and auto-dash toggle - right side */}
+      <div className="flex flex-col items-end gap-2 pointer-events-auto">
+        {/* Auto-dash toggle */}
+        {onAutoDashToggle && (
+          <button
+            onClick={() => onAutoDashToggle(!autoDashEnabled)}
+            className={`
+              px-3 py-1 rounded-lg border text-xs font-semibold
+              transition-all duration-200
+              ${autoDashEnabled
+                ? 'bg-green-500 border-green-400 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)]'
+                : 'bg-gray-700/50 border-gray-500/50 text-gray-300 backdrop-blur-sm'
+              }
+            `}
+            style={{ touchAction: 'none' }}
+          >
+            Auto-Dash {autoDashEnabled ? 'ON' : 'OFF'}
+          </button>
+        )}
+
+        {/* Dash button */}
         <div
-          className={`
-            w-20 h-20 rounded-full border-2 flex items-center justify-center
-            transition-all duration-100 select-none
-            ${isDashing 
-              ? 'bg-orange-500 border-orange-400 scale-110 shadow-[0_0_20px_rgba(249,115,22,0.6)]' 
-              : 'bg-orange-600/30 border-orange-400/50 backdrop-blur-sm'
-            }
-          `}
-          onTouchStart={handleDashStart}
-          onTouchEnd={handleDashEnd}
-          onMouseDown={handleDashStart}
-          onMouseUp={handleDashEnd}
-          onMouseLeave={handleDashEnd}
+          className="relative"
+          style={{ touchAction: 'none' }}
         >
-          <div className="text-white font-bold text-sm">
-            DASH
+          <div
+            className={`
+              w-20 h-20 rounded-full border-2 flex items-center justify-center
+              transition-all duration-100 select-none
+              ${isDashing 
+                ? 'bg-orange-500 border-orange-400 scale-110 shadow-[0_0_20px_rgba(249,115,22,0.6)]' 
+                : 'bg-orange-600/30 border-orange-400/50 backdrop-blur-sm'
+              }
+            `}
+            onTouchStart={handleDashStart}
+            onTouchEnd={handleDashEnd}
+            onMouseDown={handleDashStart}
+            onMouseUp={handleDashEnd}
+            onMouseLeave={handleDashEnd}
+          >
+            <div className="text-white font-bold text-sm">
+              DASH
+            </div>
           </div>
         </div>
       </div>

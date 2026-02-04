@@ -6,7 +6,7 @@ import type p5 from 'p5';
 import { PhysicsEngine } from './physics';
 import { Entity } from './entities';
 import { HUNGER_RESTORE_MULTIPLIER, HUNGER_DRAIN_RATE, HUNGER_MAX } from './hunger-constants';
-import { DASH_SPEED_MULTIPLIER, DASH_STAMINA_DRAIN_RATE } from './dash-constants';
+import { startDash, stopDash, updateDashState } from './dash-mechanics';
 
 export interface PlayerStats {
   size: number;
@@ -60,27 +60,39 @@ export class Player extends Entity {
   }
 
   update(deltaTime: number, physics: PhysicsEngine): void {
-    super.update(deltaTime);
+    super.update(deltaTime, physics);
 
     // Update hunger (drain over time)
     this.stats.hunger = Math.max(0, this.stats.hunger - (this.stats.hungerDrainRate * deltaTime / 1000));
 
     // Check if dashing (Shift or Space key)
-    this.isDashing = this.keys['shift'] || this.keys[' '] || this.keys['space'];
-
-    // Drain stamina while dashing
-    if (this.isDashing && this.stamina > 0) {
-      this.stamina = Math.max(0, this.stamina - (DASH_STAMINA_DRAIN_RATE * deltaTime / 1000));
+    const shouldDash = this.keys['shift'] || this.keys[' '] || this.keys['space'];
+    
+    // Update dash state
+    if (shouldDash && !this.isDashing && this.stamina > 0) {
+      // Start dashing
+      this.isDashing = true;
+      this.dashState = startDash(Date.now());
+    } else if (!shouldDash && this.isDashing) {
+      // Stop dashing
+      this.isDashing = false;
+      this.dashState = stopDash();
     }
 
+    // Get current speed multiplier from dash state
+    const dashUpdate = updateDashState(this.dashState, Date.now(), deltaTime);
+    this.dashState = dashUpdate.state;
+    const speedMultiplier = this.isDashing ? dashUpdate.speedMultiplier : 1.0;
+
     // Can't dash if no stamina
-    if (this.stamina <= 0) {
+    if (this.stamina <= 0 && this.isDashing) {
       this.isDashing = false;
+      this.dashState = stopDash();
     }
 
     // Handle movement input
     const baseSpeed = this.stats.speed * 0.02;
-    const moveSpeed = this.isDashing ? baseSpeed * DASH_SPEED_MULTIPLIER : baseSpeed;
+    const moveSpeed = baseSpeed * speedMultiplier;
     let forceX = 0;
     let forceY = 0;
 
@@ -101,8 +113,8 @@ export class Player extends Entity {
       physics.applyForce(this.body, { x: forceX, y: forceY });
     }
 
-    // Limit velocity (higher when dashing)
-    const maxVel = this.isDashing ? this.stats.speed * DASH_SPEED_MULTIPLIER : this.stats.speed;
+    // Limit velocity (higher when dashing, use dynamic multiplier)
+    const maxVel = this.isDashing ? this.stats.speed * speedMultiplier : this.stats.speed;
     const vel = this.body.velocity;
     if (Math.abs(vel.x) > maxVel || Math.abs(vel.y) > maxVel) {
       const angle = Math.atan2(vel.y, vel.x);

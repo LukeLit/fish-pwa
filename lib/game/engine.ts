@@ -495,10 +495,9 @@ export class GameEngine {
         const isEntityFrontCollision = entity.isFrontCollision(this.player);
 
         // ATTACK vs EAT SPLIT:
-        // - Can SWALLOW if ≥2x target size (instant eat)
-        // - Can ATTACK if ≥1.2x target size but <2x (deal damage)
+        // - Can SWALLOW if ≥1.25x target size (25% larger - instant eat)
+        // - Can ATTACK if ≥1.2x target size but <1.25x (deal damage)
         // - BATTLE if similar size (within 20%, stamina-based)
-        // - Can bite KNOCKED OUT fish for chunks (future: Phase 5)
 
         if (isPlayerFrontCollision || entity.isKnockedOut()) {
           // Player attacking entity (or approaching KO fish)

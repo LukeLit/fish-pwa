@@ -13,7 +13,7 @@ export const DASH_STAMINA_RAMP_CAP = 2.5;
 export const DASH_ATTACK_STAMINA_COST = 15;
 
 // Size thresholds
-export const SWALLOW_SIZE_RATIO = 2.0;  // Can swallow if ≥2x target size
+export const SWALLOW_SIZE_RATIO = 1.25;  // Can swallow if ≥1.25x target size (25% larger)
 export const ATTACK_SIZE_RATIO = 1.2;   // Can damage if ≥1.2x target size
 export const BATTLE_SIZE_THRESHOLD = 0.2; // Within 20% = stamina battle
 
