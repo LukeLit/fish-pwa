@@ -3204,9 +3204,12 @@ export default function FishEditorCanvas({
         onTouchEnd={handleTouchEnd}
         style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1, cursor: (paused && !selectedFishId) ? 'grab' : 'default' }}
       />
-      <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
-        <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
-      </div>
+      {/* Only show analog joystick in edit mode (not game mode, as GameControls provides controls) */}
+      {!gameMode && (
+        <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
+          <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
+        </div>
+      )}
 
       {/* Operation status overlay */}
       {operationStatus && (
