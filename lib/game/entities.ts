@@ -257,7 +257,7 @@ export class Fish extends Entity {
   }
 
   update(deltaTime: number, physics: PhysicsEngine, allEntities?: Entity[], player?: Entity): void {
-    super.update(deltaTime);
+    super.update(deltaTime, physics);
 
     if (!this.alive) return;
 

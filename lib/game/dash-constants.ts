@@ -22,6 +22,12 @@ export const KO_STAMINA_REGEN_MULTIPLIER = 0.5; // 50% normal regen
 export const KO_WAKE_THRESHOLD = 0.4; // Wake at 40% stamina
 export const KO_DRIFT_SPEED = 0.5; // Slow drift while KO
 
+// Prey fleeing penalty - prey drains stamina faster when escaping (player/predators get upper hand)
+export const PREY_FLEE_STAMINA_MULTIPLIER = 1.5;
+
+// Size-based attack penalty - attacking larger target costs more stamina (small predator can't endlessly harass)
+export const ATTACK_LARGER_STAMINA_MULTIPLIER = 1.8;
+
 // Carcass system
 export const CARCASS_DECAY_TIME = 45000; // 45 seconds
 export const MEAT_ORB_LIFETIME = 20000; // 20 seconds
