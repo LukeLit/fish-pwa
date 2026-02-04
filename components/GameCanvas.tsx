@@ -4,8 +4,9 @@
  */
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import FishEditorCanvas, { type PlayerGameStats } from './FishEditorCanvas';
+import GameControls from './GameControls';
 import PauseMenu from './PauseMenu';
 import SettingsDrawer from './SettingsDrawer';
 import { type FishData } from './FishEditOverlay';
@@ -47,6 +48,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [playerFishData, setPlayerFishData] = useState<FishData | null>(null);
   const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
   const [selectedFish, setSelectedFish] = useState<FishData | null>(null);
+
+  // Dash state from mobile GameControls (passed to FishEditorCanvas)
+  const dashFromControlsRef = useRef(false);
 
   // Close pause menu and reset state
   const handleClosePauseMenu = useCallback(() => {
@@ -386,6 +390,16 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       {/* Settings Menu - Rendered at page level to avoid stacking context issues */}
       <SettingsDrawer mode="game" />
 
+      {/* Mobile controls: joystick + dash button */}
+      {!paused && (
+        <GameControls
+          onMove={() => { }}
+          onDash={(dashing) => {
+            dashFromControlsRef.current = dashing;
+          }}
+        />
+      )}
+
       <FishEditorCanvas
         background={selectedBackground}
         playerFishSprite={playerFishSprite}
@@ -399,6 +413,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         gameMode={true}
         levelDuration={levelDuration}
         paused={paused}
+        dashFromControlsRef={dashFromControlsRef}
         onStatsUpdate={handleStatsUpdate}
         onGameOver={(stats) => {
           clearRunState();

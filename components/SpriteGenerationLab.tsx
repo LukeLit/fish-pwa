@@ -15,6 +15,8 @@ import {
   saveEntry,
   getEntry,
   deleteEntry,
+  saveSharedSprite,
+  getSharedSprite,
   dataUrlToBlob,
   blobToDataUrl,
   isIndexedDBAvailable,
@@ -22,8 +24,10 @@ import {
 } from '@/lib/storage/sprite-lab-db';
 import type { FishData } from './FishEditOverlay';
 import type { GrowthStage, GrowthSprites, SpriteResolutions } from '@/lib/game/types';
-import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
+import { ESSENCE_TYPES, getAllEssenceTypes } from '@/lib/game/data/essence-types';
 import { DEFAULT_GROWTH_RANGES } from '@/lib/rendering/fish-renderer';
+import { Accordion } from '@/components/ui';
+import { getSharedAssetStyleChunks } from '@/lib/ai/prompt-chunks';
 
 interface SpriteGenerationLabProps {
   fish: FishData;
@@ -106,6 +110,14 @@ export default function SpriteGenerationLab({
   const [promptPreview, setPromptPreview] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isLoadingExisting, setIsLoadingExisting] = useState(false);
+
+  // Carcass & meat sprites (generic, for decoration)
+  const [carcassSprites, setCarcassSprites] = useState<Record<string, string>>({});
+  const [carcassGenerating, setCarcassGenerating] = useState<string | null>(null);
+
+  // Essence-type chunk sprites (for use in essence.visualChunks)
+  const [essenceChunkSprites, setEssenceChunkSprites] = useState<Record<string, string>>({});
+  const [essenceChunkGenerating, setEssenceChunkGenerating] = useState<string | null>(null);
 
   // Editable prompt data
   const [descriptionChunks, setDescriptionChunks] = useState<string[]>(fish.descriptionChunks || []);
@@ -237,6 +249,33 @@ export default function SpriteGenerationLab({
   useEffect(() => {
     setPromptPreview(buildPromptForStage('adult'));
   }, [buildPromptForStage]);
+
+  // Load shared sprites (carcass, essence chunks) from IndexedDB on mount
+  useEffect(() => {
+    if (!isOpen || !isIndexedDBAvailable()) return;
+
+    const loadSharedSprites = async () => {
+      const carcassKeys = ['meatChunk', 'carcass', 'meatOrb'] as const;
+      const essenceIds = getAllEssenceTypes().map(e => e.id);
+
+      for (const key of carcassKeys) {
+        const blob = await getSharedSprite(key);
+        if (blob) {
+          const dataUrl = await blobToDataUrl(blob);
+          setCarcassSprites(prev => ({ ...prev, [key]: dataUrl }));
+        }
+      }
+      for (const id of essenceIds) {
+        const blob = await getSharedSprite(`essence_${id}`);
+        if (blob) {
+          const dataUrl = await blobToDataUrl(blob);
+          setEssenceChunkSprites(prev => ({ ...prev, [id]: dataUrl }));
+        }
+      }
+    };
+
+    loadSharedSprites();
+  }, [isOpen]);
 
   // Load existing sprites on mount (local + blob fallback)
   useEffect(() => {
@@ -649,6 +688,90 @@ export default function SpriteGenerationLab({
     setDescriptionChunks(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Build full prompt with shared asset style (matches fish art)
+  const buildSharedAssetPrompt = useCallback((subjectPrompt: string): string => {
+    const styleChunks = getSharedAssetStyleChunks();
+    return [subjectPrompt, ...styleChunks].join(', ');
+  }, []);
+
+  // Generic image generation helper (uses same API + style as fish sprites)
+  const generateCustomImage = async (subjectPrompt: string): Promise<string> => {
+    const fullPrompt = buildSharedAssetPrompt(subjectPrompt);
+    const response = await fetch('/api/generate-fish-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: fullPrompt,
+        model: selectedModel,
+        aspectRatio: '1:1',
+      }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Generation failed');
+    }
+    const data = await response.json();
+    if (!data.imageBase64) throw new Error('No image in response');
+    return `data:image/png;base64,${data.imageBase64}`;
+  };
+
+  // Carcass & meat generation (subject prompts; style chunks added via buildSharedAssetPrompt)
+  const CARCASS_PROMPTS: Record<string, string> = {
+    meatChunk: 'raw meat chunk, organic texture, small piece of fish flesh, side view, stylized game sprite',
+    carcass: 'fish carcass, desaturated gray tones, decayed remains, X eyes, side view, environmental object, stylized game sprite',
+    meatOrb: 'generic meat orb, glowing red-orange collectible, small floating orb, game item, not associated with essence, stylized',
+  };
+  const CARCASS_LABELS: Record<string, string> = {
+    meatChunk: 'Meat Chunk',
+    carcass: 'Carcass',
+    meatOrb: 'Meat Orb',
+  };
+
+  const generateCarcassSprite = async (key: string) => {
+    setCarcassGenerating(key);
+    setError('');
+    try {
+      setCanvasStatus(`Generating ${CARCASS_LABELS[key] || key}...`);
+      const subjectPrompt = CARCASS_PROMPTS[key] || key;
+      const dataUrl = await generateCustomImage(subjectPrompt);
+      setCarcassSprites(prev => ({ ...prev, [key]: dataUrl }));
+      if (isIndexedDBAvailable()) {
+        const blob = await dataUrlToBlob(dataUrl);
+        await saveSharedSprite(key, blob);
+      }
+      clearCanvasStatus();
+    } catch (err: any) {
+      setError(err.message || 'Generation failed');
+      clearCanvasStatus();
+    } finally {
+      setCarcassGenerating(null);
+    }
+  };
+
+  // Essence-type chunk generation
+  const generateEssenceChunkSprite = async (essenceId: string) => {
+    setEssenceChunkGenerating(essenceId);
+    setError('');
+    const essence = ESSENCE_TYPES[essenceId];
+    if (!essence) return;
+    try {
+      setCanvasStatus(`Generating ${essence.name} chunk...`);
+      const subjectPrompt = `${essence.name} essence chunk, ${essence.color} glow, small collectible orb, game item, floating particle, centered`;
+      const dataUrl = await generateCustomImage(subjectPrompt);
+      setEssenceChunkSprites(prev => ({ ...prev, [essenceId]: dataUrl }));
+      if (isIndexedDBAvailable()) {
+        const blob = await dataUrlToBlob(dataUrl);
+        await saveSharedSprite(`essence_${essenceId}`, blob);
+      }
+      clearCanvasStatus();
+    } catch (err: any) {
+      setError(err.message || 'Generation failed');
+      clearCanvasStatus();
+    } finally {
+      setEssenceChunkGenerating(null);
+    }
+  };
+
   // Clear local data
   const clearLocalData = async () => {
     try {
@@ -842,6 +965,72 @@ export default function SpriteGenerationLab({
           {generationStatus && !generatingStage && (
             <div className="text-center text-sm text-green-400">{generationStatus}</div>
           )}
+
+          {/* Carcass & Meat Chunks - collapsible */}
+          <Accordion title="Carcass & Meat Chunks" defaultOpen={false} badge="Generic assets">
+            <p className="text-xs text-gray-400 mb-3">
+              Generate generic meat/carcass sprites for decoration (fade-away chunks, meat orbs).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {Object.entries(CARCASS_PROMPTS).map(([key, prompt]) => (
+                <div key={key} className="bg-gray-800 rounded-lg p-3 border border-gray-700">
+                  <div className="text-xs font-medium text-white mb-2">{CARCASS_LABELS[key] || key}</div>
+                  <div className="aspect-square bg-[#FF00FF] rounded mb-2 flex items-center justify-center overflow-hidden">
+                    {carcassSprites[key] ? (
+                      <img src={carcassSprites[key]} alt={key} className="w-full h-full object-contain" />
+                    ) : (
+                      <span className="text-gray-500 text-xs">No sprite</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => generateCarcassSprite(key)}
+                    disabled={carcassGenerating !== null}
+                    className="w-full px-3 py-2 bg-amber-600/80 hover:bg-amber-600 text-white rounded text-xs font-medium disabled:opacity-50"
+                  >
+                    {carcassGenerating === key ? 'Generating...' : 'Generate'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Accordion>
+
+          {/* Essence Type Chunks - collapsible, for use in essence.visualChunks */}
+          <Accordion title="Essence Type Chunks" defaultOpen={false} badge="Per-essence sprites">
+            <p className="text-xs text-gray-400 mb-3">
+              Generate sprite chunks for each essence type. Use in creature essence.primary.visualChunks and essence.secondary[].visualChunks.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {getAllEssenceTypes().map((essence) => (
+                <div key={essence.id} className="bg-gray-800 rounded-lg p-3 border border-gray-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div
+                      className="w-4 h-4 rounded-full border border-white/30"
+                      style={{ backgroundColor: essence.color }}
+                    />
+                    <span className="text-xs font-medium text-white">{essence.name}</span>
+                  </div>
+                  <div className="aspect-square bg-[#FF00FF] rounded mb-2 flex items-center justify-center overflow-hidden">
+                    {essenceChunkSprites[essence.id] ? (
+                      <img src={essenceChunkSprites[essence.id]} alt={essence.name} className="w-full h-full object-contain" />
+                    ) : (
+                      <span className="text-gray-500 text-xs">No sprite</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => generateEssenceChunkSprite(essence.id)}
+                    disabled={essenceChunkGenerating !== null}
+                    className="w-full px-3 py-2 rounded text-xs font-medium disabled:opacity-50"
+                    style={{
+                      backgroundColor: essence.color + '40',
+                      color: essence.color,
+                    }}
+                  >
+                    {essenceChunkGenerating === essence.id ? 'Generating...' : 'Generate'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Accordion>
 
           {/* Prompt Preview */}
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">

@@ -4,8 +4,12 @@
  */
 
 // Dash mechanics
-export const DASH_SPEED_MULTIPLIER = 1.75;
-export const DASH_STAMINA_DRAIN_RATE = 8; // per second
+export const DASH_SPEED_MULTIPLIER = 2;
+export const DASH_STAMINA_DRAIN_RATE = 16; // per second (2x for challenge)
+/** Each second of holding dash adds this to the drain multiplier (1 + holdSeconds * this). Capped at DASH_STAMINA_RAMP_CAP. */
+export const DASH_STAMINA_RAMP_PER_SECOND = 0.5;
+/** Max drain multiplier from holding dash (e.g. 2.5 = 2.5x base rate after ~3s hold) */
+export const DASH_STAMINA_RAMP_CAP = 2.5;
 export const DASH_ATTACK_STAMINA_COST = 15;
 
 // Size thresholds

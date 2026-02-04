@@ -10,7 +10,7 @@
  */
 
 export const HUNGER_MAX = 100; // Maximum hunger value
-export const HUNGER_DRAIN_RATE = 1.2; // % per second (~1.4 min to starve from full)
+export const HUNGER_DRAIN_RATE = 2.5; // % per second (~40 sec to starve from full)
 export const HUNGER_RESTORE_MULTIPLIER = 0.35; // Hunger restored per fish size
 export const HUNGER_LOW_THRESHOLD = 30; // % for warning effects (raised for earlier warning)
 export const HUNGER_WARNING_PULSE_FREQUENCY = 0.008;

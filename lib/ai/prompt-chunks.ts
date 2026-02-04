@@ -174,6 +174,22 @@ export function getBaseStyleChunks(): string[] {
 }
 
 /**
+ * Style chunks for shared assets (carcass, meat, essence orbs).
+ * Matches fish art style but without fish-specific formatting (direction, scales).
+ * Use for decorative chunks and essence-type sprites.
+ */
+export function getSharedAssetStyleChunks(): string[] {
+  return [
+    ...ART_STYLE_CHUNK,
+    'isolated on solid bright magenta background (#FF00FF)',
+    'no other background elements',
+    'digital illustration, high-resolution, not pixel art',
+    'transparent PNG (for final asset)',
+    ...TECH_ART_GUIDELINES_CHUNK,
+  ];
+}
+
+/**
  * Get biome-related chunks for a biome id (if any).
  */
 export function getBiomeChunks(biomeId?: string | null): string[] {

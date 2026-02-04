@@ -18,6 +18,7 @@ import {
   HUNGER_WARNING_INTENSITY,
   HUNGER_FRAME_RATE,
 } from '@/lib/game/hunger-constants';
+import { DASH_SPEED_MULTIPLIER, DASH_STAMINA_DRAIN_RATE, DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP } from '@/lib/game/dash-constants';
 import { loadRunState } from '@/lib/game/run-state';
 import {
   removeBackground,
@@ -35,6 +36,7 @@ import {
   type ClipMode,
   type RenderContext,
 } from '@/lib/rendering/fish-renderer';
+import { DashParticleSystem } from '@/lib/rendering/dash-particles';
 import type { SpriteResolutions, GrowthSprites } from '@/lib/game/types';
 import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
 import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering/animation-sprite';
@@ -79,6 +81,8 @@ interface FishEditorCanvasProps {
   paused?: boolean;
   // Cache refresh callback - called when textures are refreshed
   onCacheRefreshed?: () => void;
+  // Ref for mobile dash button state (set by parent GameControls)
+  dashFromControlsRef?: React.MutableRefObject<boolean>;
 }
 
 export default function FishEditorCanvas({
@@ -102,6 +106,7 @@ export default function FishEditorCanvas({
   fishData = new Map(),
   paused = false,
   onCacheRefreshed,
+  dashFromControlsRef: dashFromControlsRefProp,
 }: FishEditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -174,6 +179,9 @@ export default function FishEditorCanvas({
         baseSize: spawned.size,
         sprite: processedSprite,
         animations: fish.animations,
+        stamina: 100,
+        maxStamina: 100,
+        isDashing: false,
       };
     };
     img.onerror = () => {
@@ -292,6 +300,9 @@ export default function FishEditorCanvas({
     chompEndTime: 0,
     hunger: HUNGER_MAX, // 0-100 hunger meter
     hungerDrainRate: HUNGER_DRAIN_RATE, // % per second
+    stamina: 100,
+    maxStamina: 100,
+    isDashing: false,
     animations: undefined as CreatureAnimations | undefined,
   });
 
@@ -311,6 +322,15 @@ export default function FishEditorCanvas({
     life: number;
     radius: number;
   }>>([]);
+
+  /** Dash particles - driven by animation state */
+  const dashParticleSystemRef = useRef(new DashParticleSystem({ flowCap: 200, flowSpawnPerFrame: 1 }));
+
+  /** How long the player has been holding dash (ms) - used for escalating stamina drain */
+  const dashHoldDurationMsRef = useRef(0);
+
+  /** Last animation action sent to player anim sprite (to avoid resetting every frame) */
+  const lastPlayerAnimActionRef = useRef<string | null>(null);
 
   /** Fish lifecycle state for spawn/despawn animations */
   type FishLifecycleState = 'spawning' | 'active' | 'despawning' | 'removed';
@@ -986,7 +1006,7 @@ export default function FishEditorCanvas({
     const isSpawnedCreature = (item: SpawnedCreature | LegacySpawnItem): item is SpawnedCreature => {
       return 'stats' in item && 'rarity' in item;
     };
-    spawnPoolRef.current = spawnedFish.length 
+    spawnPoolRef.current = spawnedFish.length
       ? (spawnedFish.filter(isSpawnedCreature) as SpawnedCreature[])
       : [];
 
@@ -1038,9 +1058,9 @@ export default function FishEditorCanvas({
       const creatureForSprite: Creature | undefined = hasFullCreature
         ? (fishItem as Creature)
         : (() => {
-            const creatureId = (fishItem as { creatureId?: string }).creatureId ?? fishItem.id;
-            return fishDataRef.current.get(creatureId) as Creature | undefined;
-          })();
+          const creatureId = (fishItem as { creatureId?: string }).creatureId ?? fishItem.id;
+          return fishDataRef.current.get(creatureId) as Creature | undefined;
+        })();
       const instanceSize =
         (fishItem as { size?: number }).size ??
         (fishItem as { stats?: { size?: number } }).stats?.size;
@@ -1376,17 +1396,42 @@ export default function FishEditorCanvas({
         }
       }
 
+      // Dash mechanic (game mode only): Shift/Space or mobile dash button
+      const STAMINA_REGEN_RATE = 100; // per second
+      const wantsDash = hasKey('shift') || hasKey(' ') || (dashFromControlsRefProp?.current ?? false);
+      if (gameMode) {
+        player.isDashing = wantsDash && player.stamina > 0;
+        if (player.isDashing) {
+          // Track hold duration for escalating drain (longer hold = faster drain)
+          const frameMs = (deltaTime / 60) * 1000;
+          dashHoldDurationMsRef.current += frameMs;
+          const holdSeconds = dashHoldDurationMsRef.current / 1000;
+          const rampMultiplier = Math.min(1 + holdSeconds * DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP);
+          player.stamina = Math.max(0, player.stamina - DASH_STAMINA_DRAIN_RATE * rampMultiplier * (deltaTime / 60));
+        } else {
+          dashHoldDurationMsRef.current = 0;
+          player.stamina = Math.min(player.maxStamina, player.stamina + STAMINA_REGEN_RATE * (deltaTime / 60));
+        }
+        if (player.stamina <= 0) player.isDashing = false;
+      } else {
+        player.isDashing = false;
+        dashHoldDurationMsRef.current = 0;
+      }
+
+      const effectiveMaxSpeed = (gameMode && player.isDashing) ? MAX_SPEED * DASH_SPEED_MULTIPLIER : MAX_SPEED;
+
       // Lock movement in edit mode or when paused
       const currentEditMode = editModeRef.current;
       if (!currentEditMode && !isPaused) {
         // Use joystick if active, otherwise keyboard
         if (joystickActiveRef.current) {
-          // Analog joystick control - smooth velocity
-          player.vx = joystickVelocityRef.current.x * MAX_SPEED;
-          player.vy = joystickVelocityRef.current.y * MAX_SPEED;
+          // Analog joystick control - smooth velocity (dash applies speed boost)
+          player.vx = joystickVelocityRef.current.x * effectiveMaxSpeed;
+          player.vy = joystickVelocityRef.current.y * effectiveMaxSpeed;
         } else {
           // Keyboard control with acceleration and friction (delta-time adjusted)
-          const accel = ACCELERATION * deltaTime;
+          const accelMult = (gameMode && player.isDashing) ? 1.3 : 1; // Snappier when dashing
+          const accel = ACCELERATION * deltaTime * accelMult;
           const friction = Math.pow(FRICTION, deltaTime); // Correct friction for variable framerate
 
           if (hasKey('w') || hasKey('arrowup')) player.vy -= accel;
@@ -1398,10 +1443,10 @@ export default function FishEditorCanvas({
         }
 
         let speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-        if (speed > MAX_SPEED) {
-          player.vx = (player.vx / speed) * MAX_SPEED;
-          player.vy = (player.vy / speed) * MAX_SPEED;
-          speed = MAX_SPEED;
+        if (speed > effectiveMaxSpeed) {
+          player.vx = (player.vx / speed) * effectiveMaxSpeed;
+          player.vy = (player.vy / speed) * effectiveMaxSpeed;
+          speed = effectiveMaxSpeed;
         }
 
         // Delta-time adjusted position update
@@ -1427,6 +1472,23 @@ export default function FishEditorCanvas({
       const normalizedSpeed = Math.min(1, rawPlayerSpeed / MAX_SPEED);
       player.animTime += 0.05 + normalizedSpeed * 0.06;
 
+      // Dash particles - driven by animation state (only when game mode)
+      if (gameMode) {
+        const rawSpeed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
+        const animationAction = player.isDashing ? 'dash' : (rawSpeed < 0.2 ? 'idle' : 'swim');
+        dashParticleSystemRef.current.update(
+          {
+            x: player.x,
+            y: player.y,
+            vx: player.vx,
+            vy: player.vy,
+            size: player.size,
+            animationAction,
+          },
+          deltaTime
+        );
+      }
+
       // Update chomp phase (decay over ~280ms)
       const now = performance.now();
       if (player.chompEndTime > now) {
@@ -1437,9 +1499,10 @@ export default function FishEditorCanvas({
 
       // Update hunger in game mode (movement-based, delta-time adjusted)
       if (gameMode && !isPaused) {
-        // Hunger only drains when moving - proportional to speed
+        // Hunger drains continuously: slowly when still, faster when moving
         // normalizedSpeed is 0 when still, 1 at max speed
-        const movementFactor = normalizedSpeed;
+        const STATIONARY_DRAIN_FRACTION = 0.1; // 10% of full rate when not moving
+        const movementFactor = Math.max(STATIONARY_DRAIN_FRACTION, normalizedSpeed);
         const effectiveDrainRate = player.hungerDrainRate * movementFactor;
         player.hunger = Math.max(0, player.hunger - (effectiveDrainRate / HUNGER_FRAME_RATE) * deltaTime);
 
@@ -1498,7 +1561,9 @@ export default function FishEditorCanvas({
 
         if (dist < playerHeadR + fishHeadR) {
           // In game mode, check if player can eat this fish or gets eaten
+          // DASH GATE: Without dash, fish pass through peacefully (no interaction)
           if (gameMode) {
+            if (!player.isDashing) continue; // Pass through peacefully
             if (fish.size > player.size * 1.2) {
               // Trigger death animation on player before game over
               if (animationSpriteManagerRef.current.hasSprite('player')) {
@@ -2215,6 +2280,11 @@ export default function FishEditorCanvas({
         buttonPositions.set(fish.id, { x: fish.x, y: fish.y, size: fish.size });
       });
 
+      // Draw dash particles behind fish (flow, streaks)
+      if (gameMode) {
+        dashParticleSystemRef.current.drawBehind(ctx);
+      }
+
       // Draw player with LOD based on screen-space size
       const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / MAX_SPEED);
       const playerScreenSize = player.size * currentZoom;
@@ -2226,6 +2296,14 @@ export default function FishEditorCanvas({
       // Try animation sprite rendering first if animations available
       if (playerClipMode === 'video' && playerHasAnimations && animationSpriteManagerRef.current.hasSprite('player')) {
         const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+        // Switch to dash animation when dashing (if available)
+        const desiredAction = player.isDashing && animSprite.hasAction('dash')
+          ? 'dash'
+          : (playerSpeed < 0.2 ? 'idle' : 'swim');
+        if (lastPlayerAnimActionRef.current !== desiredAction) {
+          lastPlayerAnimActionRef.current = desiredAction;
+          animSprite.playAction(desiredAction);
+        }
         animSprite.update();
         const state = animSprite.getState();
         // Log occasionally (every 60 frames)
@@ -2238,7 +2316,10 @@ export default function FishEditorCanvas({
           player.y,
           player.size,
           player.size,
-          { flipX: !player.facingRight }
+          {
+            flipX: !player.facingRight,
+            rotation: player.facingRight ? player.verticalTilt : -player.verticalTilt,
+          }
         );
       }
 
@@ -2278,6 +2359,11 @@ export default function FishEditorCanvas({
 
       // Store player position for edit button (use actual creature ID)
       buttonPositions.set(player.id, { x: player.x, y: player.y, size: player.size });
+
+      // Draw dash particles in front of fish (burst bubbles at head)
+      if (gameMode) {
+        dashParticleSystemRef.current.drawInFront(ctx);
+      }
 
       // Update edit button positions ref
       editButtonPositionsRef.current = buttonPositions;
@@ -2495,8 +2581,21 @@ export default function FishEditorCanvas({
         ctx.textBaseline = 'middle';
         ctx.fillText(`HUNGER: ${Math.ceil(player.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
 
-        // Timer display - underneath hunger meter
-        const timerY = hungerBarY + hungerBarHeight + 12;
+        // Stamina bar - below hunger bar
+        const staminaBarY = hungerBarY + hungerBarHeight + 8;
+        const staminaPercent = player.stamina / player.maxStamina;
+        const staminaColor = staminaPercent > 0.3 ? '#4ade80' : '#ef4444'; // Green when >30%, red when low
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(hungerBarX, staminaBarY, hungerBarWidth, hungerBarHeight);
+        ctx.strokeRect(hungerBarX, staminaBarY, hungerBarWidth, hungerBarHeight);
+        ctx.fillStyle = staminaColor;
+        const staminaFillWidth = (hungerBarWidth - 6) * staminaPercent;
+        ctx.fillRect(hungerBarX + 3, staminaBarY + 3, staminaFillWidth, hungerBarHeight - 6);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fillText(`STAMINA: ${Math.ceil(player.stamina)}%`, hungerBarX + hungerBarWidth / 2, staminaBarY + hungerBarHeight / 2);
+
+        // Timer display - underneath stamina bar
+        const timerY = staminaBarY + hungerBarHeight + 12;
         ctx.font = 'bold 20px monospace';
 
         // Flash yellow when 10 seconds or less

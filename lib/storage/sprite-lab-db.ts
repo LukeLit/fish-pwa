@@ -6,8 +6,9 @@
  */
 
 const DB_NAME = 'sprite-lab-db';
-const DB_VERSION = 2;  // Bumped to match browser's existing version
+const DB_VERSION = 3;  // Added sharedSprites store
 const STORE_NAME = 'sprites';
+const SHARED_STORE_NAME = 'sharedSprites';
 
 export interface SpriteLabEntry {
   id: string;                    // Creature ID e.g., "goldfish_starter"
@@ -57,6 +58,12 @@ function openDB(): Promise<IDBDatabase> {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('updatedAt', 'updatedAt', { unique: false });
         console.log('[SpriteLabDB] Created object store');
+      }
+
+      // Create shared sprites store for carcass, meat, essence chunks
+      if (!db.objectStoreNames.contains(SHARED_STORE_NAME)) {
+        db.createObjectStore(SHARED_STORE_NAME, { keyPath: 'id' });
+        console.log('[SpriteLabDB] Created sharedSprites store');
       }
     };
   });
@@ -146,6 +153,54 @@ export async function listEntries(): Promise<SpriteLabEntry[]> {
     transaction.oncomplete = () => {
       db.close();
     };
+  });
+}
+
+/** Shared sprite entry (carcass, meat, essence chunks) */
+export interface SharedSpriteEntry {
+  id: string;
+  blob: Blob;
+  updatedAt: number;
+}
+
+/** Save a shared sprite (carcass, meat, essence chunk) */
+export async function saveSharedSprite(id: string, blob: Blob): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SHARED_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(SHARED_STORE_NAME);
+    store.put({ id, blob, updatedAt: Date.now() });
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Get a shared sprite by ID */
+export async function getSharedSprite(id: string): Promise<Blob | null> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SHARED_STORE_NAME, 'readonly');
+    const store = tx.objectStore(SHARED_STORE_NAME);
+    const req = store.get(id);
+    req.onsuccess = () => {
+      const entry = req.result as SharedSpriteEntry | undefined;
+      resolve(entry?.blob ?? null);
+    };
+    req.onerror = () => reject(req.error);
+    tx.oncomplete = () => db.close();
+  });
+}
+
+/** Get all shared sprite IDs */
+export async function getSharedSpriteIds(): Promise<string[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SHARED_STORE_NAME, 'readonly');
+    const store = tx.objectStore(SHARED_STORE_NAME);
+    const req = store.getAllKeys();
+    req.onsuccess = () => resolve((req.result as string[]) || []);
+    req.onerror = () => reject(req.error);
+    tx.oncomplete = () => db.close();
   });
 }
 

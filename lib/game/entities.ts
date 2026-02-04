@@ -81,12 +81,12 @@ export abstract class Entity {
     if (!this.alive && this.entityState !== EntityState.KNOCKED_OUT) return;
 
     this.age += deltaTime;
-    
+
     // Handle knocked out state
     if (this.entityState === EntityState.KNOCKED_OUT) {
       // Slower stamina regeneration when knocked out (50%)
       this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime * 0.5);
-      
+
       // Wake up if stamina reaches threshold (40%)
       if (this.stamina >= this.maxStamina * 0.4) {
         this.entityState = EntityState.ALIVE;
@@ -94,7 +94,7 @@ export abstract class Entity {
         // Restore some health on recovery
         this.health = Math.min(this.maxHealth, this.health + 20);
       }
-      
+
       // Drift slowly while knocked out
       if (physics) {
         const driftSpeed = 0.5;
@@ -108,7 +108,7 @@ export abstract class Entity {
       // Normal stamina regeneration
       this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenRate * deltaTime);
     }
-    
+
     // Sync position from physics body
     this.x = this.body.position.x;
     this.y = this.body.position.y;
@@ -118,7 +118,7 @@ export abstract class Entity {
     this.alive = false;
     physics.removeBody(this.body);
   }
-  
+
   /**
    * Check if collision with another entity is from the front
    * Front is defined as the direction of movement
@@ -127,25 +127,25 @@ export abstract class Entity {
     // Get velocity direction (angle of movement)
     const vel = this.body.velocity;
     const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
-    
+
     // If not moving, no front collision
     if (speed < 0.1) return false;
-    
+
     const movementAngle = Math.atan2(vel.y, vel.x);
-    
+
     // Get angle to other entity
     const dx = other.x - this.x;
     const dy = other.y - this.y;
     const angleToOther = Math.atan2(dy, dx);
-    
+
     // Calculate angle difference
     let angleDiff = Math.abs(movementAngle - angleToOther);
     if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-    
+
     // Front collision if angle difference is less than 90 degrees (PI/2)
     return angleDiff < Math.PI / 2;
   }
-  
+
   /**
    * Chomp another entity (battle mechanic)
    */
@@ -154,29 +154,29 @@ export abstract class Entity {
     if (now - this.lastChompTime < this.chompCooldown) {
       return false; // On cooldown
     }
-    
+
     if (this.stamina < 10) {
       return false; // Not enough stamina
     }
-    
+
     // Deplete stamina from chomping
     this.stamina -= 10;
     other.stamina -= 15; // Target loses more stamina
     this.lastChompTime = now;
-    
+
     return true;
   }
-  
+
   /**
    * Deal damage to this entity
    * Returns true if entity was killed, false if survived or KO'd
    */
   takeDamage(damage: number): boolean {
     this.health -= damage;
-    
+
     if (this.health <= 0) {
       this.health = 0;
-      
+
       // Check if has stamina - if so, enter KO state instead of dying
       if (this.stamina > 0) {
         this.entityState = EntityState.KNOCKED_OUT;
@@ -189,19 +189,19 @@ export abstract class Entity {
         return true; // Entity killed
       }
     }
-    
+
     return false; // Entity survived
   }
-  
+
   /**
    * Calculate damage dealt to another entity based on size
    */
   calculateDamage(target: Entity): number {
     const sizeRatio = this.size / target.size;
-    
+
     // Base damage scales with attacker size
     let baseDamage = this.size * 2;
-    
+
     // Size advantage multiplier
     if (sizeRatio >= 1.5) {
       baseDamage *= 1.5; // Much larger = more damage
@@ -210,24 +210,24 @@ export abstract class Entity {
     } else if (sizeRatio < 0.8) {
       baseDamage *= 0.5; // Smaller = reduced damage
     }
-    
+
     return baseDamage;
   }
-  
+
   /**
    * Check if this entity can swallow another whole
    */
   canSwallow(target: Entity): boolean {
     return this.size >= target.size * 2.0; // SWALLOW_SIZE_RATIO
   }
-  
+
   /**
    * Check if entity is knocked out
    */
   isKnockedOut(): boolean {
     return this.entityState === EntityState.KNOCKED_OUT;
   }
-  
+
   /**
    * Force entity into knocked out state
    */
@@ -270,11 +270,11 @@ export class Fish extends Entity {
     if (allEntities) {
       allEntities.forEach(entity => {
         if (entity === this || !entity.alive || !(entity instanceof Fish)) return;
-        
+
         const dx = entity.x - this.x;
         const dy = entity.y - this.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (distance < detectionRange) {
           // Find prey (smaller fish)
           if (entity.size < this.size * 0.8) {
@@ -285,8 +285,8 @@ export class Fish extends Entity {
             nearbyPredators.push(entity);
           }
           // Find school mates (same type and size)
-          if (this.type === 'prey' && entity.type === 'prey' && 
-              this.schoolingGroup === entity.schoolingGroup) {
+          if (this.type === 'prey' && entity.type === 'prey' &&
+            this.schoolingGroup === entity.schoolingGroup) {
             nearbySchoolMates.push(entity);
           }
         }
@@ -297,7 +297,7 @@ export class Fish extends Entity {
     if (this.type === 'predator') {
       // Predator AI: hunt smaller fish or player
       let targetEntity: Entity | null = null;
-      
+
       // Hunt nearby prey
       if (nearbyPrey.length > 0) {
         targetEntity = nearbyPrey.reduce((closest, fish) => {
@@ -316,13 +316,13 @@ export class Fish extends Entity {
       if (targetEntity) {
         this.targetX = targetEntity.x;
         this.targetY = targetEntity.y;
-        
+
         // DASH MECHANIC: Predators dash when close to prey
         const distToTarget = Math.sqrt(
           (targetEntity.x - this.x) ** 2 + (targetEntity.y - this.y) ** 2
         );
         this.isDashing = distToTarget < this.size * 5 && this.stamina > 20;
-        
+
         // Drain stamina while dashing
         if (this.isDashing) {
           this.stamina = Math.max(0, this.stamina - (8 * deltaTime / 1000));
@@ -334,13 +334,13 @@ export class Fish extends Entity {
       }
     } else if (this.type === 'prey') {
       // Prey AI: school together and flee from predators
-      
+
       // Flee from predators
       if (nearbyPredators.length > 0) {
         let fleeX = 0;
         let fleeY = 0;
         let nearestPredatorDist = Infinity;
-        
+
         nearbyPredators.forEach(predator => {
           const dx = this.x - predator.x;
           const dy = this.y - predator.y;
@@ -358,11 +358,11 @@ export class Fish extends Entity {
           this.targetX = this.x + (fleeX / magnitude) * 100;
           this.targetY = this.y + (fleeY / magnitude) * 100;
         }
-        
+
         // DASH MECHANIC: Prey dash when predator is close or dashing
         const nearbyDashingPredators = nearbyPredators.some(p => p.isDashing);
         this.isDashing = (nearestPredatorDist < this.size * 6 || nearbyDashingPredators) && this.stamina > 20;
-        
+
         // Drain stamina while dashing
         if (this.isDashing) {
           this.stamina = Math.max(0, this.stamina - (8 * deltaTime / 1000));
@@ -370,7 +370,7 @@ export class Fish extends Entity {
       } else {
         // Not fleeing, don't dash
         this.isDashing = false;
-        
+
         if (nearbySchoolMates.length > 0) {
           // School with nearby fish of same type
           let avgX = 0;
@@ -381,7 +381,7 @@ export class Fish extends Entity {
           });
           avgX /= nearbySchoolMates.length;
           avgY /= nearbySchoolMates.length;
-          
+
           // Move toward center of school
           this.targetX = avgX;
           this.targetY = avgY;
@@ -398,10 +398,10 @@ export class Fish extends Entity {
       const dx = this.targetX - this.x;
       const dy = this.targetY - this.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      
+
       if (distance > 5) {
         const angle = Math.atan2(dy, dx);
-        const speedMult = this.isDashing ? 1.75 : 1.0; // Dash speed boost
+        const speedMult = this.isDashing ? 2 : 1.0; // Dash speed boost
         const forceX = Math.cos(angle) * this.speed * 0.01 * speedMult;
         const forceY = Math.sin(angle) * this.speed * 0.01 * speedMult;
         physics.applyForce(this.body, { x: forceX, y: forceY });
@@ -415,7 +415,7 @@ export class Fish extends Entity {
     }
 
     // Limit velocity (higher when dashing)
-    const maxVel = this.isDashing ? this.speed * 1.75 : this.speed;
+    const maxVel = this.isDashing ? this.speed * 2 : this.speed;
     if (Math.abs(this.body.velocity.x) > maxVel) {
       Matter.Body.setVelocity(this.body, {
         x: Math.sign(this.body.velocity.x) * maxVel,
@@ -438,10 +438,10 @@ export class Fish extends Entity {
     // Simple fish shape
     p5.fill(this.color);
     p5.noStroke();
-    
+
     // Body (ellipse)
     p5.ellipse(0, 0, this.size * 2, this.size * 1.5);
-    
+
     // Tail
     p5.triangle(
       -this.size,
@@ -513,28 +513,28 @@ export class EssenceOrb extends Entity {
 
   render(p5: p5): void {
     p5.push();
-    
+
     // Glowing pulse effect
     const glowIntensity = Math.sin(this.glowPhase) * 0.3 + 0.7;
     const glowSize = this.size * (1.5 + Math.sin(this.glowPhase) * 0.3);
-    
+
     // Outer glow
     p5.noStroke();
     p5.fill(p5.red(this.color), p5.green(this.color), p5.blue(this.color), glowIntensity * 100);
     p5.circle(this.x, this.y, glowSize * 2.5);
-    
+
     // Middle glow
     p5.fill(p5.red(this.color), p5.green(this.color), p5.blue(this.color), glowIntensity * 150);
     p5.circle(this.x, this.y, glowSize * 1.8);
-    
+
     // Core
     p5.fill(this.color);
     p5.circle(this.x, this.y, this.size * 2);
-    
+
     // Bright center
     p5.fill(255, 255, 255, glowIntensity * 200);
     p5.circle(this.x, this.y, this.size * 1.2);
-    
+
     p5.pop();
   }
 }
