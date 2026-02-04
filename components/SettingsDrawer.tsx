@@ -252,7 +252,12 @@ export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameC
                           max="300"
                           step="10"
                           value={gameConfig.fishSizeMin}
-                          onChange={(e) => onGameConfigChange({ fishSizeMin: parseFloat(e.target.value) || 20 })}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value) || 20;
+                            // Ensure min doesn't exceed max
+                            const safeValue = Math.min(value, gameConfig.fishSizeMax - 10);
+                            onGameConfigChange({ fishSizeMin: Math.max(20, safeValue) });
+                          }}
                           className="w-14 bg-gray-700 rounded px-2 py-1 text-sm text-white"
                         />
                       </div>
@@ -264,7 +269,12 @@ export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameC
                           max="300"
                           step="10"
                           value={gameConfig.fishSizeMax}
-                          onChange={(e) => onGameConfigChange({ fishSizeMax: parseFloat(e.target.value) || 300 })}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value) || 300;
+                            // Ensure max doesn't go below min
+                            const safeValue = Math.max(value, gameConfig.fishSizeMin + 10);
+                            onGameConfigChange({ fishSizeMax: Math.min(300, safeValue) });
+                          }}
                           className="w-14 bg-gray-700 rounded px-2 py-1 text-sm text-white"
                         />
                       </div>
