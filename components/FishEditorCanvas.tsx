@@ -1167,11 +1167,18 @@ export default function FishEditorCanvas({
           let fishType: string;
           let creatureData: Creature | undefined;
 
-          // Use game config to override fish size with absolute values (20-300)
+          // Scale creature's base size proportionally based on config min/max
           const szCfg = gameConfigRef.current;
           if (szCfg && szCfg.fishSizeMin !== undefined && szCfg.fishSizeMax !== undefined) {
-            // Use absolute size from config, randomized within the min-max range
-            fishSize = szCfg.fishSizeMin + Math.random() * (szCfg.fishSizeMax - szCfg.fishSizeMin);
+            // Proportionally scale the creature's size to fit within config range
+            // Data range: 20 (prey min) to 300 (art max)
+            const DATA_MIN_SIZE = 20;
+            const DATA_MAX_SIZE = 300;
+            const configRange = szCfg.fishSizeMax - szCfg.fishSizeMin;
+            const dataRange = DATA_MAX_SIZE - DATA_MIN_SIZE;
+            // Map creature's base size from data range to config range
+            const normalizedSize = (fishSizeForSprite - DATA_MIN_SIZE) / dataRange;
+            fishSize = szCfg.fishSizeMin + (normalizedSize * configRange);
           } else {
             // Use creature's base size
             fishSize = fishSizeForSprite;
