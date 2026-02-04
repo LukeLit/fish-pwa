@@ -18,7 +18,7 @@ import {
   HUNGER_WARNING_INTENSITY,
   HUNGER_FRAME_RATE,
 } from '@/lib/game/hunger-constants';
-import { DASH_SPEED_MULTIPLIER, DASH_STAMINA_DRAIN_RATE, DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP } from '@/lib/game/dash-constants';
+import { DASH_SPEED_MULTIPLIER, DASH_STAMINA_DRAIN_RATE, DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP, ATTACK_SIZE_RATIO, SWALLOW_SIZE_RATIO, BATTLE_SIZE_THRESHOLD, DASH_ATTACK_STAMINA_COST } from '@/lib/game/dash-constants';
 import { loadRunState } from '@/lib/game/run-state';
 import {
   removeBackground,
@@ -213,24 +213,29 @@ export default function FishEditorCanvas({
       // Find existing fish or add new one
       const existingIndex = fishListRef.current.findIndex(f => f.id === aiFish.id);
       if (existingIndex >= 0) {
+        const prev = fishListRef.current[existingIndex];
         fishListRef.current[existingIndex] = {
           ...aiFish,
           sprite: processedSprite,
-          // Preserve spawn/despawn animation state if exists
-          spawnTime: fishListRef.current[existingIndex].spawnTime,
-          despawnTime: fishListRef.current[existingIndex].despawnTime,
-          opacity: fishListRef.current[existingIndex].opacity,
-          lifecycleState: fishListRef.current[existingIndex].lifecycleState || 'active',
+          spawnTime: prev.spawnTime,
+          despawnTime: prev.despawnTime,
+          opacity: prev.opacity,
+          lifecycleState: prev.lifecycleState || 'active',
+          stamina: prev.stamina ?? 100,
+          maxStamina: prev.maxStamina ?? 100,
+          isDashing: prev.isDashing ?? false,
         };
       } else {
         fishListRef.current.push({
           ...aiFish,
           sprite: processedSprite,
-          // Spawn/despawn animation
           spawnTime: performance.now(),
           despawnTime: undefined,
           opacity: 0,
           lifecycleState: 'spawning' as FishLifecycleState,
+          stamina: 100,
+          maxStamina: 100,
+          isDashing: false,
         });
       }
     };
@@ -357,6 +362,12 @@ export default function FishEditorCanvas({
     // Frame-based animations
     animations?: CreatureAnimations;
     animationSprite?: AnimationSprite;
+    // AI dash (prey/predator)
+    stamina?: number;
+    maxStamina?: number;
+    isDashing?: boolean;
+    chaseTargetId?: string;
+    chaseStartTime?: number;
   }>>([]);
 
   // Animation sprite manager ref
@@ -1198,18 +1209,17 @@ export default function FishEditorCanvas({
             facingRight: vx >= 0,
             verticalTilt: 0,
             animTime: Math.random() * Math.PI * 2,
-            // Store creature metadata if available
             creatureData,
-            // Track current growth stage for sprite swapping
             currentGrowthStage: initialGrowthStage,
-            // Spawn/despawn animation
             spawnTime: performance.now() + staggerDelay,
             despawnTime: undefined,
             opacity: 0,
             lifecycleState: 'spawning' as FishLifecycleState,
-            // Frame-based animations
             animations,
             animationSprite,
+            stamina: 100,
+            maxStamina: 100,
+            isDashing: false,
           };
           fishListRef.current.push(newFish);
         }, { spriteResolutions, fishSize: fishSizeForResolution });
@@ -1530,18 +1540,143 @@ export default function FishEditorCanvas({
         }
       }
 
-      // Collision: eat prey and check predators (head-based hitboxes)
-      // Hitbox is at the "mouth" of the fish (front 30% of body)
+      // Collision: head-based hitboxes (same for all fish and player)
       const getHeadPosition = (fishObj: { x: number; y: number; size: number; facingRight: boolean }) => {
-        const headOffset = fishObj.size * 0.35; // Head is 35% from center toward front
+        const headOffset = fishObj.size * 0.35;
         return {
           x: fishObj.x + (fishObj.facingRight ? headOffset : -headOffset),
           y: fishObj.y,
         };
       };
+      const getHeadRadius = (size: number) => size * 0.25;
+
+      // Fish-fish collisions: predator vs prey (eat or stamina battle) - game mode only
+      if (gameMode) {
+        const fishList = fishListRef.current;
+        const eatenIds = new Set<string>();
+        for (let i = 0; i < fishList.length; i++) {
+          const fishA = fishList[i];
+          if (eatenIds.has(fishA.id) || (fishA.opacity ?? 1) < 1) continue;
+
+          const aHead = getHeadPosition(fishA);
+          const aR = getHeadRadius(fishA.size);
+
+          for (let j = i + 1; j < fishList.length; j++) {
+            const fishB = fishList[j];
+            if (eatenIds.has(fishB.id) || (fishB.opacity ?? 1) < 1) continue;
+
+            const bHead = getHeadPosition(fishB);
+            const bR = getHeadRadius(fishB.size);
+            const dx = bHead.x - aHead.x;
+            const dy = bHead.y - aHead.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist >= aR + bR) continue;
+
+            const aIsPredator = fishA.type === 'predator' || fishA.type === 'mutant';
+            const bIsPredator = fishB.type === 'predator' || fishB.type === 'mutant';
+            const aIsPrey = fishA.type === 'prey';
+            const bIsPrey = fishB.type === 'prey';
+
+            if (!((aIsPredator && bIsPrey) || (aIsPrey && bIsPredator))) continue;
+            const predator = aIsPredator ? fishA : fishB;
+            const prey = aIsPredator ? fishB : fishA;
+            const bothDashing = predator.isDashing && prey.isDashing;
+
+            if (!predator.isDashing && !prey.isDashing) continue;
+
+            const sizeRatio = predator.size / prey.size;
+            const evenlyMatchedFf = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;
+            const oneSidedFf = evenlyMatchedFf && (predator.isDashing !== prey.isDashing);
+
+            if (oneSidedFf) {
+              const attacker = predator.isDashing ? predator : prey;
+              const target = predator.isDashing ? prey : predator;
+              target.stamina = Math.max(0, (target.stamina ?? 100) - DASH_ATTACK_STAMINA_COST);
+              if ((target.stamina ?? 0) <= 0) {
+                eatenIds.add(target.id);
+                const eatX = (predator.x + prey.x) * 0.5;
+                const eatY = (predator.y + prey.y) * 0.5;
+                attacker.size = Math.min(PLAYER_MAX_SIZE, attacker.size + target.size * 0.08);
+                if (attacker.animationSprite?.hasAction?.('bite')) attacker.animationSprite.triggerAction('bite');
+                for (let b = 0; b < 10; b++) {
+                  bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
+                }
+              }
+            } else if (sizeRatio >= ATTACK_SIZE_RATIO) {
+              // Predator big enough to eat
+              eatenIds.add(prey.id);
+              const eatX = (predator.x + prey.x) * 0.5;
+              const eatY = (predator.y + prey.y) * 0.5;
+              const effMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
+              predator.size = Math.min(PLAYER_MAX_SIZE, predator.size + prey.size * 0.15 * effMult);
+              if (predator.animationSprite?.hasAction?.('bite')) {
+                predator.animationSprite.triggerAction('bite');
+              }
+              for (let b = 0; b < 12; b++) {
+                bloodParticlesRef.current.push({
+                  x: eatX + (Math.random() - 0.5) * prey.size * 1.2,
+                  y: eatY + (Math.random() - 0.5) * prey.size * 1.2,
+                  life: 1,
+                  radius: 4 + Math.random() * 8,
+                });
+              }
+            } else if (sizeRatio <= 1 / ATTACK_SIZE_RATIO) {
+              // Prey bigger - prey wins and eats predator
+              eatenIds.add(predator.id);
+              const eatX = (predator.x + prey.x) * 0.5;
+              const eatY = (predator.y + prey.y) * 0.5;
+              const invRatio = prey.size / predator.size;
+              const effMult = Math.max(0.05, 1 / (1 + invRatio * 0.4));
+              prey.size = Math.min(PLAYER_MAX_SIZE, prey.size + predator.size * 0.15 * effMult);
+              if (prey.animationSprite?.hasAction?.('bite')) {
+                prey.animationSprite.triggerAction('bite');
+              }
+              for (let b = 0; b < 12; b++) {
+                bloodParticlesRef.current.push({
+                  x: eatX + (Math.random() - 0.5) * predator.size * 1.2,
+                  y: eatY + (Math.random() - 0.5) * predator.size * 1.2,
+                  life: 1,
+                  radius: 4 + Math.random() * 8,
+                });
+              }
+            } else {
+              // Stamina battle: evenly matched (within 20%)
+              if (bothDashing) {
+                predator.stamina = Math.max(0, (predator.stamina ?? 100) - DASH_ATTACK_STAMINA_COST);
+                prey.stamina = Math.max(0, (prey.stamina ?? 100) - DASH_ATTACK_STAMINA_COST);
+                const predKo = (predator.stamina ?? 0) <= 0;
+                const preyKo = (prey.stamina ?? 0) <= 0;
+                if (predKo) {
+                  eatenIds.add(predator.id);
+                  const eatX = (predator.x + prey.x) * 0.5;
+                  const eatY = (predator.y + prey.y) * 0.5;
+                  prey.size = Math.min(PLAYER_MAX_SIZE, prey.size + predator.size * 0.08);
+                  if (prey.animationSprite?.hasAction?.('bite')) prey.animationSprite.triggerAction('bite');
+                  for (let b = 0; b < 10; b++) {
+                    bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
+                  }
+                } else if (preyKo) {
+                  eatenIds.add(prey.id);
+                  const eatX = (predator.x + prey.x) * 0.5;
+                  const eatY = (predator.y + prey.y) * 0.5;
+                  predator.size = Math.min(PLAYER_MAX_SIZE, predator.size + prey.size * 0.08);
+                  if (predator.animationSprite?.hasAction?.('bite')) predator.animationSprite.triggerAction('bite');
+                  for (let b = 0; b < 10; b++) {
+                    bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
+                  }
+                }
+              }
+            }
+            break;
+          }
+        }
+        if (eatenIds.size > 0) {
+          fishListRef.current = fishListRef.current.filter((f) => !eatenIds.has(f.id));
+        }
+      }
 
       const playerHead = getHeadPosition(player);
-      const playerHeadR = player.size * 0.25; // Smaller head hitbox
+      const playerHeadR = getHeadRadius(player.size);
 
       for (let idx = fishListRef.current.length - 1; idx >= 0; idx--) {
         const fish = fishListRef.current[idx];
@@ -1552,7 +1687,7 @@ export default function FishEditorCanvas({
         }
 
         const fishHead = getHeadPosition(fish);
-        const fishHeadR = fish.size * 0.25; // Smaller head hitbox
+        const fishHeadR = getHeadRadius(fish.size);
 
         // Check head-to-head collision (eating happens when mouths touch)
         const dx = fishHead.x - playerHead.x;
@@ -1560,11 +1695,94 @@ export default function FishEditorCanvas({
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < playerHeadR + fishHeadR) {
-          // In game mode, check if player can eat this fish or gets eaten
-          // DASH GATE: Without dash, fish pass through peacefully (no interaction)
+          // In game mode, check who eats whom or stamina battle
           if (gameMode) {
-            if (!player.isDashing) continue; // Pass through peacefully
-            if (fish.size > player.size * 1.2) {
+            const playerAttacking = player.isDashing && player.size > fish.size * ATTACK_SIZE_RATIO;
+            const fishAttacking = fish.isDashing && fish.size > player.size * ATTACK_SIZE_RATIO;
+            const sizeRatio = player.size / fish.size;
+            const evenlyMatched = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;
+            const bothDashing = player.isDashing && fish.isDashing;
+            const oneSidedAttack = evenlyMatched && (player.isDashing !== fish.isDashing);
+
+            if (!playerAttacking && !fishAttacking && !(evenlyMatched && bothDashing) && !oneSidedAttack) continue;
+
+            if (oneSidedAttack) {
+              // One-sided: dashing attacker deals damage to non-dashing target
+              const attacker = player.isDashing ? player : fish;
+              const target = player.isDashing ? fish : player;
+              (target as { stamina?: number }).stamina = Math.max(0, ((target as { stamina?: number }).stamina ?? 100) - DASH_ATTACK_STAMINA_COST);
+              const targetKo = ((target as { stamina?: number }).stamina ?? 0) <= 0;
+              if (targetKo) {
+                if (target === fish) {
+                  fishEatenRef.current += 1;
+                  eatenIdsRef.current.add(fish.id);
+                  fishListRef.current.splice(idx, 1);
+                  player.size = Math.min(PLAYER_MAX_SIZE, player.size + fish.size * 0.08);
+                  player.chompPhase = 1;
+                  player.chompEndTime = now + 280;
+                  const eatX = (fish.x + player.x) * 0.5;
+                  const eatY = (fish.y + player.y) * 0.5;
+                  if (animationSpriteManagerRef.current.hasSprite('player')) {
+                    const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                    sprite.triggerAction('bite');
+                  }
+                  for (let b = 0; b < 10; b++) {
+                    bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
+                  }
+                } else {
+                  if (animationSpriteManagerRef.current.hasSprite('player')) {
+                    const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                    sprite.triggerAction('death');
+                  }
+                  if (!gameOverFiredRef.current) {
+                    gameOverFiredRef.current = true;
+                    if (onGameOver) {
+                      const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
+                      onGameOver({ score: scoreRef.current, cause: 'eaten', size: player.size, fishEaten: fishEatenRef.current, essenceCollected: essenceCollectedRef.current, timeSurvived });
+                    }
+                  }
+                  return;
+                }
+              }
+            } else if (evenlyMatched && bothDashing) {
+              // Stamina battle
+              player.stamina = Math.max(0, player.stamina - DASH_ATTACK_STAMINA_COST);
+              fish.stamina = Math.max(0, (fish.stamina ?? 100) - DASH_ATTACK_STAMINA_COST);
+              const playerKo = player.stamina <= 0;
+              const fishKo = (fish.stamina ?? 0) <= 0;
+              if (fishKo) {
+                fishEatenRef.current += 1;
+                eatenIdsRef.current.add(fish.id);
+                fishListRef.current.splice(idx, 1);
+                const sizeGain = fish.size * 0.08;
+                player.size = Math.min(PLAYER_MAX_SIZE, player.size + sizeGain);
+                player.chompPhase = 1;
+                player.chompEndTime = now + 280;
+                const eatX = (fish.x + player.x) * 0.5;
+                const eatY = (fish.y + player.y) * 0.5;
+                if (animationSpriteManagerRef.current.hasSprite('player')) {
+                  const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                  sprite.triggerAction('bite');
+                }
+                for (let b = 0; b < 10; b++) {
+                  bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
+                }
+              } else if (playerKo) {
+                if (animationSpriteManagerRef.current.hasSprite('player')) {
+                  const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                  sprite.triggerAction('death');
+                }
+                if (!gameOverFiredRef.current) {
+                  gameOverFiredRef.current = true;
+                  if (onGameOver) {
+                    const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
+                    onGameOver({ score: scoreRef.current, cause: 'eaten', size: player.size, fishEaten: fishEatenRef.current, essenceCollected: essenceCollectedRef.current, timeSurvived });
+                  }
+                }
+                return;
+              }
+            } else if (fishAttacking) {
+              // Predator ate player - GAME OVER
               // Trigger death animation on player before game over
               if (animationSpriteManagerRef.current.hasSprite('player')) {
                 const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
@@ -1587,7 +1805,7 @@ export default function FishEditorCanvas({
                 }
               }
               return; // Stop game loop
-            } else if (player.size > fish.size * 1.2) {
+            } else if (playerAttacking) {
               // Player eats fish
               fishEatenRef.current += 1;
               eatenIdsRef.current.add(fish.id);
@@ -1810,7 +2028,16 @@ export default function FishEditorCanvas({
           now - lastRespawnTimeRef.current >= RESPAWN_INTERVAL_MS &&
           fishListRef.current.length < MAX_FISH_IN_WORLD
         ) {
-          const creature = pool[Math.floor(Math.random() * pool.length)];
+          // Bias toward small prey to compensate for predator competition
+          const weightedPool: SpawnedCreature[] = [];
+          pool.forEach((c) => {
+            const size = c.stats?.size ?? 60;
+            const isSmallPrey = c.type === 'prey' && size < 50;
+            const isPrey = c.type === 'prey' && size < 80;
+            const copies = isSmallPrey ? 6 : isPrey ? 4 : 1; // Double small prey for competition
+            for (let i = 0; i < copies; i++) weightedPool.push(c);
+          });
+          const creature = weightedPool[Math.floor(Math.random() * weightedPool.length)];
           const fishSize = creature.stats.size;
           // Same rules as player: size → growth stage → sprite (getSpriteUrlForSize / getGrowthAwareSpriteUrl)
           const screenSize = fishSize * zoomRef.current;
@@ -1838,8 +2065,13 @@ export default function FishEditorCanvas({
               let spawnY = player.y + Math.sin(angle) * distance;
               spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
               spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
+              const newId = `${creature.id}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+              const anims = creature.animations;
+              const animSprite = anims && hasUsableAnimations(anims)
+                ? animationSpriteManagerRef.current.getSprite(newId, anims)
+                : undefined;
               fishListRef.current.push({
-                id: `${creature.id}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                id: newId,
                 x: spawnX,
                 y: spawnY,
                 vx,
@@ -1855,6 +2087,11 @@ export default function FishEditorCanvas({
                 despawnTime: undefined,
                 opacity: 0,
                 lifecycleState: 'spawning' as FishLifecycleState,
+                stamina: 100,
+                maxStamina: 100,
+                isDashing: false,
+                animations: anims,
+                animationSprite: animSprite,
               });
             };
             img.onerror = () => console.error('[FishEditorCanvas] Respawn sprite load failed:', spriteUrl);
@@ -1878,8 +2115,13 @@ export default function FishEditorCanvas({
             spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
             spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
 
+            const newId = `${cacheId}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            const anims = creature.animations;
+            const animSprite = anims && hasUsableAnimations(anims)
+              ? animationSpriteManagerRef.current.getSprite(newId, anims)
+              : undefined;
             const newFish = {
-              id: `${cacheId}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              id: newId,
               x: spawnX,
               y: spawnY,
               vx,
@@ -1891,11 +2133,15 @@ export default function FishEditorCanvas({
               verticalTilt: 0,
               animTime: Math.random() * Math.PI * 2,
               creatureData: creature,
-              // Spawn/despawn animation
               spawnTime: now,
               despawnTime: undefined,
               opacity: 0,
               lifecycleState: 'spawning' as FishLifecycleState,
+              stamina: 100,
+              maxStamina: 100,
+              isDashing: false,
+              animations: anims,
+              animationSprite: animSprite,
             };
             fishListRef.current.push(newFish);
           }
@@ -1933,8 +2179,21 @@ export default function FishEditorCanvas({
         }
       }
 
+      // AI constants for prey/predator behavior
+      const AI_BASE_SPEED = 0.7;
+      const AI_PREDATOR_CHASE_SPEED = 1.15; // Predators faster to catch prey
+      const AI_PREY_FLEE_SPEED = 0.85; // Prey slightly slower when fleeing
+      const AI_DETECTION_RANGE = 400;
+      const AI_STAMINA_REGEN = 100; // per second
+      const AI_CHASE_TIMEOUT_MS = 4500; // Give up chase after 4.5s
+
       // Update AI fish (lock movement in edit mode or when paused)
       fishListRef.current.forEach((fish) => {
+        // Ensure AI fish have stamina (for prey/predator)
+        if (fish.stamina === undefined) fish.stamina = 100;
+        if (fish.maxStamina === undefined) fish.maxStamina = 100;
+        if (fish.isDashing === undefined) fish.isDashing = false;
+
         // Update opacity based on lifecycle state (spawn fade-in or despawn fade-out)
         if (fish.despawnTime !== undefined) {
           // Despawning: fade out from 1 to 0
@@ -1959,6 +2218,157 @@ export default function FishEditorCanvas({
         }
 
         if (!currentEditMode && !isPaused) {
+          // AI steering (game mode only, for prey/predator)
+          if (gameMode && (fish.type === 'prey' || fish.type === 'predator' || fish.type === 'mutant') && fish.lifecycleState === 'active') {
+            const others = fishListRef.current.filter(
+              (f) => f.id !== fish.id && f.lifecycleState === 'active' && (f.opacity ?? 1) >= 1
+            );
+            const speedMult = (fish.isDashing && (fish.stamina ?? 0) > 0) ? DASH_SPEED_MULTIPLIER : 1;
+            const baseSpeed = AI_BASE_SPEED * speedMult;
+
+            if (fish.type === 'predator' || fish.type === 'mutant') {
+              // Predator: seek nearest prey or player (if smaller), with chase timeout
+              let targetX: number | null = null;
+              let targetY: number | null = null;
+              let targetId: string | null = null;
+              let distToTarget = Infinity;
+
+              // Check chase timeout - give up if chasing too long
+              const chaseElapsed = fish.chaseStartTime != null ? now - fish.chaseStartTime : 0;
+              const sameTarget = fish.chaseTargetId != null;
+              if (sameTarget && chaseElapsed > AI_CHASE_TIMEOUT_MS) {
+                fish.chaseTargetId = undefined;
+                fish.chaseStartTime = undefined;
+              }
+
+              // Find nearest prey (if not timed out)
+              if (chaseElapsed <= AI_CHASE_TIMEOUT_MS) {
+                for (const other of others) {
+                  if (other.size < fish.size * 0.8 && other.type === 'prey') {
+                    const dx = other.x - fish.x;
+                    const dy = other.y - fish.y;
+                    const d = Math.sqrt(dx * dx + dy * dy);
+                    if (d < AI_DETECTION_RANGE && d < distToTarget) {
+                      distToTarget = d;
+                      targetX = other.x;
+                      targetY = other.y;
+                      targetId = other.id;
+                    }
+                  }
+                }
+                // Or hunt player if smaller
+                if (player.size < fish.size * 0.8) {
+                  const pdx = player.x - fish.x;
+                  const pdy = player.y - fish.y;
+                  const pd = Math.sqrt(pdx * pdx + pdy * pdy);
+                  if (pd < AI_DETECTION_RANGE && pd < distToTarget) {
+                    distToTarget = pd;
+                    targetX = player.x;
+                    targetY = player.y;
+                    targetId = 'player';
+                  }
+                }
+              }
+
+              const maxSpeed = baseSpeed * AI_PREDATOR_CHASE_SPEED;
+              if (targetX != null && targetY != null && distToTarget > 5) {
+                fish.chaseTargetId = targetId ?? undefined;
+                if (fish.chaseStartTime == null) fish.chaseStartTime = now;
+                const dx = targetX - fish.x;
+                const dy = targetY - fish.y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                fish.vx = (dx / len) * maxSpeed;
+                fish.vy = (dy / len) * maxSpeed;
+                fish.isDashing = distToTarget < fish.size * 6 && (fish.stamina ?? 0) > 15;
+              } else {
+                fish.chaseTargetId = undefined;
+                fish.chaseStartTime = undefined;
+                fish.vx += (Math.random() - 0.5) * 0.05;
+                fish.vy += (Math.random() - 0.5) * 0.05;
+                fish.isDashing = false;
+              }
+
+              if (fish.isDashing) {
+                fish.stamina = Math.max(0, (fish.stamina ?? 100) - DASH_STAMINA_DRAIN_RATE * (deltaTime / 60));
+              } else {
+                fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 100) + AI_STAMINA_REGEN * (deltaTime / 60));
+              }
+              if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
+            } else {
+              // Prey: flee from predators or player (if bigger), slightly slower than predators
+              let fleeX = 0;
+              let fleeY = 0;
+              let nearestThreatDist = Infinity;
+              let threatened = false;
+
+              for (const other of others) {
+                if (other.size > fish.size * 1.2 && (other.type === 'predator' || other.type === 'mutant')) {
+                  const dx = fish.x - other.x;
+                  const dy = fish.y - other.y;
+                  const d = Math.sqrt(dx * dx + dy * dy);
+                  if (d < AI_DETECTION_RANGE) {
+                    threatened = true;
+                    if (d < nearestThreatDist) nearestThreatDist = d;
+                    if (d > 0) {
+                      fleeX += dx / d;
+                      fleeY += dy / d;
+                    }
+                  }
+                }
+              }
+              // Flee from player if player is bigger
+              if (player.size > fish.size * 1.2) {
+                const pdx = fish.x - player.x;
+                const pdy = fish.y - player.y;
+                const pd = Math.sqrt(pdx * pdx + pdy * pdy);
+                if (pd < AI_DETECTION_RANGE) {
+                  threatened = true;
+                  if (pd < nearestThreatDist) nearestThreatDist = pd;
+                  if (pd > 0) {
+                    fleeX += pdx / pd;
+                    fleeY += pdy / pd;
+                  }
+                }
+              }
+
+              const maxSpeed = baseSpeed * AI_PREY_FLEE_SPEED;
+              if (threatened) {
+                const mag = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
+                fish.vx = (fleeX / mag) * maxSpeed;
+                fish.vy = (fleeY / mag) * maxSpeed;
+                fish.isDashing = nearestThreatDist < fish.size * 8 && (fish.stamina ?? 0) > 15;
+              } else {
+                // Wander
+                fish.vx += (Math.random() - 0.5) * 0.05;
+                fish.vy += (Math.random() - 0.5) * 0.05;
+                fish.isDashing = false;
+              }
+
+              if (fish.isDashing) {
+                fish.stamina = Math.max(0, (fish.stamina ?? 100) - DASH_STAMINA_DRAIN_RATE * (deltaTime / 60));
+              } else {
+                fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 100) + AI_STAMINA_REGEN * (deltaTime / 60));
+              }
+              if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
+            }
+
+            // Clamp speed (use appropriate max for predator vs prey)
+            const effectiveMax = (fish.type === 'predator' || fish.type === 'mutant')
+              ? baseSpeed * AI_PREDATOR_CHASE_SPEED
+              : baseSpeed * AI_PREY_FLEE_SPEED;
+            const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
+            if (sp > effectiveMax && sp > 0) {
+              fish.vx = (fish.vx / sp) * effectiveMax;
+              fish.vy = (fish.vy / sp) * effectiveMax;
+            }
+          } else if (!gameMode || fish.type !== 'prey' && fish.type !== 'predator') {
+            // Non-AI or edit mode: occasional random direction
+            if (Math.random() < 0.01) {
+              fish.vx = (Math.random() - 0.5) * 2;
+              fish.vy = (Math.random() - 0.5) * 2;
+            }
+          }
+
           // Delta-time adjusted position update
           fish.x += fish.vx * deltaTime;
           fish.y += fish.vy * deltaTime;
@@ -1966,6 +2376,7 @@ export default function FishEditorCanvas({
           // Lock fish movement in edit mode
           fish.vx = 0;
           fish.vy = 0;
+          if (fish.type === 'prey' || fish.type === 'predator' || fish.type === 'mutant') fish.isDashing = false;
         }
 
         // Update facing direction
@@ -1990,12 +2401,6 @@ export default function FishEditorCanvas({
         if (fish.y < bounds.minY || fish.y > bounds.maxY) {
           fish.vy = -fish.vy;
           fish.y = Math.max(bounds.minY, Math.min(bounds.maxY, fish.y));
-        }
-
-        // Occasional direction change
-        if (Math.random() < 0.01) {
-          fish.vx = (Math.random() - 0.5) * 2;
-          fish.vy = (Math.random() - 0.5) * 2;
         }
       });
 
@@ -2230,7 +2635,11 @@ export default function FishEditorCanvas({
 
         // Try animation frame rendering if animations are available
         if (clipMode === 'video' && fish.animations && fish.animationSprite) {
-          // Update animation sprite
+          // Switch to dash animation when dashing (if available)
+          const desiredAction = fish.isDashing && fish.animationSprite.hasAction('dash')
+            ? 'dash'
+            : (fishSpeed < 0.15 ? 'idle' : 'swim');
+          fish.animationSprite.playAction(desiredAction);
           fish.animationSprite.update();
 
           // Draw current frame
