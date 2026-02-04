@@ -1177,7 +1177,7 @@ export default function FishEditorCanvas({
             const configRange = szCfg.fishSizeMax - szCfg.fishSizeMin;
             const dataRange = DATA_MAX_SIZE - DATA_MIN_SIZE;
             // Map creature's base size from data range to config range
-            const normalizedSize = (fishSizeForSprite - DATA_MIN_SIZE) / dataRange;
+            const normalizedSize = Math.max(0, Math.min(1, (fishSizeForSprite - DATA_MIN_SIZE) / dataRange));
             fishSize = szCfg.fishSizeMin + (normalizedSize * configRange);
           } else {
             // Use creature's base size
