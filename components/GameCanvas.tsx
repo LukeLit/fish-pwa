@@ -23,6 +23,7 @@ import { DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { loadCreatureById, loadCreaturesByBiome } from '@/lib/game/data/creature-loader';
 import { computeEncounterSize } from '@/lib/game/spawn-fish';
 import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
+import { GameStorage, DEFAULT_GAME_CONFIG, type GameConfig } from '@/lib/meta/storage';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -42,8 +43,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [levelDuration, setLevelDuration] = useState<number>(60000);
   const [currentLevel, setCurrentLevel] = useState<string>('1-1');
 
-  // Pause menu state
-  const [paused, setPaused] = useState(false);
+  // Pause: game pauses when either settings drawer or pause menu is open
+  const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  const [showPauseMenu, setShowPauseMenu] = useState(false);
+  const paused = settingsDrawerOpen || showPauseMenu;
+
+  // Game config (loaded from blob, saved on change)
+  const [gameConfig, setGameConfig] = useState<GameConfig>(DEFAULT_GAME_CONFIG);
   const [playerStats, setPlayerStats] = useState<PlayerGameStats | null>(null);
   const [playerFishData, setPlayerFishData] = useState<FishData | null>(null);
   const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
@@ -54,20 +60,16 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
   // Close pause menu and reset state
   const handleClosePauseMenu = useCallback(() => {
-    setPaused(false);
+    setShowPauseMenu(false);
     setSelectedFish(null);
   }, []);
 
-  // Handle Escape key for pause
+  // Handle Escape key for pause menu (SettingsDrawer handles its own Escape)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        e.preventDefault();
-        setPaused(prev => {
-          if (prev) {
-            // Was paused, now unpausing - reset selection
-            setSelectedFish(null);
-          }
+        setShowPauseMenu(prev => {
+          if (prev) setSelectedFish(null);
           return !prev;
         });
       }
@@ -107,6 +109,19 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       }
     };
     loadFishLibrary();
+  }, []);
+
+  // Load game config from storage
+  useEffect(() => {
+    GameStorage.getInstance().getSettings().then((s) => setGameConfig(s.gameConfig));
+  }, []);
+
+  const handleGameConfigChange = useCallback((updates: Partial<GameConfig>) => {
+    setGameConfig((prev) => {
+      const next = { ...prev, ...updates };
+      GameStorage.getInstance().updateSettings({ gameConfig: next });
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -371,7 +386,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       {/* HUD: Pause button (z-40 above AnalogJoystick overlay) */}
       <div className="absolute top-4 right-16 z-40 flex gap-2 items-center">
         <button
-          onClick={() => paused ? handleClosePauseMenu() : setPaused(true)}
+          onClick={() => showPauseMenu ? handleClosePauseMenu() : setShowPauseMenu(true)}
           className="bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
           title={paused ? 'Resume' : 'Pause'}
         >
@@ -398,8 +413,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         </div>
       )}
 
-      {/* Settings Menu - Rendered at page level to avoid stacking context issues */}
-      <SettingsDrawer mode="game" />
+      {/* Settings Menu - Pauses game when open (no pause overlay) */}
+      <SettingsDrawer
+        mode="game"
+        onOpenChange={setSettingsDrawerOpen}
+        gameConfig={gameConfig}
+        onGameConfigChange={handleGameConfigChange}
+      />
 
       <FishEditorCanvas
         background={selectedBackground}
@@ -414,6 +434,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         gameMode={true}
         levelDuration={levelDuration}
         paused={paused}
+        gameConfig={gameConfig}
         dashFromControlsRef={dashFromControlsRef}
         onStatsUpdate={handleStatsUpdate}
         onGameOver={(stats) => {
@@ -444,7 +465,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
       {/* Pause Menu */}
       <PauseMenu
-        isOpen={paused}
+        isOpen={showPauseMenu}
         onClose={handleClosePauseMenu}
         mode="game"
         playerFish={playerFishData}

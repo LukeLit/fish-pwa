@@ -4,15 +4,27 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import FeedbackButton from './FeedbackButton';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
+import type { GameConfig } from '@/lib/meta/storage';
 
 interface SettingsDrawerProps {
   /** Whether this is in game mode (shows different options) */
   mode: 'game' | 'editor';
+  /** Called when drawer opens or closes */
+  onOpenChange?: (open: boolean) => void;
+  /** Game config (game mode only) - for display/edit */
+  gameConfig?: GameConfig;
+  /** Called when game config changes */
+  onGameConfigChange?: (config: Partial<GameConfig>) => void;
 }
 
-export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
+export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameConfigChange }: SettingsDrawerProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+
+  const setOpen = useCallback((open: boolean) => {
+    setIsOpen(open);
+    onOpenChange?.(open);
+  }, [onOpenChange]);
 
   // Close drawer with Escape key
   useEffect(() => {
@@ -20,7 +32,8 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
       if (e.key === 'Escape' && isOpen) {
         e.preventDefault();
         e.stopPropagation();
-        setIsOpen(false);
+        e.stopImmediatePropagation();
+        setOpen(false);
       }
     };
 
@@ -28,14 +41,14 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
       window.addEventListener('keydown', handleKeyDown, { capture: true });
       return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
     }
-  }, [isOpen]);
+  }, [isOpen, setOpen]);
 
   // Handle backdrop click
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
-      setIsOpen(false);
+      setOpen(false);
     }
-  }, []);
+  }, [setOpen]);
 
   const handleReturnToMenu = () => {
     if (mode === 'game') {
@@ -50,24 +63,24 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
 
   const handleGoToEditor = () => {
     router.push('/fish-editor');
-    setIsOpen(false);
+    setOpen(false);
   };
 
   const handleGoToGame = () => {
     router.push('/fish-select');
-    setIsOpen(false);
+    setOpen(false);
   };
 
   const handleGoToTechTree = () => {
     router.push('/tech-tree');
-    setIsOpen(false);
+    setOpen(false);
   };
 
   return (
     <>
       {/* Menu Button - Positioned absolutely in top-right */}
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={() => setOpen(true)}
         className="absolute top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white w-10 h-10 rounded-lg shadow-lg border border-gray-600 flex items-center justify-center transition-colors"
         style={{ zIndex: Z_LAYERS.CONTROLS }}
         title="Settings Menu"
@@ -94,7 +107,7 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
               <h2 className="text-lg font-bold text-white">Menu</h2>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => setOpen(false)}
                 className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors"
                 title="Close"
               >
@@ -182,6 +195,128 @@ export default function SettingsDrawer({ mode }: SettingsDrawerProps) {
                   <span className="text-xs text-gray-500">Coming soon</span>
                 </div>
               </div>
+
+              {/* Game Config Section - game mode only */}
+              {mode === 'game' && gameConfig && onGameConfigChange && (
+                <div className="pt-4 border-t border-gray-700 space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Game Config</p>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between px-4 py-3 rounded-lg text-white bg-gray-800 cursor-pointer hover:bg-gray-700">
+                      <span className="text-sm">Auto-attack</span>
+                      <input
+                        type="checkbox"
+                        checked={gameConfig.autoAttack}
+                        onChange={(e) => onGameConfigChange({ autoAttack: e.target.checked })}
+                        className="rounded"
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 px-2">Attack without holding dash</p>
+
+                    <label className="flex items-center justify-between px-4 py-3 rounded-lg text-white bg-gray-800 cursor-pointer hover:bg-gray-700">
+                      <span className="text-sm">Auto-eat</span>
+                      <input
+                        type="checkbox"
+                        checked={gameConfig.autoEat}
+                        onChange={(e) => onGameConfigChange({ autoEat: e.target.checked })}
+                        className="rounded"
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 px-2">Eat swallow-sized prey without dash</p>
+                  </div>
+
+                  <div className="space-y-2 pt-2">
+                    <p className="text-xs text-gray-400">Fish Spawn (multiplier)</p>
+                    <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-gray-800">
+                      <input
+                        type="range"
+                        min="0.25"
+                        max="2"
+                        step="0.25"
+                        value={gameConfig.fishSpawnMultiplier}
+                        onChange={(e) => onGameConfigChange({ fishSpawnMultiplier: parseFloat(e.target.value) })}
+                        className="flex-1"
+                      />
+                      <span className="text-sm text-white w-10">{gameConfig.fishSpawnMultiplier}x</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-400">Fish Size (min/max)</p>
+                    <div className="flex gap-2">
+                      <div className="flex-1 flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800">
+                        <span className="text-xs text-gray-500">Min</span>
+                        <input
+                          type="number"
+                          min="0.2"
+                          max="1"
+                          step="0.1"
+                          value={gameConfig.fishSizeMin}
+                          onChange={(e) => onGameConfigChange({ fishSizeMin: parseFloat(e.target.value) || 0.5 })}
+                          className="w-14 bg-gray-700 rounded px-2 py-1 text-sm text-white"
+                        />
+                      </div>
+                      <div className="flex-1 flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800">
+                        <span className="text-xs text-gray-500">Max</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="4"
+                          step="0.25"
+                          value={gameConfig.fishSizeMax}
+                          onChange={(e) => onGameConfigChange({ fishSizeMax: parseFloat(e.target.value) || 2 })}
+                          className="w-14 bg-gray-700 rounded px-2 py-1 text-sm text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-400">Respawn interval (ms)</p>
+                    <div className="px-4 py-2 rounded-lg bg-gray-800">
+                      <input
+                        type="number"
+                        min="500"
+                        max="10000"
+                        step="250"
+                        value={gameConfig.respawnIntervalMs}
+                        onChange={(e) => onGameConfigChange({ respawnIntervalMs: parseInt(e.target.value, 10) || 2000 })}
+                        className="w-full bg-gray-700 rounded px-2 py-1 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-400">Hunger drain rate</p>
+                    <div className="px-4 py-2 rounded-lg bg-gray-800">
+                      <input
+                        type="number"
+                        min="0.5"
+                        max="5"
+                        step="0.25"
+                        value={gameConfig.hungerDrainRate}
+                        onChange={(e) => onGameConfigChange({ hungerDrainRate: parseFloat(e.target.value) || 1.5 })}
+                        className="w-full bg-gray-700 rounded px-2 py-1 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-400">Dash stamina drain</p>
+                    <div className="px-4 py-2 rounded-lg bg-gray-800">
+                      <input
+                        type="number"
+                        min="4"
+                        max="32"
+                        step="2"
+                        value={gameConfig.dashStaminaDrainRate}
+                        onChange={(e) => onGameConfigChange({ dashStaminaDrainRate: parseInt(e.target.value, 10) || 16 })}
+                        className="w-full bg-gray-700 rounded px-2 py-1 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}

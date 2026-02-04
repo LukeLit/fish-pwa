@@ -22,11 +22,34 @@ export interface RunHistoryEntry {
   duration: number;
 }
 
+export interface GameConfig {
+  autoAttack: boolean;
+  autoEat: boolean;
+  fishSpawnMultiplier: number;
+  fishSizeMin: number;
+  fishSizeMax: number;
+  respawnIntervalMs: number;
+  hungerDrainRate: number;
+  dashStaminaDrainRate: number;
+}
+
+export const DEFAULT_GAME_CONFIG: GameConfig = {
+  autoAttack: false,
+  autoEat: false,
+  fishSpawnMultiplier: 1,
+  fishSizeMin: 0.5,
+  fishSizeMax: 2,
+  respawnIntervalMs: 2000,
+  hungerDrainRate: 1.5,
+  dashStaminaDrainRate: 16,
+};
+
 export interface GameSettings {
   volume: number;
   muted: boolean;
   graphics: 'low' | 'medium' | 'high';
   controls: 'keyboard' | 'touch';
+  gameConfig: GameConfig;
 }
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -34,6 +57,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   muted: false,
   graphics: 'medium',
   controls: 'keyboard',
+  gameConfig: DEFAULT_GAME_CONFIG,
 };
 
 export class GameStorage {
@@ -197,7 +221,8 @@ export class GameStorage {
 
   async getSettings(): Promise<GameSettings> {
     await this.ensureLoaded();
-    return this.data?.settings ?? DEFAULT_SETTINGS;
+    const stored = (this.data?.settings ?? {}) as Partial<GameSettings>;
+    return { ...DEFAULT_SETTINGS, ...stored, gameConfig: { ...DEFAULT_GAME_CONFIG, ...stored.gameConfig } };
   }
 
   async updateSettings(settings: Partial<GameSettings>): Promise<void> {
@@ -223,14 +248,14 @@ export class GameStorage {
 
   private async getNumber(key: string, defaultValue: number): Promise<number> {
     if (typeof window === 'undefined') return defaultValue;
-    
+
     try {
       const response = await fetch(`/api/load-game-data?key=${this.getKey(key)}&default=${defaultValue}`);
       if (!response.ok) return defaultValue;
-      
+
       const result = await response.json();
       if (!result.success || result.data === null) return defaultValue;
-      
+
       const num = typeof result.data === 'number' ? result.data : parseFloat(result.data);
       return isNaN(num) ? defaultValue : num;
     } catch (error) {
@@ -241,7 +266,7 @@ export class GameStorage {
 
   private async setNumber(key: string, value: number): Promise<void> {
     if (typeof window === 'undefined') return;
-    
+
     try {
       await fetch('/api/save-game-data', {
         method: 'POST',
@@ -255,14 +280,14 @@ export class GameStorage {
 
   private async getObject<T>(key: string, defaultValue: T): Promise<T> {
     if (typeof window === 'undefined') return defaultValue;
-    
+
     try {
       const response = await fetch(`/api/load-game-data?key=${this.getKey(key)}&default=${encodeURIComponent(JSON.stringify(defaultValue))}`);
       if (!response.ok) return defaultValue;
-      
+
       const result = await response.json();
       if (!result.success || result.data === null) return defaultValue;
-      
+
       return result.data as T;
     } catch (error) {
       console.warn(`Failed to load ${key}, using default:`, error);
@@ -272,7 +297,7 @@ export class GameStorage {
 
   private async setObject(key: string, value: unknown): Promise<void> {
     if (typeof window === 'undefined') return;
-    
+
     try {
       await fetch('/api/save-game-data', {
         method: 'POST',

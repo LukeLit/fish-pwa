@@ -80,6 +80,8 @@ interface FishEditorCanvasProps {
   fishData?: Map<string, FishData>;
   // Pause feature
   paused?: boolean;
+  // Game config (from Settings, saved to blob)
+  gameConfig?: import('@/lib/meta/storage').GameConfig;
   // Cache refresh callback - called when textures are refreshed
   onCacheRefreshed?: () => void;
   // Ref for mobile dash button state (set by parent GameControls)
@@ -106,6 +108,7 @@ export default function FishEditorCanvas({
   showEditButtons = true,
   fishData = new Map(),
   paused = false,
+  gameConfig,
   onCacheRefreshed,
   dashFromControlsRef: dashFromControlsRefProp,
 }: FishEditorCanvasProps) {
@@ -151,6 +154,8 @@ export default function FishEditorCanvas({
   useEffect(() => { editModeRef.current = editMode }, [editMode])
   useEffect(() => { selectedFishIdRef.current = selectedFishId }, [selectedFishId])
   useEffect(() => { fishDataRef.current = fishData }, [fishData])
+  const gameConfigRef = useRef(gameConfig);
+  useEffect(() => { gameConfigRef.current = gameConfig }, [gameConfig])
   useEffect(() => {
     pausedRef.current = paused;
     // When entering paused mode, initialize camera pan to current player position
@@ -387,8 +392,8 @@ export default function FishEditorCanvas({
   /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
   const spawnPoolRef = useRef<SpawnedCreature[]>([]);
   const lastRespawnTimeRef = useRef(0);
-  const MAX_FISH_IN_WORLD = 45;
-  const RESPAWN_INTERVAL_MS = 2000; // Faster respawn to populate world
+  const getMaxFish = () => Math.round(45 * (gameConfigRef.current?.fishSpawnMultiplier ?? 1));
+  const getRespawnInterval = () => gameConfigRef.current?.respawnIntervalMs ?? 2000;
 
   const keyKeysRef = useRef<Set<string>>(new Set());
   const joystickVelocityRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -1162,8 +1167,10 @@ export default function FishEditorCanvas({
           let fishType: string;
           let creatureData: Creature | undefined;
 
-          // Use instance size (fishSizeForSprite) so AI fish at juvenile size get correct sprite/size
-          fishSize = fishSizeForSprite;
+          // Use instance size (fishSizeForSprite) with optional config multiplier
+          const szCfg = gameConfigRef.current;
+          const szMult = szCfg ? (szCfg.fishSizeMin + Math.random() * (szCfg.fishSizeMax - szCfg.fishSizeMin)) : 1;
+          fishSize = fishSizeForSprite * szMult;
           baseSpeed = creatureForSprite?.stats.speed ?? 2;
           fishType = creatureForSprite?.type ?? (fishItem as { type?: string }).type ?? 'prey';
           creatureData = creatureForSprite;
@@ -1420,7 +1427,8 @@ export default function FishEditorCanvas({
           dashHoldDurationMsRef.current += frameMs;
           const holdSeconds = dashHoldDurationMsRef.current / 1000;
           const rampMultiplier = Math.min(1 + holdSeconds * DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP);
-          player.stamina = Math.max(0, player.stamina - DASH_STAMINA_DRAIN_RATE * rampMultiplier * (deltaTime / 60));
+          const drainRate = gameConfigRef.current?.dashStaminaDrainRate ?? DASH_STAMINA_DRAIN_RATE;
+          player.stamina = Math.max(0, player.stamina - drainRate * rampMultiplier * (deltaTime / 60));
         } else {
           dashHoldDurationMsRef.current = 0;
           player.stamina = Math.min(player.maxStamina, player.stamina + STAMINA_REGEN_RATE * (deltaTime / 60));
@@ -1517,7 +1525,8 @@ export default function FishEditorCanvas({
         // normalizedSpeed is 0 when still, 1 at max speed
         const STATIONARY_DRAIN_FRACTION = 0.1; // 10% of full rate when not moving
         const movementFactor = Math.max(STATIONARY_DRAIN_FRACTION, normalizedSpeed);
-        const effectiveDrainRate = player.hungerDrainRate * movementFactor;
+        const hungerRate = gameConfigRef.current?.hungerDrainRate ?? player.hungerDrainRate;
+        const effectiveDrainRate = hungerRate * movementFactor;
         player.hunger = Math.max(0, player.hunger - (effectiveDrainRate / HUNGER_FRAME_RATE) * deltaTime);
 
         // Check starvation death
@@ -1733,8 +1742,9 @@ export default function FishEditorCanvas({
         if (dist < playerHeadR + fishHeadR) {
           // In game mode, check who eats whom or stamina battle
           if (gameMode) {
-            // KNOCKED OUT: Any dashing fish can eat KO fish (design: "can be bitten by any dashing fish")
-            if (fish.lifecycleState === 'knocked_out' && player.isDashing) {
+            // KNOCKED OUT: Dashing fish or auto-eat can eat KO fish
+            const cfgForKo = gameConfigRef.current;
+            if (fish.lifecycleState === 'knocked_out' && (player.isDashing || (cfgForKo?.autoEat ?? false))) {
               fishEatenRef.current += 1;
               eatenIdsRef.current.add(fish.id);
               fishListRef.current.splice(idx, 1);
@@ -1774,7 +1784,13 @@ export default function FishEditorCanvas({
               continue;
             }
 
-            const playerAttacking = player.isDashing && player.size > fish.size * ATTACK_SIZE_RATIO;
+            const cfg = gameConfigRef.current;
+            const autoAttack = cfg?.autoAttack ?? false;
+            const autoEat = cfg?.autoEat ?? false;
+            const canSwallow = player.size >= fish.size * SWALLOW_SIZE_RATIO;
+            const canAttack = player.size > fish.size * ATTACK_SIZE_RATIO;
+            const playerAttacking = (player.isDashing || autoAttack) && canAttack
+              || (autoEat && canSwallow);
             const fishAttacking = fish.isDashing && fish.size > player.size * ATTACK_SIZE_RATIO;
             const sizeRatio = player.size / fish.size;
             const evenlyMatched = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;
@@ -2084,8 +2100,8 @@ export default function FishEditorCanvas({
         const pool = spawnPoolRef.current;
         const now = performance.now();
         if (
-          now - lastRespawnTimeRef.current >= RESPAWN_INTERVAL_MS &&
-          fishListRef.current.length < MAX_FISH_IN_WORLD
+          now - lastRespawnTimeRef.current >= getRespawnInterval() &&
+          fishListRef.current.length < getMaxFish()
         ) {
           // Bias toward small prey to compensate for predator competition
           const weightedPool: SpawnedCreature[] = [];
@@ -2097,7 +2113,11 @@ export default function FishEditorCanvas({
             for (let i = 0; i < copies; i++) weightedPool.push(c);
           });
           const creature = weightedPool[Math.floor(Math.random() * weightedPool.length)];
-          const fishSize = creature.stats.size;
+          const cfg = gameConfigRef.current;
+          const szMin = cfg?.fishSizeMin ?? 0.5;
+          const szMax = cfg?.fishSizeMax ?? 2;
+          const sizeMult = szMin + Math.random() * (szMax - szMin);
+          const fishSize = creature.stats.size * sizeMult;
           // Same rules as player: size → growth stage → sprite (getSpriteUrlForSize / getGrowthAwareSpriteUrl)
           const screenSize = fishSize * zoomRef.current;
           const resolution = getResolutionKey(screenSize);
@@ -2359,8 +2379,9 @@ export default function FishEditorCanvas({
                 fish.isDashing = false;
               }
 
+              const drainRate = gameConfigRef.current?.dashStaminaDrainRate ?? DASH_STAMINA_DRAIN_RATE;
               if (fish.isDashing) {
-                fish.stamina = Math.max(0, (fish.stamina ?? 100) - DASH_STAMINA_DRAIN_RATE * (deltaTime / 60));
+                fish.stamina = Math.max(0, (fish.stamina ?? 100) - drainRate * (deltaTime / 60));
               } else {
                 fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 100) + AI_STAMINA_REGEN * (deltaTime / 60));
               }
@@ -2416,9 +2437,10 @@ export default function FishEditorCanvas({
               }
 
               // Prey flee stamina penalty - prey drains faster when escaping (player/predators get upper hand)
+              const preyDrainRate = gameConfigRef.current?.dashStaminaDrainRate ?? DASH_STAMINA_DRAIN_RATE;
               const fleeDrainMult = fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1;
               if (fish.isDashing) {
-                fish.stamina = Math.max(0, (fish.stamina ?? 100) - DASH_STAMINA_DRAIN_RATE * fleeDrainMult * (deltaTime / 60));
+                fish.stamina = Math.max(0, (fish.stamina ?? 100) - preyDrainRate * fleeDrainMult * (deltaTime / 60));
               } else {
                 fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 100) + AI_STAMINA_REGEN * (deltaTime / 60));
               }
