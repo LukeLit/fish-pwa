@@ -26,8 +26,8 @@ export interface GameConfig {
   autoAttack: boolean;
   autoEat: boolean;
   fishSpawnMultiplier: number;
-  fishSizeMin: number;
-  fishSizeMax: number;
+  fishSizeMin: number; // Absolute size range: 20-300
+  fishSizeMax: number; // Absolute size range: 20-300
   respawnIntervalMs: number;
   hungerDrainRate: number;
   dashStaminaDrainRate: number;
@@ -37,8 +37,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   autoAttack: false,
   autoEat: false,
   fishSpawnMultiplier: 1,
-  fishSizeMin: 0.5,
-  fishSizeMax: 2,
+  fishSizeMin: 20,  // Art minimum size
+  fishSizeMax: 300, // Art maximum size
   respawnIntervalMs: 2000,
   hungerDrainRate: 1.5,
   dashStaminaDrainRate: 16,

@@ -1167,10 +1167,15 @@ export default function FishEditorCanvas({
           let fishType: string;
           let creatureData: Creature | undefined;
 
-          // Use instance size (fishSizeForSprite) with optional config multiplier
+          // Use game config to override fish size with absolute values (20-300)
           const szCfg = gameConfigRef.current;
-          const szMult = szCfg ? (szCfg.fishSizeMin + Math.random() * (szCfg.fishSizeMax - szCfg.fishSizeMin)) : 1;
-          fishSize = fishSizeForSprite * szMult;
+          if (szCfg && szCfg.fishSizeMin !== undefined && szCfg.fishSizeMax !== undefined) {
+            // Use absolute size from config, randomized within the min-max range
+            fishSize = szCfg.fishSizeMin + Math.random() * (szCfg.fishSizeMax - szCfg.fishSizeMin);
+          } else {
+            // Use creature's base size
+            fishSize = fishSizeForSprite;
+          }
           baseSpeed = creatureForSprite?.stats.speed ?? 2;
           fishType = creatureForSprite?.type ?? (fishItem as { type?: string }).type ?? 'prey';
           creatureData = creatureForSprite;
@@ -1795,14 +1800,15 @@ export default function FishEditorCanvas({
             const sizeRatio = player.size / fish.size;
             const evenlyMatched = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;
             const bothDashing = player.isDashing && fish.isDashing;
-            const oneSidedAttack = evenlyMatched && (player.isDashing !== fish.isDashing);
+            // One-sided attack: one is attacking and the other is not (includes auto-attack/auto-eat)
+            const oneSidedAttack = evenlyMatched && (playerAttacking !== fishAttacking);
 
             if (!playerAttacking && !fishAttacking && !(evenlyMatched && bothDashing) && !oneSidedAttack) continue;
 
             if (oneSidedAttack) {
-              // One-sided: dashing attacker deals damage to non-dashing target
-              const attacker = player.isDashing ? player : fish;
-              const target = player.isDashing ? fish : player;
+              // One-sided: attacking entity deals damage to non-attacking target
+              const attacker = playerAttacking ? player : fish;
+              const target = playerAttacking ? fish : player;
               // Size-based stamina penalty: attacking larger target costs more
               const targetSizeRatio = (attacker as { size: number }).size / (target as { size: number }).size;
               const staminaMult = targetSizeRatio < 1 ? ATTACK_LARGER_STAMINA_MULTIPLIER : 1;
