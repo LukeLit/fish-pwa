@@ -29,6 +29,7 @@ export const ATTACK_CONFIG = {
   // Lunge phase (moving toward target)
   LUNGE_DURATION: 150, // ms
   LUNGE_SPEED_MULTIPLIER: 3.0, // Speed boost during lunge
+  FORCE_SCALE_FACTOR: 0.02, // Force scaling for smooth movement
   
   // Bite phase (actual damage dealt)
   BITE_DURATION: 100, // ms
@@ -36,6 +37,7 @@ export const ATTACK_CONFIG = {
   // Retract phase (pulling back slightly)
   RETRACT_DURATION: 200, // ms
   RETRACT_DISTANCE: 15, // pixels to retract
+  RETRACT_FORCE_SCALE: 0.01, // Force scaling for retract movement
   
   // Total attack animation time
   get TOTAL_ATTACK_TIME() {
@@ -147,8 +149,8 @@ export function applyAttackForces(
     
     if (distance > 1) {
       const angle = Math.atan2(dy, dx);
-      const forceX = Math.cos(angle) * baseSpeed * ATTACK_CONFIG.LUNGE_SPEED_MULTIPLIER * 0.02;
-      const forceY = Math.sin(angle) * baseSpeed * ATTACK_CONFIG.LUNGE_SPEED_MULTIPLIER * 0.02;
+      const forceX = Math.cos(angle) * baseSpeed * ATTACK_CONFIG.LUNGE_SPEED_MULTIPLIER * ATTACK_CONFIG.FORCE_SCALE_FACTOR;
+      const forceY = Math.sin(angle) * baseSpeed * ATTACK_CONFIG.LUNGE_SPEED_MULTIPLIER * ATTACK_CONFIG.FORCE_SCALE_FACTOR;
       physics.applyForce(body, { x: forceX, y: forceY });
     }
   } else if (state.attackPhase === 'retract') {
@@ -165,8 +167,8 @@ export function applyAttackForces(
       
       if (awayDist > 0) {
         const angle = Math.atan2(awayDy, awayDx);
-        const forceX = Math.cos(angle) * baseSpeed * 0.01;
-        const forceY = Math.sin(angle) * baseSpeed * 0.01;
+        const forceX = Math.cos(angle) * baseSpeed * ATTACK_CONFIG.RETRACT_FORCE_SCALE;
+        const forceY = Math.sin(angle) * baseSpeed * ATTACK_CONFIG.RETRACT_FORCE_SCALE;
         physics.applyForce(body, { x: forceX, y: forceY });
       }
     }

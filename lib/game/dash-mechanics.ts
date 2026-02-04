@@ -98,7 +98,7 @@ export function updateDashState(
 
 /**
  * Calculate stamina drain for current dash state
- * Returns stamina to drain this frame (not per second - already scaled by deltaTime)
+ * Returns stamina to drain for this frame (deltaTime scaling applied internally)
  */
 export function calculateDashStaminaDrain(
   state: DashState,

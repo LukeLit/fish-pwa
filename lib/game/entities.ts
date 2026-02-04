@@ -543,7 +543,7 @@ export class Fish extends Entity {
       if (distance > 5) {
         const angle = Math.atan2(dy, dx);
         
-        // Get current dash speed multiplier
+        // Get current dash speed multiplier (cache to avoid duplicate calculation)
         const dashUpdate = updateDashState(this.dashState, currentTime, deltaTime);
         this.dashState = dashUpdate.state;
         const speedMult = this.isDashing ? dashUpdate.speedMultiplier : 1.0;
@@ -551,6 +551,21 @@ export class Fish extends Entity {
         const forceX = Math.cos(angle) * this.speed * 0.01 * speedMult;
         const forceY = Math.sin(angle) * this.speed * 0.01 * speedMult;
         physics.applyForce(this.body, { x: forceX, y: forceY });
+        
+        // Limit velocity (use cached speedMult)
+        const maxVel = this.isDashing ? this.speed * speedMult : this.speed;
+        if (Math.abs(this.body.velocity.x) > maxVel) {
+          Matter.Body.setVelocity(this.body, {
+            x: Math.sign(this.body.velocity.x) * maxVel,
+            y: this.body.velocity.y,
+          });
+        }
+        if (Math.abs(this.body.velocity.y) > maxVel) {
+          Matter.Body.setVelocity(this.body, {
+            x: this.body.velocity.x,
+            y: Math.sign(this.body.velocity.y) * maxVel,
+          });
+        }
       }
     } else {
       // Wander behavior
@@ -558,23 +573,21 @@ export class Fish extends Entity {
       const forceX = Math.cos(this.wanderAngle) * this.speed * 0.005;
       const forceY = Math.sin(this.wanderAngle) * this.speed * 0.005;
       physics.applyForce(this.body, { x: forceX, y: forceY });
-    }
-
-    // Limit velocity (higher when dashing, use dynamic multiplier)
-    const dashUpdate = updateDashState(this.dashState, currentTime, deltaTime);
-    const speedMult = this.isDashing ? dashUpdate.speedMultiplier : 1.0;
-    const maxVel = this.isDashing ? this.speed * speedMult : this.speed;
-    if (Math.abs(this.body.velocity.x) > maxVel) {
-      Matter.Body.setVelocity(this.body, {
-        x: Math.sign(this.body.velocity.x) * maxVel,
-        y: this.body.velocity.y,
-      });
-    }
-    if (Math.abs(this.body.velocity.y) > maxVel) {
-      Matter.Body.setVelocity(this.body, {
-        x: this.body.velocity.x,
-        y: Math.sign(this.body.velocity.y) * maxVel,
-      });
+      
+      // Limit velocity when wandering (no dash)
+      const maxVel = this.speed;
+      if (Math.abs(this.body.velocity.x) > maxVel) {
+        Matter.Body.setVelocity(this.body, {
+          x: Math.sign(this.body.velocity.x) * maxVel,
+          y: this.body.velocity.y,
+        });
+      }
+      if (Math.abs(this.body.velocity.y) > maxVel) {
+        Matter.Body.setVelocity(this.body, {
+          x: this.body.velocity.x,
+          y: Math.sign(this.body.velocity.y) * maxVel,
+        });
+      }
     }
   }
 
