@@ -11,6 +11,23 @@
  */
 
 import { cacheBust } from '@/lib/utils/cache-bust';
+import { ART } from '@/lib/game/canvas-constants';
+import {
+  getGrowthStage,
+  getGrowthStageSprite,
+  getSpriteUrl,
+  getResolutionKey,
+  getSpriteUrlForSize,
+  getGrowthAwareSpriteUrl,
+  getClipMode,
+  setGrowthDebug,
+  isGrowthDebugEnabled,
+  setMipmapDebug,
+  isMipmapDebugEnabled,
+  DEFAULT_GROWTH_RANGES,
+  type ClipMode,
+  type RenderContext,
+} from './sprite-selector';
 
 // Default chroma key tolerance
 export const DEFAULT_CHROMA_TOLERANCE = 50;
@@ -23,22 +40,16 @@ export const DEFAULT_CHROMA_TOLERANCE = 50;
 export type LODLevel = 1 | 2 | 3 | 4;
 
 /** LOD thresholds based on screen-space size in pixels */
-export const LOD_THRESHOLDS = {
-  VIDEO_DETAIL: 120,  // >= 120px: use video clips if available
-  FULL_DETAIL: 80,    // >= 80px: max segments
-  MEDIUM_DETAIL: 40,  // 40-79px: medium segments  
-  LOW_DETAIL: 20,     // 20-39px: low segments
-  STATIC: 12,         // < 12px: static sprite (no animation)
-};
+// Re-exported from canvas-constants.ts for backward compatibility
+export const LOD_THRESHOLDS = ART.LOD_THRESHOLDS;
 
 /** Segment range for smooth interpolation */
-export const SEGMENT_RANGE = {
-  MAX: 12,   // Maximum segments at full detail
-  MIN: 3,    // Minimum segments before going static
-};
+// Re-exported from canvas-constants.ts for backward compatibility
+export const SEGMENT_RANGE = ART.SEGMENT_RANGE;
 
 /** Player segment multiplier (2x vs 1.5x for AI) */
-export const PLAYER_SEGMENT_MULTIPLIER = 1.34; // 12 * 1.34 ≈ 16 for player
+// Re-exported from canvas-constants.ts for backward compatibility
+export const PLAYER_SEGMENT_MULTIPLIER = ART.PLAYER_SEGMENT_MULTIPLIER;
 
 /**
  * Calculate LOD level based on screen-space size (for compatibility)
@@ -87,307 +98,41 @@ export function getSegmentsSmooth(screenSize: number): number {
  */
 export function getSegmentsForLOD(lod: LODLevel): number {
   switch (lod) {
-    case 1: return 12;
-    case 2: return 6;
-    case 3: return 3;
+    case 1: return SEGMENT_RANGE.MAX;
+    case 2: return Math.round(SEGMENT_RANGE.MAX / 2);
+    case 3: return SEGMENT_RANGE.MIN;
     case 4: return 0;
   }
 }
 
 // =============================================================================
-// Multi-Resolution Sprite Selection
+// Sprite Selection - Re-exported from sprite-selector.ts
 // =============================================================================
 
-import type { SpriteResolutions, GrowthSprites, GrowthStage, GrowthSpriteData } from '@/lib/game/types';
+import type { SpriteResolutions, GrowthSprites, GrowthStage } from '@/lib/game/types';
 
-/** Thresholds for selecting sprite resolution based on screen size */
-export const SPRITE_RESOLUTION_THRESHOLDS = {
-  HIGH: 100,    // >= 100px screen size: use 512px sprite
-  MEDIUM: 40,   // >= 40px screen size: use 256px sprite
-  // < 40px: use 128px sprite
+// Re-export sprite selection functions from dedicated module
+export {
+  getGrowthStage,
+  getGrowthStageSprite,
+  getSpriteUrl,
+  getResolutionKey,
+  getSpriteUrlForSize,
+  getGrowthAwareSpriteUrl,
+  getClipMode,
+  setGrowthDebug,
+  isGrowthDebugEnabled,
+  setMipmapDebug,
+  isMipmapDebugEnabled,
+  DEFAULT_GROWTH_RANGES,
+  type ClipMode,
+  type RenderContext,
 };
 
-// Debug flag for mipmap logging - set to true to see resolution swaps in console
-let MIPMAP_DEBUG = false;
-let lastLoggedResolution: Map<string, string> = new Map();
-
-/** Enable/disable mipmap debug logging */
-export function setMipmapDebug(enabled: boolean): void {
-  MIPMAP_DEBUG = enabled;
-  if (!enabled) {
-    lastLoggedResolution.clear();
-  }
-}
-
-/** Check if mipmap debug is enabled */
-export function isMipmapDebugEnabled(): boolean {
-  return MIPMAP_DEBUG;
-}
-
-/**
- * Get the appropriate sprite URL based on screen-space size
- * 
- * Selects the optimal resolution variant to avoid choppy rendering
- * when large images are scaled down significantly (mipmap-like behavior).
- * 
- * @param creature - Object with sprite URL and optional resolution variants
- * @param screenSize - Size of fish in screen pixels (fish.size * zoom)
- * @param creatureId - Optional ID for debug logging
- * @returns URL of the appropriate sprite resolution
- */
-export function getSpriteUrl(
-  creature: { sprite: string; spriteResolutions?: SpriteResolutions },
-  screenSize: number,
-  creatureId?: string
-): string {
-  // Fall back to original sprite if no resolution variants available
-  if (!creature.spriteResolutions) {
-    return creature.sprite;
-  }
-
-  // Select resolution based on screen size
-  let resolution: 'high' | 'medium' | 'low';
-  let url: string;
-
-  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.HIGH) {
-    resolution = 'high';
-    url = creature.spriteResolutions.high;
-  } else if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) {
-    resolution = 'medium';
-    url = creature.spriteResolutions.medium;
-  } else {
-    resolution = 'low';
-    url = creature.spriteResolutions.low;
-  }
-
-  // Debug logging - only log when resolution changes for a creature
-  if (MIPMAP_DEBUG && creatureId) {
-    const lastRes = lastLoggedResolution.get(creatureId);
-    if (lastRes !== resolution) {
-      lastLoggedResolution.set(creatureId, resolution);
-    }
-  }
-
-  return url;
-}
-
-/**
- * Get the resolution key (high/medium/low) for a given screen size
- * Useful for cache key generation
- * 
- * @param screenSize - Size of fish in screen pixels
- * @returns Resolution key
- */
-export function getResolutionKey(screenSize: number): 'high' | 'medium' | 'low' {
-  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.HIGH) return 'high';
-  if (screenSize >= SPRITE_RESOLUTION_THRESHOLDS.MEDIUM) return 'medium';
-  return 'low';
-}
-
-// =============================================================================
-// Growth Stage Sprite Selection (unified 20-300 art scale)
-// =============================================================================
-
-/** Art size bounds - used by editor slider and growth stage logic */
-export const ART_SIZE_MIN = 20;
-export const ART_SIZE_MAX = 300;
-
-/**
- * Default size ranges for growth stages.
- * Single source of truth: editor slider (20-300), game spawn, and saved growthSprites
- * all use this scale so juvenile/adult/elder match everywhere.
- */
-export const DEFAULT_GROWTH_RANGES: Record<GrowthStage, { min: number; max: number }> = {
-  juvenile: { min: ART_SIZE_MIN, max: 99 },    // 20-99: small / young
-  adult: { min: 100, max: 199 },               // 100-199: mature (adult starts at 100)
-  elder: { min: 200, max: ART_SIZE_MAX },     // 200-300: large / elder (elder starts at 200)
-};
-
-// Debug flag for growth stage logging
-let GROWTH_DEBUG = false;
-let lastLoggedGrowthStage: Map<string, GrowthStage> = new Map();
-
-/** Enable/disable growth stage debug logging */
-export function setGrowthDebug(enabled: boolean): void {
-  GROWTH_DEBUG = enabled;
-  if (!enabled) {
-    lastLoggedGrowthStage.clear();
-  }
-}
-
-/** Check if growth debug is enabled */
-export function isGrowthDebugEnabled(): boolean {
-  return GROWTH_DEBUG;
-}
-
-/**
- * Get the growth stage for a given fish size
- * 
- * @param fishSize - The actual size of the fish (not screen size)
- * @param growthSprites - Optional growth sprites with custom size ranges
- * @returns The growth stage ('juvenile', 'adult', or 'elder')
- */
-/** Canonical elder start; stored ranges below this are treated as legacy and ignored */
-const CANONICAL_ELDER_MIN = 200;
-
-export function getGrowthStage(fishSize: number, growthSprites?: GrowthSprites): GrowthStage {
-  // Use custom ranges only if they match our 20-300 scale (elder starts at 200)
-  // Legacy saved data (e.g. elder 70-150) would show elder too early; use defaults instead
-  const elderRangeStored = growthSprites?.elder?.sizeRange;
-  const useStoredRanges =
-    elderRangeStored != null && elderRangeStored.min >= CANONICAL_ELDER_MIN;
-
-  const juvenileRange =
-    useStoredRanges && growthSprites?.juvenile?.sizeRange
-      ? growthSprites.juvenile.sizeRange
-      : DEFAULT_GROWTH_RANGES.juvenile;
-  const elderRange =
-    useStoredRanges && elderRangeStored
-      ? elderRangeStored
-      : DEFAULT_GROWTH_RANGES.elder;
-
-  if (fishSize <= juvenileRange.max) {
-    return 'juvenile';
-  } else if (fishSize >= elderRange.min) {
-    return 'elder';
-  }
-  return 'adult';
-}
-
-/**
- * Get the appropriate sprite data for a growth stage
- * Falls back to the base sprite if the stage-specific sprite isn't available
- * 
- * @param creature - Creature with sprite, spriteResolutions, and growthSprites
- * @param fishSize - The actual size of the fish
- * @param creatureId - Optional ID for debug logging
- * @returns Object with sprite URL and optional resolutions for the growth stage
- */
-export function getGrowthStageSprite(
-  creature: {
-    sprite: string;
-    spriteResolutions?: SpriteResolutions;
-    growthSprites?: GrowthSprites;
-  },
-  fishSize: number,
-  creatureId?: string
-): { sprite: string; spriteResolutions?: SpriteResolutions } {
-  const stage = getGrowthStage(fishSize, creature.growthSprites);
-
-  // Debug logging - only log when stage changes for a creature
-  if (GROWTH_DEBUG && creatureId) {
-    const lastStage = lastLoggedGrowthStage.get(creatureId);
-    if (lastStage !== stage) {
-      lastLoggedGrowthStage.set(creatureId, stage);
-    }
-  }
-
-  // Get the growth stage sprite data if available
-  const stageData = creature.growthSprites?.[stage];
-
-  if (stageData?.sprite) {
-    return {
-      sprite: stageData.sprite,
-      spriteResolutions: stageData.spriteResolutions,
-    };
-  }
-
-  // Fall back to base sprite
-  return {
-    sprite: creature.sprite,
-    spriteResolutions: creature.spriteResolutions,
-  };
-}
-
-/**
- * Single source of truth: get the sprite URL for a creature at a given size.
- * Use this everywhere we display a fish (fish select, thumbnails, pause menu, game, editor).
- * Growth stage (juvenile/adult/elder) is derived from size; falls back to base sprite if no growthSprites.
- */
-export function getSpriteUrlForSize(
-  creature: {
-    sprite: string;
-    growthSprites?: GrowthSprites;
-  },
-  fishSize: number
-): string {
-  const { sprite } = getGrowthStageSprite(creature, fishSize);
-  return sprite;
-}
-
-/**
- * Get the appropriate sprite URL considering both growth stage AND resolution
- * This is the main function to use for rendering growth-aware sprites
- * 
- * @param creature - Creature with sprite, spriteResolutions, and growthSprites
- * @param fishSize - The actual size of the fish (for growth stage selection)
- * @param screenSize - The screen-space size (for resolution selection)
- * @param creatureId - Optional ID for debug logging
- * @returns The final sprite URL to use
- */
-export function getGrowthAwareSpriteUrl(
-  creature: {
-    sprite: string;
-    spriteResolutions?: SpriteResolutions;
-    growthSprites?: GrowthSprites;
-  },
-  fishSize: number,
-  screenSize: number,
-  creatureId?: string
-): string {
-  // First, get the appropriate sprite for the growth stage
-  const stageSprite = getGrowthStageSprite(creature, fishSize, creatureId);
-
-  // Then, select the appropriate resolution
-  return getSpriteUrl(stageSprite, screenSize, creatureId);
-}
-
-// =============================================================================
-// Clip Mode System - Video/Frame Animation Integration
-// =============================================================================
-
-/** Rendering mode for a fish based on LOD and available assets */
-export type ClipMode = 'video' | 'frames' | 'deformation' | 'static';
-
-/** Context for clip mode decision */
-export type RenderContext = 'game' | 'edit' | 'select' | 'cinematic';
-
-/**
- * Determine the rendering mode for a fish based on LOD, available clips, and context
- * 
- * @param screenSize - Size of fish in screen pixels (fish.size * zoom)
- * @param hasClips - Whether the creature has video clips available
- * @param context - Rendering context (game, edit, select, cinematic)
- * @returns The rendering mode to use
- */
-export function getClipMode(
-  screenSize: number,
-  hasClips: boolean,
-  context: RenderContext = 'game'
-): ClipMode {
-  // Force video in edit/select/cinematic mode if clips available
-  if ((context === 'edit' || context === 'select' || context === 'cinematic') && hasClips) {
-    return 'video';
-  }
-
-  // LOD-based selection during gameplay
-  if (screenSize >= LOD_THRESHOLDS.VIDEO_DETAIL && hasClips) {
-    return 'video';
-  }
-
-  // Use extracted frames for animation at medium-high LOD when clips exist
-  if (screenSize >= LOD_THRESHOLDS.FULL_DETAIL && hasClips) {
-    return 'frames';
-  }
-
-  // Use deformation for medium and low LOD
-  if (screenSize >= LOD_THRESHOLDS.STATIC) {
-    return 'deformation';
-  }
-
-  // Static sprite for very small fish
-  return 'static';
-}
+// Re-export constants for backward compatibility
+export const ART_SIZE_MIN = ART.SIZE_MIN;
+export const ART_SIZE_MAX = ART.SIZE_MAX;
+export const SPRITE_RESOLUTION_THRESHOLDS = ART.SPRITE_RESOLUTION_THRESHOLDS;
 
 /**
  * Check if a creature has usable animations

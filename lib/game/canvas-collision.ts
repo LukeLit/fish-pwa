@@ -290,7 +290,6 @@ export function detectPlayerFishCollision(
   fish: CollisionEntity,
   now: number,
   gameMode: boolean,
-  gameConfig?: { autoAttack?: boolean; autoEat?: boolean },
   onGameOver?: (stats: any) => void,
   gameStartTime?: number,
   totalPausedTime?: number,
@@ -322,8 +321,8 @@ export function detectPlayerFishCollision(
   }> = [];
 
   if (gameMode) {
-    // KO fish can be eaten
-    if (fish.lifecycleState === 'knocked_out' && (player.isDashing || gameConfig?.autoEat)) {
+    // KO fish can be eaten (dash required)
+    if (fish.lifecycleState === 'knocked_out' && player.isDashing) {
       const eatX = (fish.x + player.x) * 0.5;
       const eatY = (fish.y + player.y) * 0.5;
       const sizeRatio = player.size / fish.size;
@@ -371,11 +370,9 @@ export function detectPlayerFishCollision(
       };
     }
 
-    const autoAttack = gameConfig?.autoAttack ?? false;
-    const autoEat = gameConfig?.autoEat ?? false;
     const canSwallow = player.size >= fish.size * SWALLOW_SIZE_RATIO;
     const canAttack = player.size > fish.size * ATTACK_SIZE_RATIO;
-    const playerAttacking = (player.isDashing || autoAttack) && canAttack || (autoEat && canSwallow);
+    const playerAttacking = player.isDashing && (canAttack || canSwallow);
     const fishAttacking = fish.isDashing && fish.size > player.size * ATTACK_SIZE_RATIO;
     const sizeRatio = player.size / fish.size;
     const evenlyMatched = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;

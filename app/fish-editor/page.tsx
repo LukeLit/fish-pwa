@@ -24,7 +24,8 @@ import {
   setGrowthDebug,
 } from '@/lib/rendering/fish-renderer';
 import type { GrowthStage, GrowthSprites, AnimationAction, Creature } from '@/lib/game/types';
-import { loadAllCreatures, normalizeCreature } from '@/lib/game/data/creature-loader';
+import { loadAllCreatures, loadCreaturesByBiome, normalizeCreature } from '@/lib/game/data/creature-loader';
+import { createLevel } from '@/lib/game/create-level';
 
 // Animation actions available for preview
 const PREVIEW_ANIMATIONS: AnimationAction[] = ['idle', 'swim', 'dash', 'bite', 'hurt', 'death'];
@@ -188,24 +189,21 @@ export default function FishEditorPage() {
   }, []);
 
   /**
-   * Handle biome selection from the library panel
-   * - Fetches a background for that biome
-   * - Clears existing spawned fish and spawns all fish from that biome
-   * - Sets player to a random playable fish from that biome
+   * Handle biome selection: create Level 1-1 for that biome (shared with /game),
+   * set background, populate fishData from biome creatures, set player from spawn list.
    */
-  const handleBiomeSelect = useCallback(async (biomeId: string, biomeFish: FishData[]) => {
+  const handleBiomeSelect = useCallback(async (biomeId: string, _biomeFish?: FishData[]) => {
+    const normalizedBiomeId = biomeId === 'Shallows' || biomeId === 'shallow_tropical' ? 'shallow' : biomeId;
 
     // 1. Fetch and set a background for this biome
     try {
       const bgResponse = await fetch(`/api/list-assets?type=background&includeMetadata=true`);
       const bgData = await bgResponse.json();
       if (bgData.success && bgData.backgrounds) {
-        // Find backgrounds matching this biome
         const biomeBackgrounds = bgData.backgrounds.filter(
-          (bg: { biomeId?: string }) => bg.biomeId === biomeId
+          (bg: { biomeId?: string }) => bg.biomeId === normalizedBiomeId || bg.biomeId === biomeId
         );
         if (biomeBackgrounds.length > 0) {
-          // Pick a random background from this biome
           const randomBg = biomeBackgrounds[Math.floor(Math.random() * biomeBackgrounds.length)];
           setSelectedBackground(randomBg.url);
         }
@@ -219,39 +217,37 @@ export default function FishEditorPage() {
     setEditMode(false);
     setSelectedFishId(null);
 
-    // 3. Filter to fish with sprites and spawn them all
-    const fishWithSprites = biomeFish.filter(fish => fish.sprite);
-    if (fishWithSprites.length === 0) {
-      return;
-    }
-
-    // Update fishData with all the biome fish
+    // 3. Populate fishData with all creatures in this biome (for editor library)
+    const biomeCreatures = await loadCreaturesByBiome(normalizedBiomeId);
     setFishData(prev => {
       const newMap = new Map(prev);
-      fishWithSprites.forEach(fish => {
-        newMap.set(fish.id, fish);
-      });
+      biomeCreatures.forEach(c => newMap.set(c.id, c as FishData));
       return newMap;
     });
 
-    // Spawn all fish from the biome with unique instance IDs (full creature data)
-    const newSpawnedFish: SpawnedCreature[] = [];
-    fishWithSprites.forEach((fish, index) => {
-      const instanceId = `${fish.id}_biome_${Date.now()}_${index}`;
-      const spawned = createSpawnedCreatureInstance(fish, instanceId);
-      if (spawned) {
-        newSpawnedFish.push(spawned);
+    // 4. Spawn Level 1-1 for this biome (same pipeline as /game)
+    let result = await createLevel(normalizedBiomeId, 1);
+    // Fallback: if createLevel returns empty (e.g. blob filter) but we have creatures, spawn them so editor isn't empty
+    if (result.spawnList.length === 0 && biomeCreatures.length > 0) {
+      const fishWithSprites = biomeCreatures.filter((c): c is Creature & { sprite: string } => !!c.sprite);
+      if (fishWithSprites.length > 0) {
+        const fallbackList: SpawnedCreature[] = [];
+        fishWithSprites.forEach((fish, index) => {
+          const instanceId = `${fish.id}_biome_${Date.now()}_${index}`;
+          const spawned = createSpawnedCreatureInstance(fish as FishData, instanceId);
+          if (spawned) fallbackList.push(spawned);
+        });
+        result = { spawnList: fallbackList };
       }
-    });
-    setSpawnedFish(newSpawnedFish);
+    }
+    setSpawnedFish(result.spawnList);
 
-    // 4. Set player to a random playable fish from this biome (or any fish if none are playable)
-    const playableFish = fishWithSprites.filter(fish => fish.playable);
-    const playerCandidate = playableFish.length > 0
-      ? playableFish[Math.floor(Math.random() * playableFish.length)]
-      : fishWithSprites[Math.floor(Math.random() * fishWithSprites.length)];
-
-    setPlayerCreatureId(playerCandidate.id);
+    // 5. Set player to a random playable from spawn list, or first fish
+    if (result.spawnList.length > 0) {
+      const playable = result.spawnList.filter(c => c.playable);
+      const playerCandidate = playable.length > 0 ? playable[0] : result.spawnList[0];
+      setPlayerCreatureId(playerCandidate.creatureId ?? playerCandidate.id);
+    }
   }, []);
 
   // Load all creatures and apply first biome (shallows) on mount
@@ -301,10 +297,10 @@ export default function FishEditorPage() {
           });
           setFishData(newFishData);
 
-          // Start with first biome (shallows): set bg + spawn all shallow fish + set player
-          const shallowFish = creatures.filter((c) => c.biomeId === 'shallow');
-          if (shallowFish.length > 0) {
-            handleBiomeSelect('shallow', shallowFish);
+          // Start with first biome (shallows): Level 1-1 via shared createLevel
+          const hasShallow = creatures.some((c) => c.biomeId === 'shallow');
+          if (hasShallow) {
+            await handleBiomeSelect('shallow');
             return;
           }
 

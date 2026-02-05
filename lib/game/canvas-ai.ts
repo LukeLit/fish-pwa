@@ -4,9 +4,8 @@
  */
 
 import type { CanvasConfig } from './canvas-config';
-import type { GameConfig } from '@/lib/meta/storage';
 import { DASH_SPEED_MULTIPLIER, KO_STAMINA_REGEN_MULTIPLIER, KO_WAKE_THRESHOLD, KO_DRIFT_SPEED, PREY_FLEE_STAMINA_MULTIPLIER } from './dash-constants';
-import { PHYSICS, SPAWN } from './canvas-constants';
+import { PHYSICS, SPAWN, ANIMATION } from './canvas-constants';
 
 export interface AIFish {
   id: string;
@@ -37,12 +36,11 @@ export interface PlayerState {
 }
 
 export interface UpdateStaminaFunction {
-  (entity: { stamina: number; maxStamina: number; isDashing: boolean }, deltaTime: number, options: {
+  (entity: { stamina: number; maxStamina: number; isDashing: boolean }, deltaTime: number, options?: {
     drainRate?: number;
     rampMultiplier?: number;
     fleeMultiplier?: number;
     regenRate?: number;
-    gameConfig?: GameConfig;
   }): void;
 }
 
@@ -56,7 +54,6 @@ export function updateAIFish(
   player: PlayerState,
   now: number,
   config: CanvasConfig['ai'],
-  gameConfig: GameConfig | undefined,
   isEditMode: boolean,
   isPaused: boolean,
   isGameMode: boolean,
@@ -120,9 +117,9 @@ export function updateAIFish(
       const baseSpeed = config.baseSpeed * speedMult;
 
       if (fish.type === 'predator' || fish.type === 'mutant') {
-        updatePredatorBehavior(fish, activeOthers, player, now, baseSpeed, config, updateStamina, deltaTime, gameConfig);
+        updatePredatorBehavior(fish, activeOthers, player, now, baseSpeed, config, updateStamina, deltaTime);
       } else if (fish.type === 'prey') {
-        updatePreyBehavior(fish, activeOthers, player, baseSpeed, config, updateStamina, deltaTime, gameConfig);
+        updatePreyBehavior(fish, activeOthers, player, baseSpeed, config, updateStamina, deltaTime);
       }
 
       // Clamp speed
@@ -157,9 +154,10 @@ export function updateAIFish(
   const targetTilt = Math.max(-maxTilt, Math.min(maxTilt, fish.vy * PHYSICS.TILT_SENSITIVITY));
   fish.verticalTilt += (targetTilt - fish.verticalTilt) * PHYSICS.TILT_SMOOTHING;
 
-  // Update animation time
+  // Update animation time (consistent with physics system)
   const fishSpeed = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
-  fish.animTime += 0.04 + Math.min(0.04, (fishSpeed / 1.5) * 0.04);
+  const normalizedSpeed = Math.min(1, fishSpeed / PHYSICS.MAX_SPEED);
+  fish.animTime += ANIMATION.ANIM_TIME_BASE + normalizedSpeed * ANIMATION.ANIM_TIME_SPEED_MULT;
 
   // Keep fish in world bounds - bounce off edges
   if (fish.x < worldBounds.minX || fish.x > worldBounds.maxX) {
@@ -183,8 +181,7 @@ function updatePredatorBehavior(
   baseSpeed: number,
   config: CanvasConfig['ai'],
   updateStamina: UpdateStaminaFunction,
-  deltaTime: number,
-  gameConfig: GameConfig | undefined
+  deltaTime: number
 ): void {
   let targetX: number | null = null;
   let targetY: number | null = null;
@@ -246,7 +243,7 @@ function updatePredatorBehavior(
     fish.isDashing = false;
   }
 
-  updateStamina(fish, deltaTime, { gameConfig });
+  updateStamina(fish, deltaTime);
   if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
 }
 
@@ -260,8 +257,7 @@ function updatePreyBehavior(
   baseSpeed: number,
   config: CanvasConfig['ai'],
   updateStamina: UpdateStaminaFunction,
-  deltaTime: number,
-  gameConfig: GameConfig | undefined
+  deltaTime: number
 ): void {
   let fleeX = 0;
   let fleeY = 0;
@@ -313,6 +309,6 @@ function updatePreyBehavior(
 
   // Prey flee stamina penalty
   const fleeDrainMult = fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1;
-  updateStamina(fish, deltaTime, { fleeMultiplier: fleeDrainMult, gameConfig });
+  updateStamina(fish, deltaTime, { fleeMultiplier: fleeDrainMult });
   if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
 }

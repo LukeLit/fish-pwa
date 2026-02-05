@@ -22,53 +22,11 @@ export interface RunHistoryEntry {
   duration: number;
 }
 
-export interface GameConfig {
-  autoAttack: boolean;
-  autoEat: boolean;
-  fishSpawnMultiplier: number;
-  fishSizeMin: number;
-  fishSizeMax: number;
-  respawnIntervalMs: number;
-  hungerDrainRate: number;
-  dashStaminaDrainRate: number;
-
-  // Physics settings
-  maxSpeed?: number;
-  acceleration?: number;
-  friction?: number;
-
-  // AI settings
-  aiBaseSpeed?: number;
-  predatorChaseSpeed?: number;
-  preyFleeSpeed?: number;
-  aiDetectionRange?: number;
-
-  // Camera settings
-  minZoom?: number;
-  maxZoom?: number;
-
-  // Spawn settings
-  spawnFadeDuration?: number;
-  minSpawnDistance?: number;
-}
-
-export const DEFAULT_GAME_CONFIG: GameConfig = {
-  autoAttack: false,
-  autoEat: false,
-  fishSpawnMultiplier: 1,
-  fishSizeMin: 0.5,
-  fishSizeMax: 2,
-  respawnIntervalMs: 2000,
-  hungerDrainRate: 1.5,
-  dashStaminaDrainRate: 16,
-};
-
 export interface GameSettings {
   volume: number;
   muted: boolean;
   graphics: 'low' | 'medium' | 'high';
   controls: 'keyboard' | 'touch';
-  gameConfig: GameConfig;
 }
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -76,7 +34,6 @@ const DEFAULT_SETTINGS: GameSettings = {
   muted: false,
   graphics: 'medium',
   controls: 'keyboard',
-  gameConfig: DEFAULT_GAME_CONFIG,
 };
 
 export class GameStorage {
@@ -241,7 +198,7 @@ export class GameStorage {
   async getSettings(): Promise<GameSettings> {
     await this.ensureLoaded();
     const stored = (this.data?.settings ?? {}) as Partial<GameSettings>;
-    return { ...DEFAULT_SETTINGS, ...stored, gameConfig: { ...DEFAULT_GAME_CONFIG, ...stored.gameConfig } };
+    return { ...DEFAULT_SETTINGS, ...stored };
   }
 
   async updateSettings(settings: Partial<GameSettings>): Promise<void> {

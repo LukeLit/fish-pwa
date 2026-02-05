@@ -1,0 +1,317 @@
+Me: 
+Me: That all makes sense, Can you give me a set of documents for the updates so I can include those in my repo? Also have a look at our existing documentation and update it where needed.
+ 
+I plan to hand these off to a coding agent, so we will need thorough documentation
+
+Grok: Hey Luke, yeah, that all aligns with the roguelite progression we've been building out—broadening biomes while nesting depths and sub-depths (Upper/Mid/Lower) for that descent feel, with art scale growth unlocking deeper tiers every 100 units. I've put together a set of updated and new documentation files based on our discussions. I pulled from the existing repo docs (via the raw GitHub files) to ensure consistency:
+
+Existing docs reviewed:
+docs/BLOB_CREATURES.md: This is the core creature list (66 entries in a table with columns like ID, Name, Biome, etc.). I've updated it to include new columns for Base Meters, Base Art Scale, and assigned sub-depths within the reorganized broader biomes (Shallows, Mid-Waters, Polluted Zones, Deep Waters, Abyssal Depths). Removed duplicates (e.g., merged similar Anglerfish variants into procedural mutations) and balanced distributions.
+docs/biomes/shallow.md: Detailed fish stats, spawn weights, visual themes, and art modifiers. I've updated it to incorporate the 3-level spread with Upper/Mid/Lower sub-depths, growth stage unlocks, and ties to meters/art scale.
+docs/biomes/polluted.md: Simpler fish list by rarity/type. Updated similarly with sub-depths and progression notes.
+Other biomes (e.g., deep.md, abyssal.md) likely follow similar patterns based on the folder structure—I assumed analogous updates for the broader categories.
+
+
+For the coding agent, I've made these thorough: Included JSON schemas, implementation notes (e.g., how to patch in scripts like batch-update-creature-metadata.ts), balance considerations for ecosystem (prey flee, carcass yields), and AI art prompt examples. Add these as new/updated files in /docs (or subfolders). If you push them to the repo, the agent can reference directly.
+Updated File: docs/BLOB_CREATURES.md
+This updates the existing table with reorganized biomes, new columns (Base Meters derived from old Size/100, Base Art Scale = meters * 100, Sub-Depth for assignment), and notes. Duplicates consolidated (e.g., multiple Anglerfish now one with variants via mutations). Total still ~66 for balance.
+text# Blob-Stored Creatures
+
+This document lists all creatures stored in Vercel Blob storage, exported via `export-creature-list.ts`. Updated for biome reorganization, size metrics in meters (for AI art prompts and logic), art scale (for rendering), and sub-depth assignments (Upper/Mid/Lower for progression unlocks via growth stages every 100 art size). Use `batch-update-creature-metadata.ts` to patch these fields without regen.
+
+| ID | Name | Biome | Sub-Depth | Tier | Rarity | Type | Playable | Base Meters | Base Art Scale | Notes |
+|----|------|-------|-----------|------|--------|------|----------|-------------|----------------|-------|
+| goldfish_starter | Goldfish | Shallows | Upper | prey | common | prey | ✓ | 0.6 | 60 | Starter playable; juvenile prey for early essence. |
+| small_prey | Minnow | Shallows | Upper | prey | common | prey | — | 0.6 | 60 | Swarm schools; low detail prompts. |
+| tiny_fish | Guppy | Shallows | Upper | prey | common | prey | — | 0.6 | 60 | Tiny starters; high flee chance. |
+| blue_tang_blue_tang_tropical_shallow_tropical | Blue Tang | Shallows | Upper | prey | common | prey | — | 0.6 | 60 | Vibrant tropical; reef camouflage. |
+| clownfish_clownfish_tropical_shallow_tropical | Clownfish | Shallows | Upper | prey | common | prey | — | 0.6 | 60 | Anemone ties; colorful motifs. |
+| tropical_parrotfish_rare_tropical_shallow_tropical | Tropical Parrotfish (rare) | Shallows | Upper | prey | rare | prey | — | 0.6 | 60 | Rare colors; hard scales ability. |
+| medium_fish | Perch | Shallows | Mid | mid | common | prey | — | 0.7 | 70 | Balanced mid; schooling behavior. |
+| butterflyfish_butterflyfish_tropical_shallow_tropical | Butterflyfish | Shallows | Mid | mid | common | prey | — | 0.7 | 70 | Pattern details; graceful swimmer. |
+| rare_tropical | Tropical Parrotfish | Shallows | Mid | mid | rare | prey | — | 0.7 | 70 | Coral ambusher; achievement unlock. |
+| medium_predator | Bass | Shallows | Mid | predator | common | predator | — | 0.9 | 90 | Ambush strike; territorial hunter. |
+| large_predator | Pike | Shallows | Lower | predator | uncommon | predator | — | 0.9 | 90 | Speed burst; carcass scavenger. |
+| lionfish_lionfish_tropical_shallow_tropical | Lionfish | Shallows | Lower | predator | uncommon | predator | — | 0.9 | 90 | Venom spines; mutation potential. |
+| moray_eel_moray_eel_tropical_shallow_tropical | Moray Eel | Shallows | Lower | boss | rare | predator | — | 1.2 | 120 | Hide mechanics; boss tasks. |
+| epic_shark | Great White Shark | Shallows | Lower | boss | epic | predator | — | 1.2 | 120 | Apex predator; blood sense ability. |
+| juvenile_squid_juvenile_squid_medium_medium | Juvenile Squid | Mid-Waters | Upper | prey | common | prey | — | 0.6 | 60 | Ink effects; light currents. |
+| sardine_sardine_medium_medium | Sardine | Mid-Waters | Upper | prey | common | prey | — | 0.6 | 60 | Schooling; procedural swarms. |
+| mackerel_mackerel_medium_medium | Mackerel | Mid-Waters | Mid | mid | common | prey | — | 0.7 | 70 | Fast mid; prey for predators. |
+| ocean_sunfish_ocean_sunfish_medium_medium | Ocean Sunfish | Mid-Waters | Mid | mid | uncommon | prey | — | 0.7 | 70 | Passive large; sunbathing motif. |
+| barracuda_barracuda_medium_medium | Barracuda | Mid-Waters | Lower | predator | uncommon | predator | — | 0.9 | 90 | Speed burst; open-water hunter. |
+| thresher_shark_thresher_shark_medium_medium | Thresher Shark | Mid-Waters | Lower | boss | rare | predator | — | 1.2 | 120 | Tail whip; epic fusion base. |
+| fathead_minnow_polluted | Fathead Minnow | Polluted Zones | Upper | prey | common | prey | — | 0.2 | 20 | Deformed tiny; toxic aura. |
+| mosquitofish_polluted | Mosquitofish | Polluted Zones | Upper | prey | common | prey | — | 0.2 | 20 | Hardy starter; pollution resistant. |
+| pumpkinseed_polluted | Pumpkinseed | Polluted Zones | Upper | prey | common | prey | — | 0.2 | 20 | Color shifts; low essence. |
+| yellow_perch_polluted | Yellow Perch | Polluted Zones | Upper | prey | common | prey | — | 0.2 | 20 | Striped mutant; swarm flee. |
+| zombie_guppy_original_polluted | Zombie Guppy | Polluted Zones | Upper | prey | rare | prey | — | 0.2 | 20 | Undead motifs; rare spawn. |
+| mutant_minnow_mutant_minnow_medium_polluted_medium_polluted | Mutant Minnow | Polluted Zones | Upper | prey | common | prey | — | 0.6 | 60 | Goo textures; mid mutation. |
+| sludge_fish_sludge_fish_medium_polluted_medium_polluted | Sludge Fish | Polluted Zones | Upper | prey | common | prey | — | 0.6 | 60 | Slime effects; carcass poison. |
+| common_carp_polluted | Common Carp | Polluted Zones | Mid | mid | common | prey | — | 0.4 | 40 | Hardy mid; bottom feeder. |
+| mutant_carp_original_polluted | Mutant Carp | Polluted Zones | Mid | mid | rare | prey | — | 0.4 | 40 | Rare mutations; essence bonus. |
+| white_sucker_polluted | White Sucker | Polluted Zones | Mid | mid | common | prey | — | 0.4 | 40 | Suction details; polluted var. |
+| armored_carp_armored_carp_medium_polluted_medium_polluted | Armored Carp | Polluted Zones | Mid | mid | uncommon | prey | — | 0.7 | 70 | Armor textures; defensive. |
+| toxic_bass_toxic_bass_medium_polluted_medium_polluted | Toxic Bass | Polluted Zones | Mid | mid | common | prey | — | 0.7 | 70 | Poison effects; mid predator tease. |
+| channel_catfish_polluted | Channel Catfish | Polluted Zones | Lower | predator | common | predator | — | 0.7 | 70 | Whisker details; toxic hunt. |
+| chemical_eel_chemical_eel_medium_polluted_medium_polluted | Chemical Eel | Polluted Zones | Lower | predator | uncommon | predator | — | 0.9 | 90 | Toxic auras; eel stretch. |
+| toxic_catfish_original_boss_polluted | Toxic Catfish | Polluted Zones | Lower | boss | rare | predator | — | 1.1 | 110 | Boss toxins; high essence. |
+| waste_leviathan_waste_leviathan_medium_polluted_medium_polluted | Waste Leviathan | Polluted Zones | Lower | boss | rare | predator | — | 1.2 | 120 | Massive polluted; fusion base. |
+| hatchetfish_deep_sea | Hatchetfish | Deep Waters | Upper | prey | common | prey | — | 0.2 | 20 | Minimal glow; deep starter. |
+| lanternfish_deep_sea | Lanternfish | Deep Waters | Upper | prey | common | prey | — | 0.2 | 20 | Biolum accents; swarms. |
+| bristlemouth_bristlemouth_deep_deep | Bristlemouth | Deep Waters | Upper | prey | common | prey | — | 0.6 | 60 | Glowing schools; mid tease. |
+| glass_squid_glass_squid_deep_deep | Glass Squid | Deep Waters | Upper | prey | common | prey | — | 0.6 | 60 | Transparent; ink var. |
+| vampire_squid_vampire_squid_deep_deep | Vampire Squid | Deep Waters | Upper | mid | rare | prey | — | 0.7 | 70 | Tentacles; deep camouflage. |
+| dragonfish_deep_sea | Dragonfish | Deep Waters | Mid | mid | common | prey | — | 0.4 | 40 | Fangs; biolum lure. |
+| fangtooth_deep_sea | Fangtooth | Deep Waters | Mid | mid | common | prey | — | 0.4 | 40 | Sharp teeth; mutant potential. |
+| deep_sea_mutant_original_deep_sea | Deep Sea Mutant | Deep Waters | Mid | mid | rare | prey | — | 0.4 | 40 | Eldritch base; fusions. |
+| giant_isopod_giant_isopod_deep_deep | Giant Isopod | Deep Waters | Mid | mid | uncommon | prey | — | 0.7 | 70 | Armor; bottom dweller. |
+| anglerfish_deep_sea | Anglerfish | Deep Waters | Lower | predator | common | predator | — | 0.7 | 70 | Lure details; variants via mutations. |
+| gulper_eel_deep_sea | Gulper Eel | Deep Waters | Lower | predator | common | predator | — | 0.7 | 70 | Stretchy mouth; epic var. |
+| viperfish_deep_sea | Viperfish | Deep Waters | Lower | predator | common | predator | — | 0.7 | 70 | Speed scaling; fangs. |
+| anglerfish_anglerfish_deep_deep | Anglerfish (variant) | Deep Waters | Lower | predator | rare | predator | — | 0.9 | 90 | Rare lure; achievement unlock. |
+| gulper_eel_gulper_eel_deep_deep | Gulper Eel (variant) | Deep Waters | Lower | predator | epic | predator | — | 0.9 | 90 | Mouth ramp; boss tease. |
+| abyssal_horror_original_deep_sea | Abyssal Horror | Deep Waters | Lower | boss | rare | predator | — | 1.1 | 110 | Eldritch details; fusion. |
+| leviathan_lantern_fusion_deep_sea | Leviathan Lantern | Deep Waters | Lower | boss | rare | predator | — | 1.1 | 110 | Glow fusion; high essence. |
+| oarfish_oarfish_deep_deep | Oarfish | Deep Waters | Lower | boss | rare | predator | — | 1.2 | 120 | Elongated; deep boss. |
+| cusk_eel_abyssal | Cusk Eel | Abyssal Depths | Upper | prey | common | prey | — | 0.2 | 20 | Void minimal; endgame starter. |
+| snailfish_abyssal | Snailfish | Abyssal Depths | Upper | prey | common | prey | — | 0.2 | 20 | Pressure resistant; low detail. |
+| tripod_fish_abyssal | Tripod Fish | Abyssal Depths | Upper | prey | common | prey | — | 0.2 | 20 | Stilt legs; unique animation. |
+| abyssal_grenadier_abyssal | Abyssal Grenadier | Abyssal Depths | Mid | mid | common | prey | — | 0.4 | 40 | Tail light; mid prey. |
+| abyssal_mutant_original_abyssal | Abyssal Mutant | Abyssal Depths | Mid | mid | rare | prey | — | 0.4 | 40 | Eldritch var; mutations. |
+| black_swallower_abyssal | Black Swallower | Abyssal Depths | Mid | — | common | prey | — | 0.4 | 40 | Swallow ability; stretchy. |
+| barreleye_abyssal | Barreleye | Abyssal Depths | Mid | prey | common | prey | — | 0.6 | 60 | Transparent head; vision motif. |
+| abyssal_angler_abyssal | Abyssal Angler | Abyssal Depths | Lower | predator | common | predator | ✓ | 0.7 | 70 | Deep lure; playable endgame. |
+| abyssal_horror_eldritch_abyssal | Abyssal Horror (eldritch) | Abyssal Depths | Lower | boss | rare | predator | ✓ | 1.1 | 110 | Tentacles; eldritch fusion. |
+| elder_lanternfish_eldritch_abyssal | Elder Lanternfish (eldritch) | Abyssal Depths | Lower | boss | rare | predator | — | 1.1 | 110 | Glow scars; apex void. |
+
+**Implementation Notes for Coding Agent**:
+- **Patching**: Extend `batch-update-creature-metadata.ts` to add `metrics: { base_meters, base_art_scale }` and `sub_depth` to each creature's JSON blob. Use a map from old biome/ID to new values.
+- **Balance**: Upper: Mostly prey <0.6m for essence grinds; Mid: Mix 0.4-0.7m for tasks; Lower: Predators >0.7m for bonuses/fails. Overlaps (e.g., Polluted Shallows) merge pools procedurally in level-gen.ts.
+- **Art Gen**: Feed base_meters into prompts: "A [name] at [base_meters]m in [biome] [sub_depth], pixel art with [rarity] details." Scale density by tier (e.g., rare adds mutations).
+- **Schema**: Creatures as JSON: { id: string, name: string, biome: string, sub_depth: 'upper'|'mid'|'lower', ... , metrics: { base_meters: number, base_art_scale: number } }.
+New File: docs/data_structure.md
+This new doc outlines the nested JSON for biomes/depths, for loading in level-gen.ts or storage.
+text# Game Data Structure
+
+This defines the JSON structure for biomes, levels, sub-depths, and fish integration. Stored in a central `creatures.json` or per-biome files in `/docs/biomes`. Supports procedural overlaps (e.g., Polluted Shallows merges from Shallows + Polluted Zones). Use for level generation, art prompts, and progression (unlocks at 100/200 art size thresholds).
+
+**JSON Schema**:
+```json
+{
+  "biomes": {
+    "<biome_id>": {  // e.g., "shallows", "polluted_zones", "deep_waters"
+      "display_name": string,  // e.g., "Shallows"
+      "unlock_cost": number,  // Essence or achievement req; 0 for starters
+      "essence_types": { "primary": string, "secondary": string|null },
+      "visual_theme": string,  // For AI prompts, e.g., "bright coral reef"
+      "art_modifiers": array<string>,  // e.g., ["vibrant colors", "sunlit"]
+      "levels": array<object> {  // 3 levels per biome for spread
+        "level_id": number,  // 1-3
+        "sub_depths": {
+          "upper": {
+            "fish": array<object> {  // Refs from BLOB_CREATURES
+              "id": string,
+              "spawn_weight": number,  // e.g., 40 for common
+              "growth_range": [min: number, max: number]  // +gains per task
+            },
+            "backgrounds": array<string>,  // Prompt chunks or asset paths
+            "tasks": array<object> {  // 4 main + bonuses/fails
+              "type": "hunt"|"scavenge"|"survive",
+              "target": string,  // e.g., "eat 5 prey"
+              "reward": { "essence": number, "size_gain": number },
+              "fail_condition": string
+            }
+          },
+          "mid": { ... },  // Similar structure
+          "lower": { ... }
+        }
+      },
+      "overlaps": array<string>  // e.g., ["polluted_zones"] for combos
+    }
+  }
+}
+Example for Shallows Biome (Level 1 only for brevity):
+JSON{
+  "biomes": {
+    "shallows": {
+      "display_name": "Shallows",
+      "unlock_cost": 0,
+      "essence_types": { "primary": "shallow", "secondary": null },
+      "visual_theme": "Bright, colorful coral reef with tropical fish and clear waters",
+      "art_modifiers": ["bright saturated colors", "clear well-lit", "tropical palette"],
+      "levels": [
+        {
+          "level_id": 1,
+          "sub_depths": {
+            "upper": {
+              "fish": [
+                { "id": "goldfish_starter", "spawn_weight": 10, "growth_range": [0, 50] },
+                { "id": "small_prey", "spawn_weight": 30, "growth_range": [0, 50] }
+              ],
+              "backgrounds": ["sunny_surface_reef_prompt", "weedy_shore_asset"],
+              "tasks": [
+                { "type": "hunt", "target": "Eat 5 prey", "reward": { "essence": 20, "size_gain": 30 }, "fail_condition": "Health < 10" }
+              ]
+            },
+            "mid": { /* similar */ },
+            "lower": { /* similar */ }
+          }
+        }
+        /* levels 2 and 3 similar, with progressive spawn weights and harder tasks */
+      ],
+      "overlaps": ["polluted_zones"]
+    }
+  }
+}
+Implementation Notes for Coding Agent:
+
+Loading: In level-gen.ts, load JSON, select biome/level/sub_depth based on player progress (e.g., if art_size >= 100, unlock mid). Procedural spawns: Weighted random from fish array, scale base_meters by level (e.g., *1.1 for level 2).
+Overlaps: For combos, merge fish arrays (e.g., 70% from shallows + 30% from polluted), append modifiers to prompts (e.g., "+toxic haze").
+Growth Unlocks: In player-growth.ts, on art_size threshold: Trigger event to update sub_depth, regen backgrounds/fish spawns. Cap at 300 for biome exit.
+Balance: Upper tasks easy (low gains for juvenile); Lower hard (high gains for elder, with fail risks like predator swarms). Essence yields: Base on meters * tier multiplier.
+Art Integration: Runtime art_scale = base_art_scale + cumulative gains. Prompts: "Generate [fish.name] at [metrics.base_meters]m in [biome.visual_theme] [sub_depth], with [art_modifiers] and pixel art style."
+
+text### Updated File: docs/biomes/shallow.md
+Updated from existing content: Added sub-depths, growth unlocks, meters/art scale ties, and progression notes. Kept original fish stats/abilities/spawns but assigned to sub-depths.
+Shallow Biome (Shallows)
+Biome Overview:
+
+ID: shallows (broadened from shallow to include coastal/freshwater/tropical)
+Unlock: Starting biome, no cost
+Essence Types: Primary - Shallow; Secondary - None
+Visual Theme: Bright, colorful coral reef with tropical fish and clear waters
+Art Modifiers: bright, saturated colors; clear, well-lit appearance; tropical color palette; sunlit water adaptations
+Recommended Motifs: vibrant reef dweller with tropical colors; swift schooling fish with reflective scales; territorial shallow-water hunter; graceful tropical swimmer; coral reef ambusher
+Ecosystem: Highest variety; good prey/predator balance for learning. Moderate essence spawn (0.5). Prey flees to hides; carcasses fair game.
+
+Level Structure: Spread over 3 levels, each with Upper/Mid/Lower sub-depths (unlocked every 100 art size: 0+ Upper, 100+ Mid, 200+ Lower). Progressive hardness: Level 1 starters, Level 3 fusions unlocks.
+Fish by Sub-Depth (with updated metrics; sizes converted to meters, art scale derived):
+
+Upper (Juvenile Focus; Gains +0-50/task):
+Goldfish (Prey, 0.6m, Art Scale 60, Speed 7, Health 15, Damage 3, Playable: Yes)
+Guppy (Prey, 0.6m, Art Scale 60, Speed 6, Health 3, Damage 0.5, Playable: No)
+Minnow (Prey, 0.6m, Art Scale 60, Speed 5, Health 5, Damage 1, Playable: No)
+Blue Tang (Prey, 0.6m, Art Scale 60, Speed ?, Health ?, Damage ?, Playable: No)  // Add stats as needed
+Clownfish (Prey, 0.6m, Art Scale 60, Speed ?, Health ?, Damage ?, Playable: No)
+Spawn Weights: Guppy (40), Minnow (30), Goldfish (10), etc.
+
+Mid (Adult Intro; Gains +20-80/task):
+Perch (Prey, 0.7m, Art Scale 70, Speed 4, Health 20, Damage 5, Playable: No)
+Bass (Predator, 0.9m, Art Scale 90, Speed 4, Health 30, Damage 10, Playable: No, Ability: ambush_strike)
+Butterflyfish (Mid, 0.7m, Art Scale 70, Speed ?, Health ?, Damage ?, Playable: No)
+Tropical Parrotfish (Prey, 0.7m, Art Scale 70, Speed 3, Health 35, Damage 8, Playable: Yes, Abilities: reef_camouflage, hard_scales)
+Spawn Weights: Perch (20), Bass (15), etc.
+
+Lower (Elder Apex; Gains +40-100/task):
+Pike (Predator, 0.9m, Art Scale 90, Speed 5, Health 50, Damage 20, Rarity: Uncommon, Abilities: ambush_strike, speed_burst)
+Lionfish (Predator, 0.9m, Art Scale 90, Speed ?, Health ?, Damage ?, Playable: No)
+Moray Eel (Boss, 1.2m, Art Scale 120, Speed ?, Health ?, Damage ?, Playable: No)
+Great White Shark (Predator, 1.2m, Art Scale 120, Speed 6, Health 80, Damage 35, Playable: Yes, Abilities: apex_predator, blood_sense, speed_burst)
+Spawn Weights: Pike (5), Great White Shark (2), etc.
+
+
+Tasks (Per Level/Sub-Depth):
+
+Main: 4 tasks like "Eat X prey" or "Survive Y time". Bonuses: "Scavenge carcass" for +size. Fails: "Avoid Z predators" or health drop.
+Example (Level 1 Upper): Hunt 5 prey (reward: 20 essence, +30 size); Bonus: Fuse mutation (+50 size).
+
+Implementation Notes for Coding Agent:
+
+Progression: Tie to art_size in player state; unlock sub-depth on thresholds, update spawns/backgrounds.
+Overlaps: If polluted, add toxic modifiers to prompts/art (e.g., "vibrant reef with oil slick").
+Art Gen: Use meters for detail: <0.5m minimal; >1m intricate. Scale sprites by art_scale for pixel-perfect (nearest-neighbor).
+Balance Updates: Increase essence yields in lower (meters * 2); prey flee rate higher in mid/lower.
+
+text### Updated File: docs/biomes/polluted.md
+Updated from existing: Added sub-depths, stats where missing (inferred from similar fish), progression, and ties to meters/art scale.
+Polluted Biome (Polluted Zones)
+Biome Overview:
+
+ID: polluted_zones (broad modifier; standalone or overlay on Shallows/Mid-Waters)
+Unlock: Achievement (e.g., "Survive Pollution Event"), 100 essence
+Essence Types: Primary - Polluted; Secondary - Toxic
+Visual Theme: Murky, industrial waste with deformed fish and hazy waters
+Art Modifiers: dull, desaturated colors; oily slicks; mutant distortions; chemical glows
+Recommended Motifs: hardy polluted dweller with toxic scales; undead zombie fish; armored sludge survivor; radioactive boss leviathan
+Ecosystem: Mutated prey/predators; high fail risks (poison damage). Carcasses yield bonus toxic essence.
+
+Level Structure: 3 levels with Upper/Mid/Lower sub-depths (unlocks at 100/200 art size). Focus on survival/mutations.
+Fish by Sub-Depth (with metrics; inferred stats for consistency):
+
+Upper (Juvenile Mutants; Gains +0-50/task):
+Fathead Minnow (Prey, 0.2m, Art Scale 20, Speed 5, Health 5, Damage 1, Playable: No)
+Mosquitofish (Prey, 0.2m, Art Scale 20, Speed 6, Health 3, Damage 0.5, Playable: No)
+Pumpkinseed (Prey, 0.2m, Art Scale 20, Speed 4, Health 10, Damage 2, Playable: No)
+Yellow Perch (Prey, 0.2m, Art Scale 20, Speed 5, Health 8, Damage 1.5, Playable: No)
+Zombie Guppy (Prey, 0.2m, Art Scale 20, Speed 3, Health 15, Damage 3, Rarity: Rare, Playable: No)
+Mutant Minnow (Prey, 0.6m, Art Scale 60, Speed 4, Health 20, Damage 5, Playable: No)
+Sludge Fish (Prey, 0.6m, Art Scale 60, Speed 3, Health 25, Damage 4, Playable: No)
+
+Mid (Adult Toxics; Gains +20-80/task):
+Common Carp (Mid, 0.4m, Art Scale 40, Speed 4, Health 25, Damage 6, Playable: No)
+Mutant Carp (Mid, 0.4m, Art Scale 40, Speed 3, Health 30, Damage 8, Rarity: Rare, Playable: No)
+White Sucker (Mid, 0.4m, Art Scale 40, Speed 4, Health 20, Damage 5, Playable: No)
+Armored Carp (Mid, 0.7m, Art Scale 70, Speed 3, Health 35, Damage 7, Rarity: Uncommon, Playable: No, Ability: hard_scales)
+Toxic Bass (Mid, 0.7m, Art Scale 70, Speed 4, Health 30, Damage 10, Playable: No, Ability: poison_strike)
+
+Lower (Elder Wastes; Gains +40-100/task):
+Channel Catfish (Predator, 0.7m, Art Scale 70, Speed 4, Health 40, Damage 15, Playable: No)
+Chemical Eel (Predator, 0.9m, Art Scale 90, Speed 5, Health 50, Damage 20, Rarity: Uncommon, Playable: No, Ability: electric_shock)
+Toxic Catfish (Boss, 1.1m, Art Scale 110, Speed 4, Health 70, Damage 30, Rarity: Rare, Playable: No, Ability: toxic_cloud)
+Waste Leviathan (Boss, 1.2m, Art Scale 120, Speed 3, Health 100, Damage 40, Rarity: Rare, Playable: No, Ability: sludge_wave)
+
+
+Tasks (Per Level/Sub-Depth):
+
+Main: "Survive X poison ticks" or "Mutate Y times". Bonuses: "Scavenge toxic carcass" (+essence). Fails: "Accumulate Z poison" (health loss).
+Example (Level 2 Mid): Hunt 3 mids (reward: 30 essence, +50 size); Bonus: Fuse toxic mutation (+70 size).
+
+Implementation Notes for Coding Agent:
+
+Overlay Logic: In level-gen.ts, if overlap active, replace 30% fish with polluted variants (add "toxic" to IDs/prompts).
+Progression: Poison mechanics scale by sub-depth (upper low dmg, lower high). Art scale caps at 300 for biome transitions.
+Art Gen: Meters for mutations: Add "deformed [detail]" if >0.5m. Prompts: "[name] at [meters]m in murky polluted [sub_depth], with goo and distortions."
+Balance Updates: Higher essence in lower for risk/reward; prey flee boosted in polluted (80% chance).
+
+text### New File: docs/size_handling.md
+New doc for meters vs art scale, growth logic.
+Size Handling: Meters and Art Scale
+Overview: Decouples realistic metrics (meters for AI prompts, ecosystem logic) from rendering (art scale for screen fit, pixel-perfect sprites). Growth stages (Juvenile/Adult/Elder) unlock sub-depths every 100 art size, with +0-100 gains per task/essence. Caps at 300 by shallow level 3 end.
+Meters (Logic/Art Gen):
+
+Base per fish (0.2-1.2m from real-world averages, balanced for tiers).
+Use: Prompts ("[name] at [meters]m, detail density high if >1m"), prey/predator dynamics (flee if predator meters > prey *1.5), essence yields (meters * tier).
+Growth: +0.2-0.5m per mutation/fusion; triggers regen.
+
+Art Scale (Rendering):
+
+Base = meters * 100 (editable for fit; 20-120 start).
+Dynamic: +0-100 per task (variable by bonuses/fails); runtime scaling for sprites (1x juvenile, 4x elder, nearest-neighbor).
+Stages: 0-99 Juvenile (Upper access), 100-199 Adult (Mid), 200-299 Elder (Lower), 300+ Apex (bonus mutations).
+
+Implementation Notes for Coding Agent:
+
+Scripts: In player-growth.ts, update art_size on events; check thresholds for sub_depth unlock (e.g., if >=200, set to 'lower', refresh level).
+Decoupling: Meters static post-mutation; art_scale resets per level but carries overflow essence.
+Balance: Gains ramp by level/sub-depth (e.g., level 3 lower +60-100). Cap prevents overflow; use for unlocks.
+Art: Generate at fixed res (512x512), scale by art_scale in-game. Prompts independent: Focus on meters for fidelity.
+
+text### New File: docs/updates_patch_notes.md
+Summary for the agent.
+Updates and Patch Notes
+Summary: Patches for fish metrics, biome reorganization, depths/sub-depths, size decoupling. For coding agent: Implement in TS scripts, test progression (e.g., simulate art_size growth to 300).
+Key Changes:
+
+Broader biomes with overlaps.
+Nested levels/sub-depths in JSON.
+Meters/art scale logic.
+Updated docs for reference.
+
+To-Do for Agent:
+
+Patch BLOB_CREATURES via batch-update.ts (add metrics/sub_depth).
+Create/load creatures.json from schema.
+Update level-gen.ts for sub-depth unlocks, overlaps.
+Add growth checks in player-growth.ts.
+Test: Simulate shallow level 1-3; verify 300 cap, art gens.

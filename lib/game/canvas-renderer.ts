@@ -139,7 +139,7 @@ export function renderGame(options: RenderOptions): void {
 
   // Draw AI fish
   const renderContext: RenderContext = isEditMode ? 'edit' : gameMode ? 'game' : 'game';
-  const buttonPositions = new Map<string, { x: number; y: number; size: number }>();
+  editButtonPositions.clear();
 
   fish.forEach((fishEntity) => {
     if (fishEntity.lifecycleState === 'removed') return;
@@ -214,7 +214,7 @@ export function renderGame(options: RenderOptions): void {
     }
 
     ctx.restore();
-    buttonPositions.set(fishEntity.id, { x: fishEntity.x, y: fishEntity.y, size: fishEntity.size });
+    editButtonPositions.set(fishEntity.id, { x: fishEntity.x, y: fishEntity.y, size: fishEntity.size });
   });
 
   // Draw dash particles behind fish
@@ -290,7 +290,7 @@ export function renderGame(options: RenderOptions): void {
     ctx.stroke();
   }
 
-  buttonPositions.set(player.id, { x: player.x, y: player.y, size: player.size });
+  editButtonPositions.set(player.id, { x: player.x, y: player.y, size: player.size });
 
   // Draw dash particles in front
   if (gameMode) {

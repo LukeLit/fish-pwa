@@ -1,0 +1,69 @@
+{
+  "biomes": {
+    "shallow": {
+      "id": "shallow",
+      "depth_range_meters": {
+        "min": 0,
+        "max": 50
+      },
+      "levels": [
+        {
+          "level_id": 1,
+          "phases": 3,
+          "min_meters": 0.2,
+          "max_meters": 0.6,
+          "fish_count": 54,
+          "apex_count": 1,
+          "sub_depths": [
+            "upper"
+          ]
+        },
+        {
+          "level_id": 2,
+          "phases": 3,
+          "min_meters": 0.4,
+          "max_meters": 0.8,
+          "fish_count": 84,
+          "apex_count": 2,
+          "sub_depths": [
+            "upper",
+            "mid"
+          ]
+        },
+        {
+          "level_id": 3,
+          "phases": 3,
+          "min_meters": 0.5,
+          "max_meters": 1.2,
+          "fish_count": 124,
+          "apex_count": 3,
+          "sub_depths": [
+            "upper",
+            "mid",
+            "lower"
+          ]
+        }
+      ]
+    }
+  },
+  "runs": {
+    "shallow_run": {
+      "id": "shallow_run",
+      "name": "Coral Shallows",
+      "levels": [
+        {
+          "biome": "shallow",
+          "level_id": 1
+        },
+        {
+          "biome": "shallow",
+          "level_id": 2
+        },
+        {
+          "biome": "shallow",
+          "level_id": 3
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,6 @@
 /**
  * Canvas Game Constants
  * Centralized constants for FishEditorCanvas game systems
- * These can be overridden via GameConfig settings
  */
 
 import { DASH_SPEED_MULTIPLIER } from './dash-constants';
@@ -27,6 +26,14 @@ export const AI = {
   CHASE_TIMEOUT_MS: 4500, // Give up chase after 4.5s
   STAMINA_REGEN: 100, // per second
   SPEED_SCALE: 0.1, // Scale down for canvas movement
+  PREDATOR_TARGET_SIZE_RATIO: 0.8, // Only chase if target smaller than fish.size * this
+  DASH_DISTANCE_MULTIPLIER: 6, // Predator starts dash when dist < fish.size * this
+  DASH_STAMINA_MIN: 15, // Min stamina to allow AI dash
+  PREY_DASH_DISTANCE_MULTIPLIER: 8, // Prey starts dash when threat within fish.size * this
+  WANDER_JITTER: 0.05, // Random velocity nudge when no target
+  RANDOM_DIRECTION_CHANCE: 0.01, // Chance per frame to pick new wander direction
+  WANDER_SPEED: 2, // Max random velocity when wandering
+  FISH_ANIM_SPEED_DIVISOR: 1.5, // Fish animTime += 0.04 + min(0.04, (speed / this) * 0.04)
 } as const;
 
 // Camera/Zoom constants
@@ -47,6 +54,13 @@ export const SPAWN = {
   STAGGER_DELAY_MAX: 200, // Maximum delay between spawns (ms)
   DEFAULT_MAX_FISH: 45, // Base max fish count
   RESPAWN_INTERVAL_MS: 2000, // Default respawn interval
+  FISH_SIZE_MIN: 0.5, // Min size multiplier for spawned AI fish
+  FISH_SIZE_MAX: 2, // Max size multiplier for spawned AI fish
+  SMALL_PREY_SIZE_THRESHOLD: 50, // Respawn pool: size < this = small prey (extra copies)
+  PREY_SIZE_THRESHOLD: 80, // Respawn pool: size < this = prey (extra copies)
+  DEFAULT_CREATURE_SIZE: 60, // Fallback when stats.size unknown
+  PREY_DEFAULT_SIZE: 30,
+  PREDATOR_DEFAULT_SIZE: 100,
 } as const;
 
 // UI constants
@@ -66,6 +80,12 @@ export const UI = {
   STAMINA_LOW_THRESHOLD: 0.3, // 30% - color changes below this
 } as const;
 
+// Game mode (score, stats throttle)
+export const GAME = {
+  SCORE_PER_SIZE_UNIT: 10, // score = (player.size - baseSize) * this
+  STATS_UPDATE_CHANCE: 0.07, // Throttle onStatsUpdate to ~4fps (Math.random() < this)
+} as const;
+
 // World bounds
 export const WORLD_BOUNDS = {
   minX: -1500,
@@ -80,6 +100,14 @@ export const PARTICLES = {
   PLAYER_DASH_SPAWN_PER_FRAME: 1,
   MULTI_ENTITY_FLOW_CAP: 120,
   MULTI_ENTITY_SPAWN_PER_FRAME: 1,
+  CHOMP_LIFE_DECAY: 0.01, // Per frame
+  CHOMP_PUNCH_DECAY: 0.08, // Punch scale decay per frame
+  BLOOD_LIFE_DECAY: 0.007, // Per frame
+  BLOOD_COUNT_LARGE: 22, // When sizeScale > BLOOD_SIZE_THRESHOLD
+  BLOOD_COUNT_SMALL: 10,
+  BLOOD_SIZE_THRESHOLD: 25,
+  BLOOD_RADIUS_MAX_LARGE: 10, // 4 + random * this
+  BLOOD_RADIUS_MAX_SMALL: 6,
 } as const;
 
 // Collision constants
@@ -88,6 +116,13 @@ export const COLLISION = {
   HEAD_RADIUS_RATIO: 0.25, // Head hitbox radius (25% of size)
   IDLE_SPEED_THRESHOLD: 0.2, // Speed below this is considered idle
   STATIONARY_DRAIN_FRACTION: 0.1, // 10% of full hunger drain when not moving
+  FACING_SPEED_THRESHOLD: 0.1, // Min horizontal speed to update facing direction
+  // Eating / size gain (shared by game loop and collision)
+  SIZE_GAIN_RATIO: 0.15, // Eater gains 15% of eaten size (before efficiency)
+  EFFICIENCY_RATIO: 0.4, // Diminishing returns: 1 / (1 + sizeRatio * this)
+  MIN_EFFICIENCY: 0.05, // Minimum size gain multiplier
+  STAMINA_BATTLE_SIZE_GAIN: 0.08, // Winner gains 8% of loser size in stamina battle
+  KO_VELOCITY_DAMP: 0.3, // Velocity multiplier when knocked out (drift)
 } as const;
 
 // Animation constants
@@ -95,6 +130,8 @@ export const ANIMATION = {
   ANIM_TIME_BASE: 0.05, // Base animation time increment
   ANIM_TIME_SPEED_MULT: 0.06, // Speed-based animation time multiplier
   CHOMP_DECAY_TIME: 280, // ms for chomp phase decay
+  FISH_ANIM_BASE: 0.04, // Base animTime increment for AI fish
+  FISH_ANIM_SPEED_CAP: 0.04, // Cap for speed-based increment
 } as const;
 
 // Rendering constants
@@ -115,4 +152,48 @@ export const RENDERING = {
 export const STAMINA = {
   PLAYER_REGEN_RATE: 100, // per second
   AI_REGEN_RATE: 100, // per second
+  DEFAULT_MAX: 100, // Initial stamina/maxStamina for player and AI fish
+} as const;
+
+// Art/Rendering constants - Size thresholds, LOD, sprite resolution, growth stages
+export const ART = {
+  // Art size bounds - used by editor slider and growth stage logic
+  SIZE_MIN: 20,
+  SIZE_MAX: 300,
+
+  // Growth stage size thresholds (juvenile/adult/elder)
+  GROWTH_RANGES: {
+    JUVENILE_MIN: 20,
+    JUVENILE_MAX: 99,   // 20-99: small / young
+    ADULT_MIN: 100,
+    ADULT_MAX: 199,     // 100-199: mature (adult starts at 100)
+    ELDER_MIN: 200,
+    ELDER_MAX: 300,     // 200-300: large / elder (elder starts at 200)
+  },
+
+  // LOD (Level of Detail) thresholds - screen-space size in pixels
+  LOD_THRESHOLDS: {
+    VIDEO_DETAIL: 120,  // >= 120px: use video clips if available
+    FULL_DETAIL: 80,    // >= 80px: max segments
+    MEDIUM_DETAIL: 40,  // 40-79px: medium segments
+    LOW_DETAIL: 20,     // 20-39px: low segments
+    STATIC: 12,         // < 12px: static sprite (no animation)
+  },
+
+  // Segment count range for smooth interpolation
+  SEGMENT_RANGE: {
+    MAX: 12,   // Maximum segments at full detail
+    MIN: 3,    // Minimum segments before going static
+  },
+
+  // Player gets more segments than AI fish
+  PLAYER_SEGMENT_MULTIPLIER: 1.34, // 12 * 1.34 ≈ 16 for player
+
+  // Sprite resolution thresholds (mipmap-like behavior)
+  // When to swap sprite resolutions based on screen size
+  SPRITE_RESOLUTION_THRESHOLDS: {
+    HIGH: 100,    // >= 100px screen size: use 512px sprite
+    MEDIUM: 40,   // >= 40px screen size: use 256px sprite
+    // < 40px: use 128px sprite
+  },
 } as const;

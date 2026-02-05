@@ -5,7 +5,6 @@
 
 import { DASH_STAMINA_DRAIN_RATE } from './dash-constants';
 import { STAMINA } from './canvas-constants';
-import type { GameConfig } from '@/lib/meta/storage';
 
 export interface StaminaEntity {
   stamina: number;
@@ -23,11 +22,10 @@ export function createStaminaUpdater(
   rampMultiplier?: number;
   fleeMultiplier?: number;
   regenRate?: number;
-  gameConfig?: GameConfig;
 }) => void {
   return (entity, deltaTime, options = {}) => {
     const {
-      drainRate = options.gameConfig?.dashStaminaDrainRate ?? DASH_STAMINA_DRAIN_RATE,
+      drainRate = DASH_STAMINA_DRAIN_RATE,
       rampMultiplier = 1,
       fleeMultiplier = 1,
       regenRate = isPlayer(entity) ? STAMINA.PLAYER_REGEN_RATE : STAMINA.AI_REGEN_RATE,

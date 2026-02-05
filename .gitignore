@@ -41,6 +41,9 @@ nul
 .claude/
 test-fish-editor-api.js
 
+# scratch / personal (ignored by git and Cursor)
+_IGNORED/
+
 # vercel
 .vercel
 

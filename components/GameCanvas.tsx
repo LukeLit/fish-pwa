@@ -20,10 +20,9 @@ import {
   updateRunStats,
 } from '@/lib/game/run-state';
 import { DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
-import { loadCreatureById, loadCreaturesByBiome } from '@/lib/game/data/creature-loader';
-import { computeEncounterSize } from '@/lib/game/spawn-fish';
+import { loadCreatureById } from '@/lib/game/data/creature-loader';
+import { createLevel } from '@/lib/game/create-level';
 import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
-import { GameStorage, DEFAULT_GAME_CONFIG, type GameConfig } from '@/lib/meta/storage';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -48,8 +47,6 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [showPauseMenu, setShowPauseMenu] = useState(false);
   const paused = settingsDrawerOpen || showPauseMenu;
 
-  // Game config (loaded from blob, saved on change)
-  const [gameConfig, setGameConfig] = useState<GameConfig>(DEFAULT_GAME_CONFIG);
   const [playerStats, setPlayerStats] = useState<PlayerGameStats | null>(null);
   const [playerFishData, setPlayerFishData] = useState<FishData | null>(null);
   const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
@@ -111,19 +108,6 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     loadFishLibrary();
   }, []);
 
-  // Load game config from storage
-  useEffect(() => {
-    GameStorage.getInstance().getSettings().then((s) => setGameConfig(s.gameConfig));
-  }, []);
-
-  const handleGameConfigChange = useCallback((updates: Partial<GameConfig>) => {
-    setGameConfig((prev) => {
-      const next = { ...prev, ...updates };
-      GameStorage.getInstance().updateSettings({ gameConfig: next });
-      return next;
-    });
-  }, []);
-
   useEffect(() => {
     setIsClient(true);
 
@@ -154,7 +138,6 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
         // Calculate level-based difficulty
         const duration = 60000 + (level.levelNum - 1) * 15000; // 60s, 75s, 90s
-        const fishCount = 24 + (level.levelNum - 1) * 5; // 24, 29, 34 more fish for larger world
         setLevelDuration(duration);
 
         // Load background
@@ -236,61 +219,10 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
         setPlayerFishSprite(playerSprite);
 
-        // Spawn fish based on current level using blob-backed creature definitions
-        // TODO: Dynamically determine biome based on current level/run state
-        // For now, using 'shallow' as the default starter biome
-        const biomeCreatures = await loadCreaturesByBiome('shallow');
-        if (biomeCreatures.length > 0) {
-          // Separate creatures by type
-          const preyCreatures = biomeCreatures.filter(c => c.type === 'prey');
-          const predatorCreatures = biomeCreatures.filter(c => c.type === 'predator');
-
-          const spawned: Creature[] = [];
-          let spawnIndex = 0;
-
-          // Always spawn 1-2 apex predators (scales with level)
-          const apexCount = Math.min(1 + Math.floor((level.levelNum - 1) / 2), 3);
-          const apexPool = predatorCreatures.length > 0 ? predatorCreatures : [];
-
-          for (let i = 0; i < apexCount && i < apexPool.length; i++) {
-            const creature = apexPool[i % apexPool.length];
-            const encounterSize = computeEncounterSize({
-              creature,
-              biomeId: creature.biomeId,
-              levelNumber: level.levelNum,
-            });
-            spawned.push({
-              ...creature,
-              id: `${creature.id}_inst_${spawnIndex++}`,
-              creatureId: creature.id,
-              stats: { ...creature.stats, size: encounterSize },
-            } as Creature & { creatureId: string });
-          }
-
-          // Fill remaining slots with prey (varied sizes)
-          const preyPool = preyCreatures.length > 0 ? preyCreatures : biomeCreatures;
-          const remainingSlots = fishCount - spawned.length;
-
-          for (let i = 0; i < remainingSlots; i++) {
-            const creature = preyPool[i % preyPool.length];
-            // Every 3rd prey is extra small (easy first targets)
-            const isSmallPrey = i % 3 === 0;
-            const encounterSize = computeEncounterSize({
-              creature,
-              biomeId: creature.biomeId,
-              levelNumber: level.levelNum,
-              forceSmall: isSmallPrey,
-            });
-            spawned.push({
-              ...creature,
-              id: `${creature.id}_inst_${spawnIndex++}`,
-              creatureId: creature.id,
-              stats: { ...creature.stats, size: encounterSize },
-            } as Creature & { creatureId: string });
-          }
-
-          setSpawnedFish(spawned);
-        }
+        // Spawn fish via shared createLevel (rules from level-config; creatures from blob)
+        const biomeId = 'shallow'; // TODO: from run state when we support multiple biomes
+        const result = await createLevel(biomeId, level.levelNum);
+        setSpawnedFish(result.spawnList);
       } catch (error) {
         console.error('Failed to load game assets:', error);
       }
@@ -417,8 +349,6 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       <SettingsDrawer
         mode="game"
         onOpenChange={setSettingsDrawerOpen}
-        gameConfig={gameConfig}
-        onGameConfigChange={handleGameConfigChange}
       />
 
       <FishEditorCanvas
@@ -434,7 +364,6 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         gameMode={true}
         levelDuration={levelDuration}
         paused={paused}
-        gameConfig={gameConfig}
         dashFromControlsRef={dashFromControlsRef}
         onStatsUpdate={handleStatsUpdate}
         onGameOver={(stats) => {
