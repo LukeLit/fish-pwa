@@ -1,3 +1,19 @@
+import type { GameSettings } from '@/lib/game/game-settings'
+// Key for storing game settings config
+const GAME_SETTINGS_KEY = 'settings/game-settings'
+/**
+ * Save game settings config to blob storage
+ */
+export async function saveGameSettings(settings: GameSettings): Promise<string> {
+  return uploadGameData(GAME_SETTINGS_KEY, settings)
+}
+
+/**
+ * Load game settings config from blob storage, or return default if missing
+ */
+export async function loadGameSettings(defaultSettings: GameSettings): Promise<GameSettings> {
+  return downloadGameData<GameSettings>(GAME_SETTINGS_KEY, defaultSettings)
+}
 /**
  * Vercel Blob Storage utility
  * Provides abstraction for storing game data and assets in Vercel Blob Storage
