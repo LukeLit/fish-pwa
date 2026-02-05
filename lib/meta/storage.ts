@@ -31,6 +31,25 @@ export interface GameConfig {
   respawnIntervalMs: number;
   hungerDrainRate: number;
   dashStaminaDrainRate: number;
+
+  // Physics settings
+  maxSpeed?: number;
+  acceleration?: number;
+  friction?: number;
+
+  // AI settings
+  aiBaseSpeed?: number;
+  predatorChaseSpeed?: number;
+  preyFleeSpeed?: number;
+  aiDetectionRange?: number;
+
+  // Camera settings
+  minZoom?: number;
+  maxZoom?: number;
+
+  // Spawn settings
+  spawnFadeDuration?: number;
+  minSpawnDistance?: number;
 }
 
 export const DEFAULT_GAME_CONFIG: GameConfig = {

@@ -29,7 +29,6 @@ export async function POST(request: NextRequest) {
     // Enforce daily spending limit
     const spendingCheck = await canGenerateVideo();
     if (!spendingCheck.allowed) {
-      console.log(`[VideoGen] Daily spending limit reached: ${spendingCheck.reason}`);
       return NextResponse.json(
         {
           error: 'Daily limit reached',
@@ -39,9 +38,6 @@ export async function POST(request: NextRequest) {
         { status: 429 }
       );
     }
-
-    console.log(`[VideoGen] Spending check passed. ${spendingCheck.remaining} videos remaining today.`);
-    console.log('[VideoGen] Generating video with', model, ':', prompt.substring(0, 50) + '...');
 
     // Initialize the Google GenAI client
     const ai = new GoogleGenAI({
@@ -62,7 +58,6 @@ export async function POST(request: NextRequest) {
     // Start video generation (this returns an operation)
     const operation = await ai.models.generateVideos(requestConfig);
 
-    console.log('[VideoGen] Video generation started, operation:', operation.name);
 
     // Record this video generation for spending tracking
     await recordVideoGeneration();
@@ -74,7 +69,7 @@ export async function POST(request: NextRequest) {
       status: 'processing',
     });
   } catch (error: any) {
-    console.error('[VideoGen] Generation error:', error);
+    // Handle generation error silently
 
     return NextResponse.json(
       {
@@ -154,7 +149,7 @@ export async function GET(request: NextRequest) {
       operation: operationName,
     });
   } catch (error: any) {
-    console.error('[VideoGen] Poll error:', error);
+    // Handle polling error silently
 
     return NextResponse.json(
       {

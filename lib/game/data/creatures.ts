@@ -297,7 +297,7 @@ export function getAllCreatures(): Creature[] {
       return Array.from(creatureMap.values());
     } catch (error) {
       // If localStorage module fails, just return static creatures
-      console.warn('[getAllCreatures] localStorage not available:', error);
+      // localStorage not available, using fallback
     }
   }
 
@@ -317,10 +317,9 @@ export async function getAllCreaturesFromBlob(): Promise<Creature[]> {
       return result.creatures;
     }
 
-    console.warn('[Creatures] Failed to load from blob storage, returning empty list');
     return [];
   } catch (error) {
-    console.error('[Creatures] Error loading from blob storage:', error);
+    // Handle blob storage error silently
     return [];
   }
 }
@@ -375,7 +374,7 @@ export async function getBlobCreaturesByBiome(biomeId: string): Promise<Creature
 
     return filtered;
   } catch (error) {
-    console.error(`[getBlobCreaturesByBiome] Error for biome ${biomeId}:`, error);
+    // Handle biome blob loading error silently
     return getCreaturesByBiome(biomeId);
   }
 }
@@ -393,7 +392,6 @@ export async function getCreatureById(id: string): Promise<Creature | undefined>
       return result.creature;
     }
   } catch (error) {
-    console.warn(`[Creatures] Failed to load ${id} from blob storage, checking static data`);
   }
 
   // Fall back to static data
@@ -415,11 +413,10 @@ export function getCreature(id: string): Creature | undefined {
     try {
       const localCreature = loadCreatureFromLocal(id);
       if (localCreature) {
-        console.log('[getCreature] Found creature in localStorage:', id);
         return localCreature;
       }
     } catch (error) {
-      console.warn('[getCreature] localStorage not available:', error);
+      // localStorage not available for getCreature
     }
   }
 

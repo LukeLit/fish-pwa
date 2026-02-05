@@ -24,7 +24,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[FishImage] Generating image with', model, 'aspect:', aspectRatio, ':', prompt.substring(0, 100) + '...');
 
     const requestBody: any = {
       model: model,
@@ -56,12 +55,11 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const error = await response.json();
-      console.error('[FishImage] Vercel AI Gateway error:', error);
+      // Handle Vercel AI Gateway error silently
       throw new Error(error.error?.message || 'Failed to generate image');
     }
 
     const data = await response.json();
-    console.log('[FishImage] Image generated successfully');
 
     // Get the base64 image
     const imageBase64 = data.data[0]?.b64_json;
@@ -76,7 +74,7 @@ export async function POST(request: NextRequest) {
       model: model,
     });
   } catch (error: any) {
-    console.error('[FishImage] Generation error:', error);
+    // Handle generation error silently
 
     return NextResponse.json(
       {

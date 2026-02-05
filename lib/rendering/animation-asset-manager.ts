@@ -166,7 +166,6 @@ export class AnimationAssetManager {
     version: string,
     cacheKey: string
   ): Promise<LoadedAnimation> {
-    console.log(`[AnimAssetMgr] Loading ${creatureId}/${stage}/${action} (${sequence.frames.length} frames)`);
 
     // Load all frames in parallel
     const framePromises = sequence.frames.map(url => this.loadFrame(url));
@@ -191,7 +190,6 @@ export class AnimationAssetManager {
     // Evict old entries if cache is too large
     this.evictIfNeeded();
 
-    console.log(`[AnimAssetMgr] Loaded ${creatureId}/${stage}/${action} successfully`);
     return animation;
   }
 
@@ -264,7 +262,6 @@ export class AnimationAssetManager {
     for (const key of this.cache.keys()) {
       if (key.startsWith(prefix)) {
         this.cache.delete(key);
-        console.log(`[AnimAssetMgr] Invalidated cache: ${key}`);
       }
     }
   }
@@ -283,7 +280,6 @@ export class AnimationAssetManager {
     while (this.cache.size > this.maxCacheSize && entries.length > 0) {
       const [key] = entries.shift()!;
       this.cache.delete(key);
-      console.log(`[AnimAssetMgr] Evicted: ${key}`);
     }
   }
 
@@ -292,7 +288,6 @@ export class AnimationAssetManager {
    */
   clearAll(): void {
     this.cache.clear();
-    console.log(`[AnimAssetMgr] Cache cleared`);
   }
 
   /**

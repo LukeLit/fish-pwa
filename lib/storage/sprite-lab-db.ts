@@ -42,7 +42,6 @@ function openDB(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
-      console.error('[SpriteLabDB] Failed to open database:', request.error);
       reject(request.error);
     };
 
@@ -57,13 +56,11 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('updatedAt', 'updatedAt', { unique: false });
-        console.log('[SpriteLabDB] Created object store');
       }
 
       // Create shared sprites store for carcass, meat, essence chunks
       if (!db.objectStoreNames.contains(SHARED_STORE_NAME)) {
         db.createObjectStore(SHARED_STORE_NAME, { keyPath: 'id' });
-        console.log('[SpriteLabDB] Created sharedSprites store');
       }
     };
   });
@@ -82,12 +79,10 @@ export async function saveEntry(entry: SpriteLabEntry): Promise<void> {
     const request = store.put(entry);
 
     request.onerror = () => {
-      console.error('[SpriteLabDB] Failed to save entry:', request.error);
       reject(request.error);
     };
 
     request.onsuccess = () => {
-      console.log('[SpriteLabDB] Saved entry:', entry.id);
       resolve();
     };
 
@@ -110,7 +105,6 @@ export async function getEntry(id: string): Promise<SpriteLabEntry | null> {
     const request = store.get(id);
 
     request.onerror = () => {
-      console.error('[SpriteLabDB] Failed to get entry:', request.error);
       reject(request.error);
     };
 
@@ -138,7 +132,6 @@ export async function listEntries(): Promise<SpriteLabEntry[]> {
     const request = index.getAll();
 
     request.onerror = () => {
-      console.error('[SpriteLabDB] Failed to list entries:', request.error);
       reject(request.error);
     };
 
@@ -217,12 +210,10 @@ export async function deleteEntry(id: string): Promise<void> {
     const request = store.delete(id);
 
     request.onerror = () => {
-      console.error('[SpriteLabDB] Failed to delete entry:', request.error);
       reject(request.error);
     };
 
     request.onsuccess = () => {
-      console.log('[SpriteLabDB] Deleted entry:', id);
       resolve();
     };
 

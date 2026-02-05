@@ -104,7 +104,6 @@ export async function POST(request: NextRequest) {
     // This ensures we never overwrite existing frames
     const version = generateVersionId();
 
-    console.log(`[AnimFrames] Generating ${numFrames} frame(s) for ${creatureId}/${growthStage}/${action} (${version})`);
 
     // Generate each frame
     const frameUrls: string[] = [];
@@ -112,12 +111,10 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < numFrames; i++) {
       const prompt = buildFramePrompt(action as AnimationAction, i);
 
-      console.log(`[AnimFrames] Generating frame ${i + 1}/${numFrames} with prompt: "${prompt}"`);
 
       try {
         // Use Nano Banana Pro (Google Gemini 3 Pro Image) - SOTA semantic editing
         // Understands natural language edits without masks or manual selection
-        console.log(`[AnimFrames] Using Nano Banana Pro for ${action} frame ${i}`);
 
         const result = await fal.subscribe('fal-ai/nano-banana-pro/edit', {
           input: {
@@ -129,14 +126,12 @@ export async function POST(request: NextRequest) {
         });
 
         if (!result.data?.images?.[0]?.url) {
-          console.error(`[AnimFrames] No image returned for frame ${i}`);
           continue;
         }
 
         // Download and upload to our storage
         const imageResponse = await fetch(result.data.images[0].url);
         if (!imageResponse.ok) {
-          console.error(`[AnimFrames] Failed to download frame ${i}`);
           continue;
         }
 
@@ -153,10 +148,8 @@ export async function POST(request: NextRequest) {
 
         // No cache busting needed - the versioned path is unique
         frameUrls.push(uploadResult.url);
-        console.log(`[AnimFrames] Frame ${i + 1} uploaded: ${uploadResult.url}`);
 
       } catch (frameError: any) {
-        console.error(`[AnimFrames] Error generating frame ${i}:`, frameError.message);
         // Continue with other frames
       }
     }
@@ -191,7 +184,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[AnimFrames] Error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to generate animation frames' },
       { status: 500 }
@@ -212,7 +204,6 @@ async function updateCreatureAnimations(
     const creatures = await downloadGameData<Record<string, Creature>>('creatures', {});
 
     if (!creatures[creatureId]) {
-      console.warn(`[AnimFrames] Creature ${creatureId} not found`);
       return;
     }
 
@@ -229,9 +220,7 @@ async function updateCreatureAnimations(
     creatures[creatureId].updatedAt = Date.now();
 
     await uploadGameData('creatures', creatures);
-    console.log(`[AnimFrames] Updated creature ${creatureId} with ${stage}/${action} animation`);
   } catch (error) {
-    console.error('[AnimFrames] Failed to update creature:', error);
   }
 }
 
@@ -288,7 +277,6 @@ export async function GET(request: NextRequest) {
       animations: creature.animations || null,
     });
   } catch (error: any) {
-    console.error('[AnimFrames] GET error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to get animation data' },
       { status: 500 }

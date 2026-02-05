@@ -1,0 +1,63 @@
+Implement the new level and biome structure for the roguelite fish game as follows. This structure supports procedural progression, AI art generation, ecosystem dynamics (prey flee, predator hunts, carcass scavenging), and the "build" meta with essence collection for mutations/fusions. Use a nested JSON data format for loading in scripts like level-gen.ts, with references to fish from BLOB_CREATURES.md (updated with base_meters, base_art_scale, and sub_depth assignments). Ensure compatibility with existing batch-update-creature-metadata.ts for patching without full regens.
+Core Concepts:
+
+Biomes: 5 broader categories (Shallows, Mid-Waters, Polluted Zones, Deep Waters, Abyssal Depths). Biomes unlock via achievements/essence (e.g., Shallows starts free, others cost 100+ essence). Polluted Zones acts as a modifier for overlaps (e.g., Polluted Shallows merges fish pools and adds toxic art modifiers).
+Levels per Biome: 3 levels to spread progression (e.g., Shallows Levels 1-3 ramp hardness before unlocking Mid-Waters). Each level has 4 main tasks (hunt/scavenge/survive), plus bonuses (extra essence/size) and fails (health loss/penalties).
+Sub-Depths per Level: 3 tiers (Upper, Mid, Lower) for descent fantasy. Unlocked by player growth stages based on art_size (rendering units, 20-300 range):
+Upper: 0+ art_size (juvenile starters, small prey focus, +0-50 gains per task).
+Mid: 100+ art_size (adult intro, mixed prey/predators, +20-80 gains).
+Lower: 200+ art_size (elder apex, bosses/fusions, +40-100 gains).
+Gains: Variable +0-100 per task/essence/bonus, cumulative to cap at ~300 by Shallows Level 3 end (overflow to mutations). Art_size independent of meters (realistic sizes 0.2-1.2m for prompts/logic).
+
+Fish Assignment: From reorganized BLOB_CREATURES.md – small/low-tier to Upper (prey schools), mid-tier to Mid (balanced dynamics), large/high-tier to Lower (predators/bosses). Procedural spawns weighted by rarity/tier.
+Art/Rendering: Meters feed AI prompts (e.g., "elder [name] at 1.2m in lower deep waters, pixel art with biolum scars"). Art_scale for in-game scaling (integer factors for pixel-perfect, e.g., 4x at 200+). Backgrounds per sub-depth (AI gens with modifiers like "murky lower" + biome theme).
+Ecosystem Ties: Prey flees predators in deeper subs; carcasses yield essence based on meters. Mutations/fusions regen sprites with amplified details.
+Overlaps/Combos: For e.g., Polluted Shallows – merge 70% Shallows fish + 30% Polluted, append "toxic haze" to prompts/backgrounds.
+
+JSON Data Structure (creatures.json or per-biome files in /docs/biomes):
+{
+"biomes": {
+"shallows": {
+"display_name": "Shallows",
+"unlock_cost": 0,
+"essence_types": { "primary": "shallow" },
+"visual_theme": "Bright coral reef",
+"art_modifiers": ["vibrant colors", "sunlit"],
+"levels": [
+{
+"level_id": 1,  // Easier starters
+"sub_depths": {
+"upper": {
+"fish": [  // Array of refs with spawn_weight, growth_range [min,max]
+{ "id": "goldfish_starter", "spawn_weight": 10, "growth_range": [0, 50] },
+// Add more from BLOB_CREATURES Upper assignments
+],
+"backgrounds": ["sunny_upper_reef"],  // Prompt chunks/assets
+"tasks": [  // 4 main + bonuses/fails
+{ "type": "hunt", "target": "Eat 5 prey", "reward": { "essence": 20, "size_gain": 30 }, "bonus": { "type": "fuse", "reward": 50 }, "fail": { "condition": "Health <10", "penalty": -20 } }
+// Add 3 more tasks
+]
+},
+"mid": { /* Similar, harder fish/tasks, growth_range [20,80] / },
+"lower": { / Boss focus, growth_range [40,100] / }
+}
+},
+{ "level_id": 2 / Mid ramp, bumped bases / },
+{ "level_id": 3 / Final push, cap 300 / }
+],
+"overlaps": ["polluted_zones"]  // For procedural merges
+},
+"mid_waters": { / Similar structure / },
+"polluted_zones": { / Modifier biome / },
+"deep_waters": { / Merged deep/deep_sea / },
+"abyssal_depths": { / Endgame */ }
+}
+}
+Implementation Steps:
+
+Load JSON in level-gen.ts: Select biome/level based on player progress (e.g., complete 3 levels to unlock next biome).
+Runtime Progression in player-growth.ts: On task/essence gain, add to art_size; check thresholds (e.g., if >=100 && current_sub_depth == 'upper', unlock 'mid', refresh spawns/backgrounds with descent event).
+Spawns: Weighted random from sub_depth.fish; scale base_meters by level (e.g., *1.1 for Level 2). For overlaps, merge arrays and modifiers.
+Art Gen in batch-generate-fish.ts: Use meters + sub_depth + biome.art_modifiers in prompts (e.g., "Generate at [meters]m in [visual_theme] [sub_depth]").
+Balance: Ramp gains/tasks by level/sub-depth; cap art_size at 300 (overflow to essence/mutations). Ecosystem: Prey flee if predator meters > prey *1.5; carcass yields = meters * tier.
+Testing: Simulate Shallows Levels 1-3: Start art_size 60, gain to 300; verify unlocks, gens, overlaps (e.g., add toxic for polluted combo).

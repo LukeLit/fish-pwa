@@ -63,11 +63,10 @@ async function withRetry<T>(
       lastErr = err;
       const isAbort = err instanceof Error && err.name === 'AbortError';
       // eslint-disable-next-line no-console
-      console.warn(`  ⚠ ${label} attempt ${attempt}/${MAX_RETRIES} failed${isAbort ? ' (timeout)' : ''}:`, err instanceof Error ? err.message : err);
+      // Retry attempt failed silently
       if (attempt < MAX_RETRIES) {
         const backoffMs = Math.min(5_000 * attempt, 15_000);
         // eslint-disable-next-line no-console
-        console.warn(`  ⏳ Retrying in ${backoffMs / 1000}s...`);
         await new Promise((r) => setTimeout(r, backoffMs));
       }
     }
@@ -225,7 +224,6 @@ async function main() {
     const skipped = allParsed.length - toProcess.length;
     if (skipped > 0) {
       // eslint-disable-next-line no-console
-      console.log(`Skipping ${skipped} fish that already exist in blob storage (set BATCH_SKIP_EXISTING=0 to regenerate all).\n`);
     }
   }
 
@@ -235,7 +233,6 @@ async function main() {
   toProcess = toProcess.slice(0, limit);
   if (limit < allParsed.length || (skipExisting && toProcess.length < allParsed.length)) {
     // eslint-disable-next-line no-console
-    console.log(`Processing ${toProcess.length} fish (${allParsed.length} total in docs).\n`);
   }
 
   let successCount = 0;
@@ -244,22 +241,20 @@ async function main() {
   for (let i = 0; i < toProcess.length; i++) {
     const fish = toProcess[i];
     // eslint-disable-next-line no-console
-    console.log(`\n🧬 [${i + 1}/${toProcess.length}] Generating creature: ${fish.id} (${fish.name}) [${fish.biome}]`);
     try {
       const result = await generateForFish(fish);
       if (result.success) {
         successCount++;
         // eslint-disable-next-line no-console
-        console.log(`  ✅ Uploaded creature ${result.id}`);
       } else {
         failCount++;
         // eslint-disable-next-line no-console
-        console.warn(`  ❌ Failed for ${result.id}: ${result.error}`);
+        // Creature upload failed silently
       }
     } catch (err) {
       failCount++;
       // eslint-disable-next-line no-console
-      console.error(`  ❌ Unexpected error for ${fish.id}:`, err);
+      // Unexpected error occurred silently
     }
     if (i < toProcess.length - 1 && DELAY_BETWEEN_FISH_MS > 0) {
       await delay(DELAY_BETWEEN_FISH_MS);
@@ -267,7 +262,6 @@ async function main() {
   }
 
   // eslint-disable-next-line no-console
-  console.log('\n' + '='.repeat(40));
   // eslint-disable-next-line no-console
   console.log(`✅ Success: ${successCount}`);
   // eslint-disable-next-line no-console
@@ -280,7 +274,7 @@ if (require.main === module) {
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   main().catch((err) => {
     // eslint-disable-next-line no-console
-    console.error('Batch generation failed:', err);
+    // Batch generation failed silently
     process.exit(1);
   });
 }

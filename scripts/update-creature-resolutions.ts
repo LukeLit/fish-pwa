@@ -123,29 +123,15 @@ function delay(ms: number): Promise<void> {
 }
 
 async function main() {
-  console.log('='.repeat(60));
-  console.log('Creature Metadata spriteResolutions Updater');
-  console.log('='.repeat(60));
-  console.log(`Base URL: ${BASE_URL}`);
-  console.log(`Dry run: ${DRY_RUN}`);
-  console.log(`Limit: ${LIMIT === Infinity ? 'all' : LIMIT}`);
-  console.log('');
-
   // 1. List all creature metadata files
-  console.log('Listing creature metadata files...');
   const metadataFiles = await listCreatureMetadata();
-  console.log(`Found ${metadataFiles.length} creature metadata files`);
-  console.log('');
 
   if (metadataFiles.length === 0) {
-    console.log('No creature metadata files found. Nothing to do!');
     return;
   }
 
   // 2. Process each metadata file
   const toProcess = metadataFiles.slice(0, LIMIT);
-  console.log(`Processing ${toProcess.length} creatures...`);
-  console.log('');
 
   let processed = 0;
   let updated = 0;
@@ -154,16 +140,13 @@ async function main() {
 
   for (const asset of toProcess) {
     const creatureId = asset.filename?.replace('.json', '') || asset.pathname.split('/').pop()?.replace('.json', '') || 'unknown';
-    console.log(`[${processed + 1}/${toProcess.length}] ${creatureId}`);
 
     try {
       // Download current metadata
-      console.log('  Downloading metadata...');
       const metadata = await downloadMetadata(asset.url);
 
       // Check if already has spriteResolutions
       if (metadata.spriteResolutions) {
-        console.log('  Already has spriteResolutions, skipping');
         skipped++;
         processed++;
         continue;
@@ -171,7 +154,6 @@ async function main() {
 
       // Check if has a sprite URL
       if (!metadata.sprite) {
-        console.log('  No sprite URL found, skipping');
         skipped++;
         processed++;
         continue;
@@ -180,19 +162,12 @@ async function main() {
       // Generate spriteResolutions
       const resolutions = generateSpriteResolutions(metadata.sprite);
       if (!resolutions) {
-        console.log('  Could not generate resolutions from sprite URL, skipping');
         skipped++;
         processed++;
         continue;
       }
 
-      console.log(`  Generated resolutions:`);
-      console.log(`    high:   ${resolutions.high.substring(0, 60)}...`);
-      console.log(`    medium: ${resolutions.medium.substring(0, 60)}...`);
-      console.log(`    low:    ${resolutions.low.substring(0, 60)}...`);
-
       if (DRY_RUN) {
-        console.log('  [DRY RUN] Would update metadata');
         updated++;
         processed++;
         continue;
@@ -202,17 +177,13 @@ async function main() {
       metadata.spriteResolutions = resolutions;
 
       // Upload updated metadata via API
-      console.log('  Uploading updated metadata...');
       const newUrl = await uploadMetadata(creatureId, metadata);
-      console.log(`  Uploaded: ${newUrl}`);
 
       updated++;
       processed++;
-      console.log('  Done!');
     } catch (error) {
       failed++;
       processed++;
-      console.error(`  ERROR: ${error instanceof Error ? error.message : error}`);
     }
 
     // Delay between creatures
@@ -220,18 +191,8 @@ async function main() {
       await delay(DELAY_MS);
     }
   }
-
-  console.log('');
-  console.log('='.repeat(60));
-  console.log('Summary');
-  console.log('='.repeat(60));
-  console.log(`Processed: ${processed}`);
-  console.log(`Updated: ${updated}`);
-  console.log(`Skipped (already had resolutions or no sprite): ${skipped}`);
-  console.log(`Failed: ${failed}`);
 }
 
-main().catch((error) => {
-  console.error('Fatal error:', error);
+main().catch(() => {
   process.exit(1);
 });

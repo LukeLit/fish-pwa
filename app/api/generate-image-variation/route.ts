@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[GenerateVariation] Starting with:', {
+    {
       imageUrl: body.imageUrl.substring(0, 50) + '...',
       prompt: body.prompt.substring(0, 100) + '...',
       strength: body.strength,
@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
       logs: true,
       onQueueUpdate: (update) => {
         if (update.status === 'IN_PROGRESS') {
-          console.log('[GenerateVariation] Progress:', update.logs?.map(l => l.message).join(', '));
         }
       },
     }) as { data: { images: Array<{ url: string }> }; requestId: string };
@@ -63,7 +62,6 @@ export async function POST(request: NextRequest) {
     const images = result.data?.images || (result as unknown as { images: Array<{ url: string }> }).images;
 
     if (!images || images.length === 0) {
-      console.error('[GenerateVariation] No images in result:', result);
       return NextResponse.json(
         { error: 'No image generated' },
         { status: 500 }
@@ -71,14 +69,12 @@ export async function POST(request: NextRequest) {
     }
 
     const generatedUrl = images[0].url;
-    console.log('[GenerateVariation] Generated:', generatedUrl);
 
     return NextResponse.json({
       success: true,
       imageUrl: generatedUrl,
     });
   } catch (error) {
-    console.error('[GenerateVariation] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to generate variation',

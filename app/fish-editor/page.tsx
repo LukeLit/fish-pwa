@@ -160,7 +160,6 @@ export default function FishEditorPage() {
 
     } catch (error) {
       devLog('Refresh', 'Refresh failed', error, 'error');
-      console.error('[FishEditor] Refresh failed:', error);
     } finally {
       setIsRefreshing(false);
     }
@@ -195,7 +194,6 @@ export default function FishEditorPage() {
    * - Sets player to a random playable fish from that biome
    */
   const handleBiomeSelect = useCallback(async (biomeId: string, biomeFish: FishData[]) => {
-    console.log(`[FishEditor] Biome selected: ${biomeId}, ${biomeFish.length} fish`);
 
     // 1. Fetch and set a background for this biome
     try {
@@ -210,13 +208,10 @@ export default function FishEditorPage() {
           // Pick a random background from this biome
           const randomBg = biomeBackgrounds[Math.floor(Math.random() * biomeBackgrounds.length)];
           setSelectedBackground(randomBg.url);
-          console.log(`[FishEditor] Set background for biome ${biomeId}: ${randomBg.url}`);
-        } else {
-          console.log(`[FishEditor] No backgrounds found for biome ${biomeId}`);
         }
       }
     } catch (error) {
-      console.error('[FishEditor] Failed to fetch biome backgrounds:', error);
+      // Handle background fetch error silently
     }
 
     // 2. Clear existing spawned fish
@@ -227,7 +222,6 @@ export default function FishEditorPage() {
     // 3. Filter to fish with sprites and spawn them all
     const fishWithSprites = biomeFish.filter(fish => fish.sprite);
     if (fishWithSprites.length === 0) {
-      console.log(`[FishEditor] No fish with sprites in biome ${biomeId}`);
       return;
     }
 
@@ -250,7 +244,6 @@ export default function FishEditorPage() {
       }
     });
     setSpawnedFish(newSpawnedFish);
-    console.log(`[FishEditor] Spawned ${newSpawnedFish.length} fish for biome ${biomeId}`);
 
     // 4. Set player to a random playable fish from this biome (or any fish if none are playable)
     const playableFish = fishWithSprites.filter(fish => fish.playable);
@@ -259,7 +252,6 @@ export default function FishEditorPage() {
       : fishWithSprites[Math.floor(Math.random() * fishWithSprites.length)];
 
     setPlayerCreatureId(playerCandidate.id);
-    console.log(`[FishEditor] Set player to: ${playerCandidate.name} (${playerCandidate.id})`);
   }, []);
 
   // Load all creatures and apply first biome (shallows) on mount
@@ -292,7 +284,7 @@ export default function FishEditorPage() {
           setSelectedBackground(randomBg.url);
         }
       } catch (error) {
-        console.error('Failed to load random assets:', error);
+        // Handle random assets loading error silently
       }
     };
 
@@ -302,7 +294,6 @@ export default function FishEditorPage() {
         const creatures = await loadAllCreatures();
 
         if (creatures.length > 0) {
-          console.log(`[FishEditor] Loaded ${creatures.length} creatures from shared loader`);
 
           const newFishData = new Map<string, FishData>();
           creatures.forEach((creature) => {
@@ -371,7 +362,7 @@ export default function FishEditorPage() {
           setFishData(newFishData);
         }
       } catch (error) {
-        console.error('[FishEditor] Failed to load creatures from shared loader:', error);
+        // Handle creatures loading error silently
       }
     };
 
@@ -585,17 +576,13 @@ export default function FishEditorPage() {
   const handleGenerateGrowthSprites = useCallback(async () => {
     const selectedFish = selectedFishId ? getCreatureData(selectedFishId) : null;
     if (!selectedFish) {
-      console.error('[GrowthSprites] No fish selected');
       return;
     }
 
     if (!selectedFish.sprite) {
-      console.error('[GrowthSprites] Selected fish has no sprite:', selectedFish.id);
       alert('This fish has no sprite image. Cannot generate growth sprites.');
       return;
     }
-
-    console.log('[GrowthSprites] Starting generation for:', selectedFish.id, 'sprite:', selectedFish.sprite);
     setIsGeneratingGrowth(true);
     setGrowthGenerationStatus('Starting generation...');
 
@@ -638,8 +625,6 @@ export default function FishEditorPage() {
         formData.append('creatureId', selectedFish.id);
         formData.append('metadata', JSON.stringify(updatedFish));
 
-        console.log('[GrowthSprites] Saving metadata with growthSprites:', Object.keys(result.growthSprites));
-
         const saveResponse = await fetch('/api/save-creature', {
           method: 'POST',
           body: formData,
@@ -647,19 +632,17 @@ export default function FishEditorPage() {
 
         if (!saveResponse.ok) {
           const errorText = await saveResponse.text();
-          console.error('[GrowthSprites] Save failed:', errorText);
           throw new Error(`Failed to save: ${errorText}`);
         }
 
         const saveResult = await saveResponse.json();
-        console.log('[GrowthSprites] Save complete, metadata has growthSprites:', !!saveResult.metadata?.growthSprites);
 
         setGrowthGenerationStatus('Growth sprites generated!');
       } else {
         setGrowthGenerationStatus('Generation completed but no sprites returned');
       }
     } catch (error) {
-      console.error('[FishEditor] Growth sprite generation error:', error);
+      // Handle growth sprite generation error silently
       setGrowthGenerationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsGeneratingGrowth(false);
@@ -757,8 +740,8 @@ export default function FishEditorPage() {
               onClick={() => handleSaveFish(selectedFish)}
               disabled={!hasPendingChanges}
               className={`w-10 h-10 rounded-lg shadow-lg border flex items-center justify-center transition-colors ${hasPendingChanges
-                  ? 'bg-green-700 hover:bg-green-600 border-green-500 text-white'
-                  : 'bg-gray-700 border-gray-600 text-gray-500 cursor-not-allowed'
+                ? 'bg-green-700 hover:bg-green-600 border-green-500 text-white'
+                : 'bg-gray-700 border-gray-600 text-gray-500 cursor-not-allowed'
                 }`}
               title={hasPendingChanges ? "Save Creature" : "No changes to save"}
             >
@@ -1006,7 +989,7 @@ export default function FishEditorPage() {
             showEditButtons={paused}
             fishData={fishData}
             paused={paused}
-            onCacheRefreshed={() => console.log('[FishEditor] Cache refreshed!')}
+            onCacheRefreshed={() => { }}
           />
         </div>
 
@@ -1123,11 +1106,7 @@ export default function FishEditorPage() {
                   }
 
                   // Log growth stage changes (sprite swap is handled by updateFishSize event)
-                  if (oldGrowthStage !== newGrowthStage) {
-                    console.log(`[Growth] Size slider crossed growth stage: ${oldGrowthStage} -> ${newGrowthStage} (size: ${oldSize} -> ${newSize})`);
-                  } else if (oldTier !== newTier) {
-                    console.log(`[Mipmap] Size slider crossed threshold: ${oldTier} -> ${newTier} (size: ${oldSize} -> ${newSize}, screen: ${Math.round(newSize * zoom)}px)`);
-                  }
+                  // Size slider stage/tier changes handled silently
                 }}
                 className="absolute h-28 lg:h-48 w-6 cursor-pointer appearance-none bg-transparent
                 [writing-mode:vertical-lr] [direction:rtl]

@@ -12,10 +12,7 @@ interface BlobAsset {
 }
 
 async function recoverSprites() {
-  console.log('=== Recovering Original Sprites ===\n');
-
   // Step 1: List all @256 variants in creatures/
-  console.log('Fetching @256 variant files...');
   const listResponse = await fetch(`${BASE_URL}/api/list-assets?prefix=creatures&includeJson=false`);
 
   if (!listResponse.ok) {
@@ -30,10 +27,7 @@ async function recoverSprites() {
     return pathname.includes('@256.png');
   });
 
-  console.log(`Found ${variantFiles.length} @256 variant files to recover\n`);
-
   if (variantFiles.length === 0) {
-    console.log('No @256 variants found. Nothing to recover.');
     return;
   }
 
@@ -49,15 +43,11 @@ async function recoverSprites() {
       .replace('assets/creatures/', '')
       .replace('@256.png', '.png');
 
-    console.log(`[${i + 1}/${variantFiles.length}] ${originalFilename}`);
-
     try {
       // Download the @256 variant
-      console.log(`  Downloading ${pathname.split('/').pop()}...`);
       const imageResponse = await fetch(asset.url);
 
       if (!imageResponse.ok) {
-        console.log(`  ✗ Failed to download: ${imageResponse.statusText}`);
         errorCount++;
         continue;
       }
@@ -66,7 +56,6 @@ async function recoverSprites() {
       const base64Image = Buffer.from(imageBuffer).toString('base64');
 
       // Upload as the original filename (without generating new variants)
-      console.log(`  Uploading as ${originalFilename}...`);
       const saveResponse = await fetch(`${BASE_URL}/api/save-sprite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,24 +68,16 @@ async function recoverSprites() {
       });
 
       if (!saveResponse.ok) {
-        const errorText = await saveResponse.text();
-        console.log(`  ✗ Failed to save: ${errorText}`);
         errorCount++;
         continue;
       }
 
-      console.log(`  ✓ Recovered successfully`);
       successCount++;
 
     } catch (error) {
-      console.log(`  ✗ Error: ${error}`);
       errorCount++;
     }
   }
-
-  console.log('\n=== Recovery Complete ===');
-  console.log(`Recovered: ${successCount}`);
-  console.log(`Errors: ${errorCount}`);
 }
 
-recoverSprites().catch(console.error);
+recoverSprites().catch(() => {});

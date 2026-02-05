@@ -12,7 +12,6 @@ const isDev = process.env.NODE_ENV === 'development';
 function devLog(message: string, data?: unknown) {
   if (isDev) {
     const timestamp = new Date().toISOString();
-    console.log(`[ListCreatures] ${timestamp} - ${message}`, data || '');
   }
 }
 
@@ -71,7 +70,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const duration = Math.round(performance.now() - startTime);
     devLog(`Request failed after ${duration}ms`, error);
-    console.error('[ListCreatures] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to list creatures',
@@ -99,7 +97,6 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
     const metadataBlobs = blobs.filter(blob => blob.pathname.endsWith('.json'));
 
     if (metadataBlobs.length === 0) {
-      console.log('[ListCreatures] No creature files found in blob storage');
       return [];
     }
 
@@ -113,7 +110,6 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
           });
 
           if (!response.ok) {
-            console.warn(`[ListCreatures] HTTP ${response.status} for ${blob.pathname}`);
             return null;
           }
 
@@ -122,7 +118,6 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
           // Validate it looks like JSON before parsing
           const trimmed = text.trim();
           if (!trimmed.startsWith('{')) {
-            console.warn(`[ListCreatures] Non-JSON content for ${blob.pathname}: ${trimmed.substring(0, 50)}`);
             return null;
           }
 
@@ -130,13 +125,11 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
 
           // Validate the creature has required fields
           if (!creature.id) {
-            console.warn(`[ListCreatures] Creature missing id: ${blob.pathname}`);
             return null;
           }
 
           return creature;
         } catch (error) {
-          console.warn(`[ListCreatures] Error loading ${blob.pathname}:`, error);
           return null;
         }
       })
@@ -186,9 +179,7 @@ async function loadCreaturesFromBlobs(): Promise<Creature[]> {
       }
     }
 
-    console.log(`[ListCreatures] Loaded ${creatures.length}/${metadataBlobs.length} creatures`);
   } catch (error) {
-    console.error('[ListCreatures] Error listing blobs:', error);
   }
 
   return creatures;

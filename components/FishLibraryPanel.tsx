@@ -87,7 +87,6 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
   // Listen for sprite refresh events to update thumbnails and reload list
   useEffect(() => {
     const handleRefresh = async () => {
-      console.log('[FishLibraryPanel] Refresh event received - reloading creatures and updating thumbnails');
       setThumbnailVersion(v => v + 1);
       // Also reload the creatures list to get fresh metadata/URLs
       try {
@@ -97,7 +96,7 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
           setCreatures(result.creatures || []);
         }
       } catch (err) {
-        console.error('[FishLibraryPanel] Failed to reload creatures:', err);
+        // Handle creature reload error silently
       }
     };
     window.addEventListener('refreshFishSprites', handleRefresh);
@@ -149,7 +148,7 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
         setError(result.error || 'Failed to load creatures');
       }
     } catch (err) {
-      console.error('Failed to load creatures:', err);
+      // Handle creatures loading error silently
       setError('Failed to load creatures');
     } finally {
       setLoading(false);
@@ -231,7 +230,7 @@ export default function FishLibraryPanel({ onSelectFish, onAddNew, onSetPlayer, 
                         className="w-full h-full object-contain"
                         onError={(e) => {
                           // On error, log and hide the broken image
-                          console.warn('Failed to load sprite for:', creature.id);
+                          // Failed to load sprite silently
                           e.currentTarget.style.display = 'none';
                         }}
                       />

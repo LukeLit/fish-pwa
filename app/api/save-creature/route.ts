@@ -22,7 +22,6 @@ const isDev = process.env.NODE_ENV === 'development';
 function devLog(message: string, data?: unknown) {
   if (isDev) {
     const timestamp = new Date().toISOString();
-    console.log(`[SaveCreature] ${timestamp} - ${message}`, data || '');
   }
 }
 
@@ -62,12 +61,10 @@ export async function POST(request: NextRequest) {
       // Find and delete existing metadata
       const existingMetadata = await list({ prefix: `assets/creatures/${creatureId}.json` });
       for (const blob of existingMetadata.blobs) {
-        console.log('[SaveCreature] Deleting existing metadata:', blob.url);
         await del(blob.url);
       }
     } catch (deleteErr) {
       // Continue even if delete fails - file might not exist
-      console.log('[SaveCreature] Delete step (non-fatal):', deleteErr);
     }
 
     // Upload sprite if provided
@@ -79,7 +76,6 @@ export async function POST(request: NextRequest) {
       const baseFilename = `${creatureId}.png`;
 
       // Generate multi-resolution variants
-      console.log('[SaveCreature] Generating resolution variants for:', creatureId);
       const variants = await generateResolutionVariants(buffer);
 
       // Delete existing resolution variants before uploading new ones
@@ -92,12 +88,10 @@ export async function POST(request: NextRequest) {
         for (const filename of variantFilenames) {
           const existing = await list({ prefix: `assets/creatures/${filename}` });
           for (const blob of existing.blobs) {
-            console.log('[SaveCreature] Deleting existing variant:', blob.url);
             await del(blob.url);
           }
         }
       } catch (deleteErr) {
-        console.log('[SaveCreature] Variant delete step (non-fatal):', deleteErr);
       }
 
       // Upload all 3 variants in parallel
@@ -114,7 +108,6 @@ export async function POST(request: NextRequest) {
         low: lowResult.url,
       };
 
-      console.log('[SaveCreature] Saved all resolution variants:', spriteResolutions);
 
       // Update metadata with sprite URL and resolutions BEFORE saving metadata
       metadata.sprite = spriteUrl;
@@ -130,7 +123,6 @@ export async function POST(request: NextRequest) {
 
     // Double-check sprite URL is in metadata
     if (spriteUrl && metadata.sprite !== spriteUrl) {
-      console.warn('[SaveCreature] WARNING: metadata.sprite does not match spriteUrl, fixing...');
       metadata.sprite = spriteUrl;
     }
 
@@ -148,7 +140,7 @@ export async function POST(request: NextRequest) {
     const savedMetadata = await verifyResponse.json();
 
     if (savedMetadata.sprite !== spriteUrl) {
-      console.error('[SaveCreature] ERROR: Saved metadata sprite does not match uploaded sprite URL!', {
+      {
         expected: spriteUrl,
         got: savedMetadata.sprite,
       });
@@ -195,7 +187,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const duration = Math.round(performance.now() - startTime);
     devLog(`Save failed after ${duration}ms`, error);
-    console.error('[SaveCreature] Error:', error);
 
     // Check if error is due to missing BLOB_READ_WRITE_TOKEN
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

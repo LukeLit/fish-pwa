@@ -106,7 +106,6 @@ export class GameEngine {
     this.loadBackgroundImage();
     // Start game asynchronously
     this.start().catch(err => {
-      console.error('Failed to start game:', err);
     });
   }
 
@@ -119,7 +118,6 @@ export class GameEngine {
 
     const biome = getBiome(this.currentBiomeId);
     if (!biome) {
-      console.error(`Biome ${this.currentBiomeId} not found`);
       this.isLoadingBackground = false;
       return;
     }
@@ -129,7 +127,6 @@ export class GameEngine {
       this.p5Instance.loadImage(biome.backgroundAssets.backgroundImage, (img: p5.Image) => {
         this.backgroundImage = img;
       }, () => {
-        console.warn(`Failed to load background: ${biome.backgroundAssets.backgroundImage}`);
       });
     }
 
@@ -140,7 +137,6 @@ export class GameEngine {
         this.p5Instance?.loadImage(elementUrl, (img: p5.Image) => {
           this.stageElementImages.push(img);
         }, () => {
-          console.warn(`Failed to load stage element: ${elementUrl}`);
         });
       });
     }
@@ -753,7 +749,6 @@ export class GameEngine {
 
     void creature.then(creatureData => {
       if (!creatureData) {
-        console.warn(`Creature ${creatureId} not found for essence drop`);
         return;
       }
 
@@ -807,7 +802,6 @@ export class GameEngine {
         saveRunState(runState);
       }
     }).catch((err: Error) => {
-      console.error('Error processing essence drop:', err);
     });
   }
 
@@ -953,7 +947,7 @@ export class GameEngine {
     // Offer to mint fish if on fxhash and conditions met
     if (this.fxhash.isAvailable() && this.player.stats.maxSize >= 50 && this.player.mutations.length > 0) {
       // Could trigger minting UI here
-      console.log('Fish eligible for minting:', {
+      {
         mutations: this.player.mutations,
         maxSize: this.player.stats.maxSize,
         phase: this.phases.getCurrentPhase(),

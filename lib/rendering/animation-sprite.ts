@@ -5,9 +5,9 @@
  * Much simpler and more reliable than video-based animation.
  */
 
-import type { 
-  AnimationAction, 
-  AnimationSequence, 
+import type {
+  AnimationAction,
+  AnimationSequence,
   CreatureAnimations,
   GrowthStage
 } from '@/lib/game/types';
@@ -46,7 +46,7 @@ export class AnimationSprite {
   private isPlaying: boolean = true;
   private defaultAction: AnimationAction;
   private chromaTolerance: number;
-  
+
   // Cached processed frames (with chroma key removed)
   private frameImages: Map<string, CanvasImageSource> = new Map();
   private loadedFrames: Set<string> = new Set();
@@ -62,7 +62,7 @@ export class AnimationSprite {
     this.chromaTolerance = options.chromaTolerance ?? DEFAULT_CHROMA_TOLERANCE;
 
     // Debug: log what animations we received
-    console.log(`[AnimationSprite] Created with stage=${this.currentStage}, animations:`, 
+    console.log(
       Object.keys(animations).map(stage => `${stage}: ${Object.keys(animations[stage as GrowthStage] || {}).join(', ')}`).join(' | ')
     );
 
@@ -118,7 +118,7 @@ export class AnimationSprite {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      
+
       img.onload = () => {
         // Apply chroma key removal to get transparent background
         const processedCanvas = removeBackground(img, this.chromaTolerance);
@@ -126,9 +126,9 @@ export class AnimationSprite {
         this.loadedFrames.add(url);
         resolve();
       };
-      
+
       img.onerror = () => {
-        console.error(`[AnimationSprite] Failed to load frame: ${url}`);
+        // Handle frame loading error silently
         reject(new Error(`Failed to load frame: ${url}`));
       };
 
@@ -171,7 +171,7 @@ export class AnimationSprite {
    */
   playAction(action: AnimationAction): void {
     if (!this.hasAction(action)) {
-      console.warn(`[AnimationSprite] Action not available: ${action}`);
+      // Action not available, using default
       return;
     }
 
@@ -185,9 +185,7 @@ export class AnimationSprite {
    * Trigger a one-shot action then return to default
    */
   triggerAction(action: AnimationAction): void {
-    console.log(`[AnimationSprite] triggerAction: ${action}, stage=${this.currentStage}`);
     const sequence = this.getSequence(this.currentStage, action);
-    console.log(`[AnimationSprite] sequence for ${action}:`, sequence ? `${sequence.frames?.length} frames` : 'null');
     if (!sequence || sequence.loop) {
       this.playAction(action);
       return;
@@ -220,7 +218,7 @@ export class AnimationSprite {
 
     const now = performance.now();
     const frameDuration = 1000 / sequence.frameRate;
-    
+
     if (now - this.lastFrameTime >= frameDuration) {
       this.lastFrameTime = now;
       this.currentFrame++;
@@ -231,10 +229,9 @@ export class AnimationSprite {
           this.currentFrame = 0;
         } else {
           // Non-looping animation completed - return to default action
-          console.log(`[AnimationSprite] Action ${this.currentAction} completed, returning to ${this.defaultAction}`);
           this.onActionComplete?.(this.currentAction);
           this.playAction(this.defaultAction);
-          
+
           // Return to default action
           if (this.currentAction !== this.defaultAction) {
             this.playAction(this.defaultAction);

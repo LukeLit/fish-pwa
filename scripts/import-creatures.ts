@@ -160,19 +160,16 @@ function applyMigration(creature: CreatureData): CreatureData {
   // Migrate description chunks if not present but description exists
   if (!migrated.descriptionChunks && migrated.description) {
     migrated.descriptionChunks = migrateDescriptionToChunks(migrated.description);
-    console.log(`    ℹ️  Auto-migrated description to ${migrated.descriptionChunks?.length || 0} chunks`);
   }
 
   // Extract visual motif if not present but description exists
   if (!migrated.visualMotif && migrated.description) {
     migrated.visualMotif = extractVisualMotif(migrated.description);
-    console.log(`    ℹ️  Auto-extracted visual motif: "${migrated.visualMotif}"`);
   }
 
   // Migrate essence types to essence object if not present
   if (!migrated.essence && migrated.essenceTypes) {
     migrated.essence = migrateEssenceTypes(migrated.essenceTypes);
-    console.log(`    ℹ️  Auto-migrated essence types to essence object`);
   }
 
   // Ensure essenceTypes exists for backward compatibility
@@ -181,7 +178,6 @@ function applyMigration(creature: CreatureData): CreatureData {
       { type: migrated.essence.primary.type, baseYield: migrated.essence.primary.baseYield },
       ...(migrated.essence.secondary?.map(sec => ({ type: sec.type, baseYield: sec.baseYield })) || [])
     ];
-    console.log(`    ℹ️  Created legacy essenceTypes for backward compatibility`);
   }
 
   return migrated;
@@ -230,19 +226,13 @@ function validateCreature(creature: CreatureData): { valid: boolean; errors: str
 async function importCreatures(directory: string) {
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
   if (!blobToken) {
-    console.error('❌ BLOB_READ_WRITE_TOKEN environment variable not set');
     process.exit(1);
   }
-
-  console.log(`📁 Reading creatures from: ${directory}`);
-  console.log(`📦 Modular prompt system enabled`);
 
   const files = await readdir(directory);
   const jsonFiles = files.filter(f => extname(f) === '.json');
   const imageFiles = new Set(files.filter(f => ['.png', '.jpg', '.jpeg', '.webp'].includes(extname(f))));
 
-  console.log(`Found ${jsonFiles.length} creature definitions`);
-  console.log(`Found ${imageFiles.size} sprite images`);
 
   let successCount = 0;
   let failCount = 0;
@@ -250,7 +240,6 @@ async function importCreatures(directory: string) {
 
   for (const jsonFile of jsonFiles) {
     const creatureId = basename(jsonFile, '.json');
-    console.log(`\n📝 Processing: ${creatureId}`);
 
     try {
       // Read creature data
@@ -271,8 +260,6 @@ async function importCreatures(directory: string) {
       // Validate creature data
       const validation = validateCreature(creatureData);
       if (!validation.valid) {
-        console.log(`  ⚠️  Validation warnings for ${creatureId}:`);
-        validation.errors.forEach(err => console.log(`    - ${err}`));
       }
 
       // Find sprite file
@@ -281,7 +268,6 @@ async function importCreatures(directory: string) {
       for (const ext of possibleExtensions) {
         const spriteFile = `${creatureId}${ext}`;
         if (imageFiles.has(spriteFile)) {
-          console.log(`  🎨 Uploading sprite: ${spriteFile}`);
           const spritePath = join(directory, spriteFile);
           const spriteBuffer = await readFile(spritePath);
 
@@ -296,13 +282,11 @@ async function importCreatures(directory: string) {
             }
           );
           spriteUrl = spriteBlob.url;
-          console.log(`  ✅ Sprite uploaded: ${spriteUrl}`);
           break;
         }
       }
 
       if (!spriteUrl) {
-        console.log(`  ⚠️  No sprite found for ${creatureId}`);
       }
 
       // Update sprite URL in creature data
@@ -311,7 +295,6 @@ async function importCreatures(directory: string) {
       }
 
       // Upload creature metadata
-      console.log(`  📤 Uploading metadata...`);
       const metadataBlob = await put(
         `assets/creatures/${creatureId}.json`,
         JSON.stringify(creatureData, null, 2),
@@ -323,17 +306,14 @@ async function importCreatures(directory: string) {
         }
       );
 
-      console.log(`  ✅ Metadata uploaded: ${metadataBlob.url}`);
-      console.log(`  ✨ ${creatureId} imported successfully!`);
       successCount++;
 
     } catch (error) {
-      console.error(`  ❌ Failed to import ${creatureId}:`, error);
+      // Import failed silently
       failCount++;
     }
   }
 
-  console.log(`\n${'='.repeat(50)}`);
   console.log(`✅ Success: ${successCount}`);
   console.log(`❌ Failed: ${failCount}`);
   console.log(`🔄 Auto-migrated: ${migratedCount}`);

@@ -62,14 +62,12 @@ async function generateVariation(
     });
 
     if (!response.ok) {
-      console.error(`[GenerateGrowthSprites] Variation API error for ${stage}:`, await response.text());
       return null;
     }
 
     const result = await response.json();
     return result.imageUrl;
   } catch (error) {
-    console.error(`[GenerateGrowthSprites] Error generating ${stage} variation:`, error);
     return null;
   }
 }
@@ -137,14 +135,12 @@ async function uploadGrowthSprite(
       }
     }
 
-    console.log(`[GenerateGrowthSprites] Uploaded ${stage} sprites for ${creatureId}`);
 
     return {
       sprite: mainSpriteUrl,
       spriteResolutions,
     };
   } catch (error) {
-    console.error(`[GenerateGrowthSprites] Error uploading ${stage} sprite:`, error);
     return null;
   }
 }
@@ -160,12 +156,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[GenerateGrowthSprites] Starting for:', body.creatureId);
 
     const growthSprites: GrowthSprites = {};
 
     // Generate juvenile sprite
-    console.log('[GenerateGrowthSprites] Generating juvenile...');
     const juvenileUrl = await generateVariation(
       body.spriteUrl,
       'juvenile',
@@ -184,7 +178,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate elder sprite
-    console.log('[GenerateGrowthSprites] Generating elder...');
     const elderUrl = await generateVariation(
       body.spriteUrl,
       'elder',
@@ -202,7 +195,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[GenerateGrowthSprites] Complete for:', body.creatureId, {
+    {
       hasJuvenile: !!growthSprites.juvenile,
       hasElder: !!growthSprites.elder,
     });
@@ -212,7 +205,6 @@ export async function POST(request: NextRequest) {
       growthSprites,
     });
   } catch (error) {
-    console.error('[GenerateGrowthSprites] Error:', error);
     return NextResponse.json(
       {
         error: 'Failed to generate growth sprites',

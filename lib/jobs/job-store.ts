@@ -50,7 +50,6 @@ export async function createJob<T extends AnyJob>(job: Omit<T, 'createdAt' | 'up
   jobs[job.id] = fullJob;
   await uploadGameData(JOBS_KEY, jobs);
 
-  console.log(`[JobStore] Created job ${job.id} of type ${job.type}`);
   return fullJob;
 }
 
@@ -69,11 +68,9 @@ export async function updateJob<T extends AnyJob>(
       const jobs = await downloadGameData<Record<string, AnyJob>>(JOBS_KEY, {});
 
       if (!jobs[jobId]) {
-        console.error(`[JobStore] Job ${jobId} not found (attempt ${attempt + 1})`);
         // If job not found, might be a stale read - retry with longer delay
         if (attempt < maxRetries - 1) {
           const delay = 500 * (attempt + 1); // 500ms, 1s, 1.5s, 2s
-          console.log(`[JobStore] Retrying in ${delay}ms...`);
           await sleep(delay);
           continue;
         }
@@ -94,11 +91,9 @@ export async function updateJob<T extends AnyJob>(
       jobs[jobId] = updatedJob;
       await uploadGameData(JOBS_KEY, jobs);
 
-      console.log(`[JobStore] Updated job ${jobId}: status=${updatedJob.status}`);
       return updatedJob;
     } catch (error: any) {
       lastError = error;
-      console.error(`[JobStore] Update error for ${jobId} (attempt ${attempt + 1}):`, error.message);
       if (attempt < maxRetries - 1) {
         const delay = 500 * (attempt + 1);
         await sleep(delay);
@@ -106,7 +101,6 @@ export async function updateJob<T extends AnyJob>(
     }
   }
 
-  console.error(`[JobStore] Failed to update job ${jobId} after ${maxRetries} attempts:`, lastError?.message);
   return null;
 }
 
@@ -127,7 +121,6 @@ export async function deleteJob(jobId: string): Promise<boolean> {
   delete jobs[jobId];
   await uploadGameData(JOBS_KEY, jobs);
 
-  console.log(`[JobStore] Deleted job ${jobId}`);
   return true;
 }
 
@@ -152,7 +145,6 @@ export async function cleanupOldJobs(maxAgeHours: number = 24): Promise<number> 
 
   if (deleted > 0) {
     await uploadGameData(JOBS_KEY, jobs);
-    console.log(`[JobStore] Cleaned up ${deleted} old jobs`);
   }
 
   return deleted;

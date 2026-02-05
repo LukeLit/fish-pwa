@@ -34,17 +34,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('[Cron] Starting job processing...');
-
     const results: Record<string, any> = {};
 
     // Process clip generation jobs directly (no HTTP call)
     try {
       const processed = await processClipGenerationJobs();
       results.clipGeneration = processed;
-      console.log(`[Cron] Processed ${processed.processed} clip generation jobs`);
     } catch (error: any) {
-      console.error('[Cron] Clip generation error:', error);
       results.clipGeneration = { error: error.message };
     }
 
@@ -52,11 +48,7 @@ export async function GET(request: NextRequest) {
     try {
       const cleaned = await cleanupOldJobs(24);
       results.cleanup = { deleted: cleaned };
-      if (cleaned > 0) {
-        console.log(`[Cron] Cleaned up ${cleaned} old jobs`);
-      }
     } catch (error: any) {
-      console.error('[Cron] Cleanup error:', error);
       results.cleanup = { error: error.message };
     }
 
@@ -66,7 +58,6 @@ export async function GET(request: NextRequest) {
       results,
     });
   } catch (error: any) {
-    console.error('[Cron] Error:', error);
     return NextResponse.json(
       { error: 'Cron job failed', message: error.message },
       { status: 500 }
@@ -92,7 +83,6 @@ const DELAY_BETWEEN_JOBS_MS = 2000;
 async function processClipGenerationJobs(): Promise<{ processed: number; jobs: any[]; skipped: number }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.log('[Cron] GEMINI_API_KEY not configured, skipping clip processing');
     return { processed: 0, jobs: [], skipped: 0 };
   }
 
@@ -106,15 +96,9 @@ async function processClipGenerationJobs(): Promise<{ processed: number; jobs: a
     return { processed: 0, jobs: [], skipped: 0 };
   }
 
-  console.log(`[Cron] Found ${clipJobs.length} clip generation jobs to process`);
-
   // Limit to MAX_JOBS_PER_CRON to prevent burst API calls
   const jobsToProcess = clipJobs.slice(0, MAX_JOBS_PER_CRON);
   const skipped = clipJobs.length - jobsToProcess.length;
-
-  if (skipped > 0) {
-    console.log(`[Cron] Processing ${jobsToProcess.length} jobs, ${skipped} will be processed in next cron run`);
-  }
 
   // Process jobs SEQUENTIALLY (not in parallel) to avoid rate limits
   const results: ClipGenerationJob[] = [];
@@ -122,17 +106,14 @@ async function processClipGenerationJobs(): Promise<{ processed: number; jobs: a
     const job = jobsToProcess[i];
 
     try {
-      console.log(`[Cron] Processing job ${i + 1}/${jobsToProcess.length}: ${job.id}`);
       const result = await processClipJob(ai, job);
       results.push(result);
     } catch (err: any) {
-      console.error(`[Cron] Error processing job ${job.id}:`, err);
       results.push(job);
     }
 
     // Add delay between jobs to avoid rate limiting (except after last job)
     if (i < jobsToProcess.length - 1) {
-      console.log(`[Cron] Waiting ${DELAY_BETWEEN_JOBS_MS}ms before next job...`);
       await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_JOBS_MS));
     }
   }
@@ -172,7 +153,6 @@ async function processClipJob(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Cron] Poll error for ${job.id}:`, errorText);
 
       // Don't fail immediately - might be transient
       const elapsedMinutes = (Date.now() - new Date(job.createdAt).getTime()) / 60000;
@@ -187,20 +167,15 @@ async function processClipJob(
     }
 
     const operation = await response.json();
-    console.log(`[Cron] Operation status for ${job.id}: done=${operation.done}`);
 
     if (operation.done) {
       // Check for errors
       if (operation.error) {
-        console.error(`[Cron] Operation error for ${job.id}:`, operation.error);
         return await updateJob<ClipGenerationJob>(job.id, {
           status: 'failed',
           error: operation.error.message || 'Video generation failed',
         }) || job;
       }
-
-      // Log the full response structure for debugging
-      console.log(`[Cron] Full response for ${job.id}:`, JSON.stringify(operation.response || operation).substring(0, 1000));
 
       // Get the video URI - handle different response formats
       let videoUri: string | undefined;
@@ -209,25 +184,19 @@ async function processClipJob(
       const generatedSamples = operation.response?.generateVideoResponse?.generatedSamples;
       if (generatedSamples?.[0]?.video?.uri) {
         videoUri = generatedSamples[0].video.uri;
-        console.log(`[Cron] Found video URI via generatedSamples path`);
       } else if (operation.response?.generatedVideos?.[0]?.video?.uri) {
         videoUri = operation.response.generatedVideos[0].video.uri;
-        console.log(`[Cron] Found video URI via generatedVideos path`);
       } else if (operation.result?.videos?.[0]?.uri) {
         // Alternative path some APIs use
         videoUri = operation.result.videos[0].uri;
-        console.log(`[Cron] Found video URI via result.videos path`);
       }
 
       if (!videoUri) {
-        console.error('[Cron] No video URI found. Response keys:', Object.keys(operation.response || operation));
         return await updateJob<ClipGenerationJob>(job.id, {
           status: 'failed',
           error: 'Video generation completed but no video URI returned. Check logs for response format.',
         }) || job;
       }
-
-      console.log(`[Cron] Video URI for ${job.id}: ${videoUri.substring(0, 100)}...`);
 
       // Update progress
       await updateJob<ClipGenerationJob>(job.id, {
@@ -237,20 +206,15 @@ async function processClipJob(
 
       // Download and save the video
       try {
-        console.log(`[Cron] Downloading video for ${job.id}...`);
         const videoResponse = await fetch(videoUri);
         if (!videoResponse.ok) {
           const errorText = await videoResponse.text().catch(() => 'Could not read error body');
-          console.error(`[Cron] Download failed for ${job.id}: ${videoResponse.status}`, errorText.substring(0, 200));
           throw new Error(`Failed to download video: ${videoResponse.status}`);
         }
 
         const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
-        console.log(`[Cron] Downloaded ${videoBuffer.length} bytes for ${job.id}`);
         const videoPath = `creatures/${job.input.creatureId}/clips/${job.input.action}.mp4`;
         const videoResult = await uploadAsset(videoPath, videoBuffer, 'video/mp4');
-
-        console.log(`[Cron] Video saved for ${job.id}: ${videoResult.url}`);
 
         const result = await updateJob<ClipGenerationJob>(job.id, {
           status: 'completed',
@@ -265,7 +229,6 @@ async function processClipJob(
 
         return result || job;
       } catch (downloadError: any) {
-        console.error(`[Cron] Download/save error for ${job.id}:`, downloadError.message, downloadError.stack);
         return await updateJob<ClipGenerationJob>(job.id, {
           status: 'failed',
           error: `Failed to download video: ${downloadError.message}`,
@@ -282,8 +245,6 @@ async function processClipJob(
       progressMessage: `Generating video... (${Math.round(elapsedSeconds)}s)`,
     }) || job;
   } catch (error: any) {
-    console.error(`[Cron] Process error for ${job.id}:`, error);
-
     const elapsedMinutes = (Date.now() - new Date(job.createdAt).getTime()) / 60000;
     if (elapsedMinutes > 15) {
       return await updateJob<ClipGenerationJob>(job.id, {

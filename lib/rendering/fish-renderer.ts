@@ -117,7 +117,6 @@ export function setMipmapDebug(enabled: boolean): void {
   if (!enabled) {
     lastLoggedResolution.clear();
   }
-  console.log(`[Mipmap] Debug logging ${enabled ? 'ENABLED' : 'DISABLED'}`);
 }
 
 /** Check if mipmap debug is enabled */
@@ -165,7 +164,6 @@ export function getSpriteUrl(
   if (MIPMAP_DEBUG && creatureId) {
     const lastRes = lastLoggedResolution.get(creatureId);
     if (lastRes !== resolution) {
-      console.log(`[Mipmap] ${creatureId}: ${lastRes || 'none'} -> ${resolution} (screenSize: ${screenSize.toFixed(1)}px)`);
       lastLoggedResolution.set(creatureId, resolution);
     }
   }
@@ -215,7 +213,6 @@ export function setGrowthDebug(enabled: boolean): void {
   if (!enabled) {
     lastLoggedGrowthStage.clear();
   }
-  console.log(`[Growth] Debug logging ${enabled ? 'ENABLED' : 'DISABLED'}`);
 }
 
 /** Check if growth debug is enabled */
@@ -281,7 +278,6 @@ export function getGrowthStageSprite(
   if (GROWTH_DEBUG && creatureId) {
     const lastStage = lastLoggedGrowthStage.get(creatureId);
     if (lastStage !== stage) {
-      console.log(`[Growth] ${creatureId}: ${lastStage || 'none'} -> ${stage} (size: ${fishSize})`);
       lastLoggedGrowthStage.set(creatureId, stage);
     }
   }

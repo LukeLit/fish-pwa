@@ -75,7 +75,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[UploadGrowthSprite] Uploading ${stage} sprite for ${creatureId}`);
 
     // Read the sprite file
     const buffer = Buffer.from(await spriteFile.arrayBuffer());
@@ -96,13 +95,11 @@ export async function POST(request: NextRequest) {
       for (const filename of Object.values(filenames)) {
         const existing = await list({ prefix: filename });
         for (const blob of existing.blobs) {
-          console.log(`[UploadGrowthSprite] Deleting existing: ${blob.url}`);
           await del(blob.url);
         }
       }
     } catch (deleteErr) {
       // Non-fatal - file might not exist
-      console.log('[UploadGrowthSprite] Delete step (non-fatal):', deleteErr);
     }
 
     // Upload all variants in parallel
@@ -134,7 +131,6 @@ export async function POST(request: NextRequest) {
       low: addCacheBuster(lowResult.url),
     };
 
-    console.log(`[UploadGrowthSprite] Uploaded ${stage} sprite for ${creatureId}:`, highResult.url);
 
     return NextResponse.json({
       success: true,
@@ -154,7 +150,6 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[UploadGrowthSprite] Error:', error);
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isBlobTokenError = errorMessage.includes('No token found') || errorMessage.includes('BLOB_READ_WRITE_TOKEN');

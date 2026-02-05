@@ -1,5 +1,6 @@
 /**
  * Fish Editor Canvas - Playable test environment for AI-generated assets
+ * Refactored to use extracted systems for better maintainability
  */
 'use client';
 
@@ -12,37 +13,55 @@ import {
   HUNGER_MAX,
   HUNGER_DRAIN_RATE,
   HUNGER_RESTORE_MULTIPLIER,
-  HUNGER_LOW_THRESHOLD,
-  HUNGER_WARNING_PULSE_FREQUENCY,
-  HUNGER_WARNING_PULSE_BASE,
-  HUNGER_WARNING_INTENSITY,
   HUNGER_FRAME_RATE,
 } from '@/lib/game/hunger-constants';
-import { DASH_SPEED_MULTIPLIER, DASH_STAMINA_DRAIN_RATE, DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP, ATTACK_SIZE_RATIO, SWALLOW_SIZE_RATIO, BATTLE_SIZE_THRESHOLD, DASH_ATTACK_STAMINA_COST, KO_STAMINA_REGEN_MULTIPLIER, KO_WAKE_THRESHOLD, KO_DRIFT_SPEED, PREY_FLEE_STAMINA_MULTIPLIER, ATTACK_LARGER_STAMINA_MULTIPLIER } from '@/lib/game/dash-constants';
+import {
+  DASH_STAMINA_RAMP_PER_SECOND,
+  DASH_STAMINA_RAMP_CAP,
+  DASH_ATTACK_STAMINA_COST,
+  SWALLOW_SIZE_RATIO,
+  ATTACK_SIZE_RATIO,
+  BATTLE_SIZE_THRESHOLD,
+  KO_STAMINA_REGEN_MULTIPLIER,
+  KO_WAKE_THRESHOLD,
+  KO_DRIFT_SPEED,
+  PREY_FLEE_STAMINA_MULTIPLIER,
+  ATTACK_LARGER_STAMINA_MULTIPLIER,
+} from '@/lib/game/dash-constants';
+import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
 import { loadRunState } from '@/lib/game/run-state';
 import {
   removeBackground,
-  drawFishWithDeformation,
-  getSegmentsSmooth,
-  PLAYER_SEGMENT_MULTIPLIER,
-  getClipMode,
-  hasUsableAnimations,
-  getSpriteUrl,
-  getResolutionKey,
   getGrowthStage,
   getGrowthStageSprite,
-  getSpriteUrlForSize,
   getGrowthAwareSpriteUrl,
-  type ClipMode,
-  type RenderContext,
+  getResolutionKey,
+  hasUsableAnimations,
+  getClipMode,
+  getSegmentsSmooth,
+  drawFishWithDeformation,
+  PLAYER_SEGMENT_MULTIPLIER,
 } from '@/lib/rendering/fish-renderer';
+import type { SpriteResolutions } from '@/lib/game/types';
+import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering/animation-sprite';
+import type { CreatureAnimations } from '@/lib/game/types';
+import { cacheBust } from '@/lib/utils/cache-bust';
+
+// Extracted systems
+import { getCanvasConfig } from '@/lib/game/canvas-config';
+import { CAMERA, SPAWN, WORLD_BOUNDS, PHYSICS, AI, COLLISION, ANIMATION, RENDERING, STAMINA } from '@/lib/game/canvas-constants';
+import { InputManager } from '@/lib/game/canvas-input';
+import { SpriteManager } from '@/lib/game/canvas-sprite-manager';
+import { updatePlayerPhysics, constrainToBounds, getAnimationAction } from '@/lib/game/canvas-physics';
+import { updateAIFish } from '@/lib/game/canvas-ai';
+import { detectFishFishCollisions, detectPlayerFishCollision } from '@/lib/game/canvas-collision';
+import { CanvasGameState, type FishEntity, type PlayerEntity, type FishLifecycleState } from '@/lib/game/canvas-state';
+import { renderGame } from '@/lib/game/canvas-renderer';
+import { createStaminaUpdater, type StaminaEntity } from '@/lib/game/canvas-stamina';
+import { HUNGER_LOW_THRESHOLD, HUNGER_WARNING_PULSE_FREQUENCY, HUNGER_WARNING_PULSE_BASE, HUNGER_WARNING_INTENSITY } from '@/lib/game/hunger-constants';
 import { DashParticleSystem } from '@/lib/rendering/dash-particles';
 import { MultiEntityDashParticleManager } from '@/lib/rendering/multi-entity-dash-particles';
-import type { SpriteResolutions, GrowthSprites } from '@/lib/game/types';
-import { ESSENCE_TYPES } from '@/lib/game/data/essence-types';
-import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering/animation-sprite';
-import type { AnimationAction, CreatureAnimations } from '@/lib/game/types';
-import { cacheBust } from '@/lib/utils/cache-bust';
+import { getSpriteUrl } from '@/lib/rendering/fish-renderer';
 
 export interface PlayerGameStats {
   size: number;
@@ -112,56 +131,54 @@ export default function FishEditorCanvas({
   onCacheRefreshed,
   dashFromControlsRef: dashFromControlsRefProp,
 }: FishEditorCanvasProps) {
+  // Get canvas configuration
+  const canvasConfig = getCanvasConfig(gameConfig);
+
+  // Component refs
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isClient, setIsClient] = useState(false);
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
+
+  // Prop refs (for stable access in callbacks)
   const chromaToleranceRef = useRef<number>(chromaTolerance);
   const zoomRef = useRef<number>(zoom);
   const deformationRef = useRef<number>(deformationIntensity);
-  const editButtonPositionsRef = useRef<Map<string, { x: number; y: number; size: number }>>(new Map());
   const editModeRef = useRef<boolean>(editMode);
   const selectedFishIdRef = useRef<string | null>(selectedFishId);
   const fishDataRef = useRef<Map<string, FishData>>(fishData);
   const pausedRef = useRef<boolean>(paused);
   const showEditButtonsRef = useRef<boolean>(showEditButtons);
-  // Smooth zoom animation refs
-  const animatedZoomRef = useRef<number>(zoom);
-  const animatedCameraRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const targetZoomRef = useRef<number>(zoom);
-  const targetCameraRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const gameConfigRef = useRef(gameConfig);
+  const editButtonPositionsRef = useRef<Map<string, { x: number; y: number; size: number }>>(new Map());
 
-  // Zoom control constants and refs
-  const MIN_ZOOM = 0.5;
-  const MAX_ZOOM = 5.0;
-  const pinchRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
-
-  // Camera pan refs for edit/paused mode
-  const cameraPanRef = useRef({ x: 0, y: 0 });
-  const dragStartRef = useRef<{ x: number; y: number; camX: number; camY: number } | null>(null);
-  const isDraggingRef = useRef(false);
-  // Track effective camera position used in rendering (for button click detection)
-  const effectiveCameraRef = useRef({ x: 0, y: 0 });
+  // Initialize systems
+  const inputManagerRef = useRef(new InputManager());
+  const spriteManagerRef = useRef(new SpriteManager(chromaTolerance));
+  const gameStateRef = useRef(new CanvasGameState());
+  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const waterTimeRef = useRef<number>(0);
+  const lastPlayerAnimActionRef = useRef<string | null>(null);
 
   // Update refs when props change
   useEffect(() => { chromaToleranceRef.current = chromaTolerance }, [chromaTolerance])
   useEffect(() => {
     zoomRef.current = zoom;
-    targetZoomRef.current = zoom;
+    inputManagerRef.current.setAnimatedZoom(zoom);
   }, [zoom])
   useEffect(() => { deformationRef.current = deformationIntensity }, [deformationIntensity])
   useEffect(() => { editModeRef.current = editMode }, [editMode])
   useEffect(() => { selectedFishIdRef.current = selectedFishId }, [selectedFishId])
   useEffect(() => { fishDataRef.current = fishData }, [fishData])
-  const gameConfigRef = useRef(gameConfig);
   useEffect(() => { gameConfigRef.current = gameConfig }, [gameConfig])
   useEffect(() => {
     pausedRef.current = paused;
     // When entering paused mode, initialize camera pan to current player position
     if (paused) {
-      const player = playerRef.current;
-      cameraPanRef.current = { x: player.x, y: player.y };
+      const player = gameStateRef.current.player;
+      gameStateRef.current.camera.panX = player.x;
+      gameStateRef.current.camera.panY = player.y;
     }
   }, [paused])
   useEffect(() => { showEditButtonsRef.current = showEditButtons }, [showEditButtons])
@@ -170,7 +187,7 @@ export default function FishEditorCanvas({
   const spawnPlayerFish = (fish: FishData) => {
     // Load sprite and convert to canvas before assigning
     if (!fish.sprite) {
-      playerRef.current.sprite = null;
+      gameStateRef.current.player.sprite = null;
       return;
     }
 
@@ -180,7 +197,7 @@ export default function FishEditorCanvas({
       const processedSprite = removeBackground(img, chromaToleranceRef.current);
       const spawned = spawnFishFromData(fish, { isPlayer: true });
       // Preserve baseSize for scoring while using spawned size as baseline
-      playerRef.current = {
+      gameStateRef.current.player = {
         ...spawned,
         baseSize: spawned.size,
         sprite: processedSprite,
@@ -188,11 +205,14 @@ export default function FishEditorCanvas({
         stamina: 100,
         maxStamina: 100,
         isDashing: false,
+        chompPhase: gameStateRef.current.player.chompPhase,
+        chompEndTime: gameStateRef.current.player.chompEndTime,
+        hunger: gameStateRef.current.player.hunger,
+        hungerDrainRate: gameStateRef.current.player.hungerDrainRate,
       };
     };
     img.onerror = () => {
-      console.error('Failed to load player fish sprite:', fish.sprite);
-      playerRef.current.sprite = null;
+      gameStateRef.current.player.sprite = null;
     };
     // Always use cache busting to ensure fresh images
     img.src = cacheBust(fish.sprite);
@@ -205,7 +225,7 @@ export default function FishEditorCanvas({
     }
 
     // Spawn within world bounds instead of canvas dimensions
-    const bounds = worldBoundsRef.current;
+    const bounds = gameStateRef.current.worldBounds;
     const pos = {
       x: bounds.minX + Math.random() * (bounds.maxX - bounds.minX),
       y: bounds.minY + Math.random() * (bounds.maxY - bounds.minY),
@@ -217,10 +237,10 @@ export default function FishEditorCanvas({
       const processedSprite = removeBackground(img, chromaToleranceRef.current);
       const aiFish = spawnFishFromData(fish, { isPlayer: false, position: pos });
       // Find existing fish or add new one
-      const existingIndex = fishListRef.current.findIndex(f => f.id === aiFish.id);
+      const existingIndex = gameStateRef.current.fish.findIndex(f => f.id === aiFish.id);
       if (existingIndex >= 0) {
-        const prev = fishListRef.current[existingIndex];
-        fishListRef.current[existingIndex] = {
+        const prev = gameStateRef.current.fish[existingIndex];
+        gameStateRef.current.fish[existingIndex] = {
           ...aiFish,
           sprite: processedSprite,
           spawnTime: prev.spawnTime,
@@ -232,7 +252,7 @@ export default function FishEditorCanvas({
           isDashing: prev.isDashing ?? false,
         };
       } else {
-        fishListRef.current.push({
+        gameStateRef.current.fish.push({
           ...aiFish,
           sprite: processedSprite,
           spawnTime: performance.now(),
@@ -246,7 +266,7 @@ export default function FishEditorCanvas({
       }
     };
     img.onerror = () => {
-      console.error('Failed to load AI fish sprite:', fish.sprite);
+      // Failed to load AI fish sprite
     };
     // Always use cache busting to ensure fresh images
     img.src = cacheBust(fish.sprite);
@@ -268,143 +288,19 @@ export default function FishEditorCanvas({
     }
   }, [])
 
-  const eatenIdsRef = useRef<Set<string>>(new Set());
-
-  // Game mode state
-  const gameStartTimeRef = useRef<number>(0);
-  const gameOverFiredRef = useRef<boolean>(false);
-  const levelCompleteFiredRef = useRef<boolean>(false);
-  const levelEndingRef = useRef<boolean>(false); // True while fish are animating out at level end
-  const scoreRef = useRef<number>(0);
-  const fishEatenRef = useRef<number>(0);
-  const essenceCollectedRef = useRef<number>(0);
-  // Pause timer tracking
-  const pauseStartTimeRef = useRef<number>(0);
-  const totalPausedTimeRef = useRef<number>(0);
-  const wasPausedRef = useRef<boolean>(false);
-
-  // Frame timing for delta time calculation
-  const lastFrameTimeRef = useRef<number>(0);
-  const frameTimesRef = useRef<number[]>([]);
-  const cameraRef = useRef({ x: 0, y: 0 });
-  const worldBoundsRef = useRef({
-    minX: -1500,
-    maxX: 1500,
-    minY: -1200,
-    maxY: 1200,
-  });
-
-  // Game state
-  const playerRef = useRef({
-    id: 'player' as string, // Can be updated to actual creature ID
-    x: 400,
-    y: 300,
-    vx: 0,
-    vy: 0,
-    size: PLAYER_BASE_SIZE,
-    baseSize: PLAYER_BASE_SIZE,
-    sprite: null as HTMLCanvasElement | null,
-    facingRight: true,
-    verticalTilt: 0,
-    animTime: 0,
-    chompPhase: 0, // 0–1, drives bulge + CHOMP
-    chompEndTime: 0,
-    hunger: HUNGER_MAX, // 0-100 hunger meter
-    hungerDrainRate: HUNGER_DRAIN_RATE, // % per second
-    stamina: 100,
-    maxStamina: 100,
-    isDashing: false,
-    animations: undefined as CreatureAnimations | undefined,
-  });
-
-  const chompParticlesRef = useRef<Array<{
-    x: number;
-    y: number;
-    life: number;
-    scale: number;
-    text: string;
-    color?: string; // Color for essence numbers
-    punchScale?: number; // Extra scale for punch animation
-  }>>([]);
-
-  const bloodParticlesRef = useRef<Array<{
-    x: number;
-    y: number;
-    life: number;
-    radius: number;
-  }>>([]);
-
-  /** Dash particles - player (legacy, kept for backwards compat) */
-  const dashParticleSystemRef = useRef(new DashParticleSystem({ flowCap: 200, flowSpawnPerFrame: 1 }));
-  /** Shared dash particles for player + AI fish */
-  const multiEntityDashRef = useRef(new MultiEntityDashParticleManager({ flowCap: 120, flowSpawnPerFrame: 1 }));
-
-  /** How long the player has been holding dash (ms) - used for escalating stamina drain */
-  const dashHoldDurationMsRef = useRef(0);
-
-  /** Last animation action sent to player anim sprite (to avoid resetting every frame) */
-  const lastPlayerAnimActionRef = useRef<string | null>(null);
-
-  /** Fish lifecycle state for spawn/despawn animations and knockout */
-  type FishLifecycleState = 'spawning' | 'active' | 'knocked_out' | 'despawning' | 'removed';
-
-  const fishListRef = useRef<Array<{
-    id: string;
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    size: number;
-    sprite: HTMLCanvasElement | null;
-    type: string;
-    facingRight: boolean;
-    verticalTilt: number;
-    animTime: number;
-    creatureData?: Creature;
-    currentGrowthStage?: 'juvenile' | 'adult' | 'elder'; // Track current growth stage for sprite swapping
-    // Spawn/despawn animation properties
-    spawnTime?: number;      // When fish spawned (for fade-in)
-    despawnTime?: number;    // When despawn started (for fade-out)
-    opacity?: number;        // Current opacity (0-1)
-    lifecycleState: FishLifecycleState; // Current lifecycle state
-    // Frame-based animations
-    animations?: CreatureAnimations;
-    animationSprite?: AnimationSprite;
-    // AI dash (prey/predator)
-    stamina?: number;
-    maxStamina?: number;
-    isDashing?: boolean;
-    chaseTargetId?: string;
-    chaseStartTime?: number;
-  }>>([]);
-
-  // Animation sprite manager ref
-  const animationSpriteManagerRef = useRef(getAnimationSpriteManager());
+  // Create stamina updater using extracted helper
+  const updateStamina = createStaminaUpdater(
+    (entity) => entity === gameStateRef.current.player
+  );
 
   // Spawn animation constants
-  const SPAWN_FADE_DURATION = 1500; // ms to fully fade in (collision enables when fully opaque)
+  const SPAWN_FADE_DURATION = canvasConfig.spawn.fadeDuration;
 
-  /** 
-   * Cache processed sprites by creature id and resolution for respawn (game mode).
-   * Key format: "{creatureId}:{resolution}" where resolution is 'high'|'medium'|'low'
-   */
-  const spriteCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
-  /** Pool of creatures to spawn from (mirrors spawnedFish for use in game loop). */
-  const spawnPoolRef = useRef<SpawnedCreature[]>([]);
-  const lastRespawnTimeRef = useRef(0);
   const getMaxFish = () => Math.round(45 * (gameConfigRef.current?.fishSpawnMultiplier ?? 1));
   const getRespawnInterval = () => gameConfigRef.current?.respawnIntervalMs ?? 2000;
 
-  const keyKeysRef = useRef<Set<string>>(new Set());
-  const joystickVelocityRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const joystickActiveRef = useRef<boolean>(false);
-  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
-  const waterTimeRef = useRef<number>(0);
-  const waterDistortionRef = useRef<HTMLCanvasElement | null>(null);
-
   const handleJoystickChange = useCallback((output: AnalogJoystickOutput) => {
-    joystickVelocityRef.current = output.velocity;
-    joystickActiveRef.current = output.isActive;
+    inputManagerRef.current.handleJoystick(output);
   }, []);
 
   // ============================================================================
@@ -415,7 +311,7 @@ export default function FishEditorCanvas({
    * Trigger despawn animation for a single fish by ID
    */
   const triggerDespawn = useCallback((fishId: string) => {
-    const fish = fishListRef.current.find(f => f.id === fishId);
+    const fish = gameStateRef.current.fish.find(f => f.id === fishId);
     if (fish && fish.lifecycleState !== 'despawning' && fish.lifecycleState !== 'removed') {
       fish.despawnTime = performance.now();
       fish.lifecycleState = 'despawning';
@@ -428,7 +324,7 @@ export default function FishEditorCanvas({
    */
   const triggerDespawnAll = useCallback((excludeIds?: Set<string>) => {
     const now = performance.now();
-    fishListRef.current.forEach(fish => {
+    gameStateRef.current.fish.forEach(fish => {
       if (!excludeIds?.has(fish.id) && fish.lifecycleState !== 'despawning' && fish.lifecycleState !== 'removed') {
         fish.despawnTime = now;
         fish.lifecycleState = 'despawning';
@@ -442,7 +338,7 @@ export default function FishEditorCanvas({
    */
   const triggerRespawnAll = useCallback(() => {
     const now = performance.now();
-    fishListRef.current.forEach((fish, index) => {
+    gameStateRef.current.fish.forEach((fish, index) => {
       if (fish.lifecycleState === 'despawning' || fish.lifecycleState === 'removed') {
         // Stagger respawn for visual effect
         fish.despawnTime = undefined;
@@ -458,7 +354,7 @@ export default function FishEditorCanvas({
    * Used when switching between fish in edit mode
    */
   const triggerRespawnFish = useCallback((fishId: string) => {
-    const fish = fishListRef.current.find(f => f.id === fishId);
+    const fish = gameStateRef.current.fish.find(f => f.id === fishId);
     if (fish && (fish.lifecycleState === 'despawning' || fish.lifecycleState === 'removed')) {
       fish.despawnTime = undefined;
       fish.spawnTime = performance.now();
@@ -515,8 +411,9 @@ export default function FishEditorCanvas({
     const y = (clientY - rect.top) * scaleY;
 
     // Check if click is on an edit button
-    const currentZoom = animatedZoomRef.current;
-    const cam = effectiveCameraRef.current;
+    const zoomState = inputManagerRef.current.getZoomState();
+    const currentZoom = zoomState.animatedZoom;
+    const cam = gameStateRef.current.camera;
 
     for (const [fishId, pos] of editButtonPositionsRef.current.entries()) {
       // Calculate button position in screen space (same formula as rendering)
@@ -555,13 +452,12 @@ export default function FishEditorCanvas({
       // Start camera pan drag in paused mode (but NOT when editing a specific fish)
       // When a fish is selected for editing, camera locks to that fish
       if (pausedRef.current && !selectedFishIdRef.current) {
-        dragStartRef.current = {
-          x: touch.clientX,
-          y: touch.clientY,
-          camX: cameraPanRef.current.x,
-          camY: cameraPanRef.current.y,
-        };
-        isDraggingRef.current = true;
+        inputManagerRef.current.startDrag(
+          touch.clientX,
+          touch.clientY,
+          gameStateRef.current.camera.panX,
+          gameStateRef.current.camera.panY
+        );
       }
     }
   }, [checkEditButtonClick]);
@@ -571,49 +467,44 @@ export default function FishEditorCanvas({
     // Only enable pan in paused mode when NOT editing a specific fish
     // When a fish is selected, camera locks to that fish
     if (pausedRef.current && !selectedFishIdRef.current) {
-      dragStartRef.current = {
-        x: e.clientX,
-        y: e.clientY,
-        camX: cameraPanRef.current.x,
-        camY: cameraPanRef.current.y,
-      };
-      isDraggingRef.current = true;
+      inputManagerRef.current.startDrag(
+        e.clientX,
+        e.clientY,
+        gameStateRef.current.camera.panX,
+        gameStateRef.current.camera.panY
+      );
     }
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDraggingRef.current || !dragStartRef.current) return;
+    if (!inputManagerRef.current.isDraggingCamera()) return;
 
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    const currentZoom = animatedZoomRef.current;
-
-    // Update camera pan (invert direction for natural drag feel, scale by zoom)
-    cameraPanRef.current.x = dragStartRef.current.camX - dx / currentZoom;
-    cameraPanRef.current.y = dragStartRef.current.camY - dy / currentZoom;
+    const zoomState = inputManagerRef.current.getZoomState();
+    const newPan = inputManagerRef.current.updateDrag(e.clientX, e.clientY, zoomState.animatedZoom);
+    if (newPan) {
+      gameStateRef.current.camera.panX = newPan.x;
+      gameStateRef.current.camera.panY = newPan.y;
+    }
   }, []);
 
   const handleMouseUp = useCallback(() => {
-    isDraggingRef.current = false;
-    dragStartRef.current = null;
+    inputManagerRef.current.endDrag();
   }, []);
 
   const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDraggingRef.current || !dragStartRef.current || e.touches.length !== 1) return;
+    if (!inputManagerRef.current.isDraggingCamera() || e.touches.length !== 1) return;
 
     const touch = e.touches[0];
-    const dx = touch.clientX - dragStartRef.current.x;
-    const dy = touch.clientY - dragStartRef.current.y;
-    const currentZoom = animatedZoomRef.current;
-
-    // Update camera pan (invert direction for natural drag feel, scale by zoom)
-    cameraPanRef.current.x = dragStartRef.current.camX - dx / currentZoom;
-    cameraPanRef.current.y = dragStartRef.current.camY - dy / currentZoom;
+    const zoomState = inputManagerRef.current.getZoomState();
+    const newPan = inputManagerRef.current.updateDrag(touch.clientX, touch.clientY, zoomState.animatedZoom);
+    if (newPan) {
+      gameStateRef.current.camera.panX = newPan.x;
+      gameStateRef.current.camera.panY = newPan.y;
+    }
   }, []);
 
   const handleTouchEnd = useCallback(() => {
-    isDraggingRef.current = false;
-    dragStartRef.current = null;
+    inputManagerRef.current.endDrag();
   }, []);
 
   useEffect(() => {
@@ -632,7 +523,6 @@ export default function FishEditorCanvas({
       backgroundImageRef.current = img;
     };
     img.onerror = () => {
-      console.error('Failed to load background image');
       backgroundImageRef.current = null;
     };
     img.src = cacheBust(background);
@@ -641,30 +531,23 @@ export default function FishEditorCanvas({
   // Initialize player from playerCreature data AND load growth-aware sprite
   useEffect(() => {
     if (playerCreature) {
-      console.log(`[FishEditorCanvas] playerCreature changed:`, {
-        id: playerCreature.id,
-        hasGrowthSprites: !!playerCreature.growthSprites,
-        growthStages: playerCreature.growthSprites ? Object.keys(playerCreature.growthSprites) : [],
-        updatedAt: playerCreature.updatedAt,
-      });
-
       // Update player ID from creature data
-      playerRef.current.id = playerCreature.id;
+      gameStateRef.current.player.id = playerCreature.id;
 
       // In game mode, use run state size (persisted from previous level) or PLAYER_BASE_SIZE (20)
       // In editor mode, use creature's actual size or base size
       const playerSize = gameMode
         ? (loadRunState()?.fishState.size ?? PLAYER_BASE_SIZE)
         : (playerCreature.stats?.size ?? PLAYER_BASE_SIZE);
-      playerRef.current.size = playerSize;
-      playerRef.current.baseSize = playerSize;
+      gameStateRef.current.player.size = playerSize;
+      gameStateRef.current.player.baseSize = playerSize;
 
       // Set player animations from creature data
-      playerRef.current.animations = playerCreature.animations;
+      gameStateRef.current.player.animations = playerCreature.animations;
 
       // Remove old animation sprite to ensure fresh data is used
       // This handles the case where animations were regenerated
-      animationSpriteManagerRef.current.removeSprite('player');
+      gameStateRef.current.animationSpriteManager.removeSprite('player');
 
       // Pre-initialize animation sprite if animations exist
       if (playerCreature.animations && hasUsableAnimations(playerCreature.animations)) {
@@ -673,11 +556,8 @@ export default function FishEditorCanvas({
         if (playerCreature.growthSprites) {
           initialStage = getGrowthStage(playerSize, playerCreature.growthSprites);
         }
-        console.log(`[FishEditorCanvas] Initializing player animation sprite at ${initialStage} stage with animations:`, Object.keys(playerCreature.animations));
-        animationSpriteManagerRef.current.getSprite('player', playerCreature.animations, { initialStage });
+        gameStateRef.current.animationSpriteManager.getSprite('player', playerCreature.animations, { initialStage });
       }
-
-      console.log(`[FishEditorCanvas] Initializing player: gameMode=${gameMode}, size=${playerSize}, hasAnimations=${!!playerCreature.animations}`);
 
       // Animation sprites are initialized on-demand when needed
 
@@ -688,18 +568,15 @@ export default function FishEditorCanvas({
           const growthStage = getGrowthStage(playerSize, playerCreature.growthSprites);
           const { sprite: growthSprite } = getGrowthStageSprite(playerCreature, playerSize, 'player');
           spriteToLoad = growthSprite;
-          console.log(`[FishEditorCanvas] Loading player sprite for ${growthStage} stage (size: ${playerSize}), URL: ${spriteToLoad.substring(0, 80)}...`);
         }
 
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
-          console.log(`[FishEditorCanvas] Player sprite loaded successfully`);
-          playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
+          gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
         };
         img.onerror = () => {
-          console.error('Failed to load player fish sprite:', spriteToLoad);
-          playerRef.current.sprite = null;
+          gameStateRef.current.player.sprite = null;
         };
         img.src = cacheBust(spriteToLoad);
       }
@@ -708,15 +585,14 @@ export default function FishEditorCanvas({
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
+        gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
       };
       img.onerror = () => {
-        console.error('Failed to load player fish sprite');
-        playerRef.current.sprite = null;
+        gameStateRef.current.player.sprite = null;
       };
       img.src = cacheBust(playerFishSprite);
     } else {
-      playerRef.current.sprite = null;
+      gameStateRef.current.player.sprite = null;
     }
   }, [playerFishSprite, playerCreature, gameMode]);
 
@@ -731,11 +607,8 @@ export default function FishEditorCanvas({
 
   // Force refresh all sprites - clears ALL caches (SW, browser, localStorage, in-memory) and reloads from server
   const refreshAllSprites = useCallback(async () => {
-    console.log('[FishEditorCanvas] NUCLEAR REFRESH - clearing ALL caches...');
-
     // 1. Clear Service Worker's asset cache
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      console.log('[FishEditorCanvas] Clearing Service Worker asset cache...');
       const messageChannel = new MessageChannel();
       navigator.serviceWorker.controller.postMessage(
         { type: 'CLEAR_ASSET_CACHE' },
@@ -744,7 +617,6 @@ export default function FishEditorCanvas({
       // Wait for confirmation
       await new Promise<void>((resolve) => {
         messageChannel.port1.onmessage = (event) => {
-          console.log('[FishEditorCanvas] SW cache cleared:', event.data);
           resolve();
         };
         // Timeout after 1s
@@ -754,11 +626,9 @@ export default function FishEditorCanvas({
 
     // 2. Clear browser's Cache API (all caches we can access)
     if ('caches' in window) {
-      console.log('[FishEditorCanvas] Clearing browser Cache API...');
       const cacheNames = await caches.keys();
       for (const cacheName of cacheNames) {
         if (cacheName.includes('asset') || cacheName.includes('fish')) {
-          console.log('[FishEditorCanvas] Deleting cache:', cacheName);
           await caches.delete(cacheName);
         }
       }
@@ -768,17 +638,16 @@ export default function FishEditorCanvas({
     try {
       const localCreatures = localStorage.getItem('fish_game_creatures');
       if (localCreatures) {
-        console.log('[FishEditorCanvas] Clearing localStorage fish_game_creatures cache');
         localStorage.removeItem('fish_game_creatures');
       }
     } catch (err) {
-      console.warn('[FishEditorCanvas] Could not clear localStorage:', err);
+      // Could not clear localStorage
     }
 
     // 3. Clear all in-memory tracking refs
     fishSpriteUrlsRef.current.clear();
     spriteVersionRef.current.clear();
-    spriteCacheRef.current.clear();
+    gameStateRef.current.spriteCache.clear();
 
     // 4. Helper to reload sprite bypassing ALL caches
     const reloadSprite = async (fishId: string, spriteUrl: string, onLoaded: (sprite: HTMLCanvasElement) => void) => {
@@ -797,7 +666,6 @@ export default function FishEditorCanvas({
       try {
         // Use fetch with cache: 'reload' to bypass browser cache entirely
         const cleanUrl = spriteUrl.split('?')[0];
-        console.log('[FishEditorCanvas] Fetching fresh:', cleanUrl);
         const response = await fetch(cleanUrl, {
           cache: 'reload',  // Bypass cache completely
           mode: 'cors',
@@ -813,18 +681,17 @@ export default function FishEditorCanvas({
           URL.revokeObjectURL(objectUrl); // Clean up
         };
         img.onerror = () => {
-          console.error('Failed to load sprite after fetch:', fishId);
           URL.revokeObjectURL(objectUrl);
         };
         img.src = objectUrl;
       } catch (err) {
-        console.error('Failed to fetch sprite:', fishId, err);
+        // Failed to fetch sprite
       }
     };
 
     // 5. Reload all fish sprites (growth-aware)
     const reloadPromises: Promise<void>[] = [];
-    fishListRef.current.forEach((fish) => {
+    gameStateRef.current.fish.forEach((fish) => {
       // Get creature data for growth-aware sprite selection
       const creatureData = fish.creatureData || fishDataRef.current.get(fish.id);
       let spriteUrl = creatureData?.sprite || spawnedFish.find(f => f.id === fish.id)?.sprite;
@@ -836,11 +703,10 @@ export default function FishEditorCanvas({
       }
 
       if (spriteUrl) {
-        console.log('[FishEditorCanvas] Queuing reload for:', fish.id, 'size:', fish.size);
         reloadPromises.push(
           reloadSprite(fish.id, spriteUrl, (processedSprite) => {
             fish.sprite = processedSprite;
-            spriteCacheRef.current.set(fish.id, processedSprite);
+            gameStateRef.current.spriteCache.set(fish.id, processedSprite);
             fishSpriteUrlsRef.current.set(fish.id, spriteUrl!);
           })
         );
@@ -848,22 +714,20 @@ export default function FishEditorCanvas({
     });
 
     // 6. Also reload player sprite (growth-aware)
-    if (playerRef.current.sprite && playerFishSprite) {
+    if (gameStateRef.current.player.sprite && playerFishSprite) {
       let playerSpriteUrl = playerFishSprite;
       if (playerCreature?.growthSprites) {
-        const { sprite: growthSprite } = getGrowthStageSprite(playerCreature, playerRef.current.size, 'player');
+        const { sprite: growthSprite } = getGrowthStageSprite(playerCreature, gameStateRef.current.player.size, 'player');
         playerSpriteUrl = growthSprite;
       }
-      console.log('[FishEditorCanvas] Queuing player sprite reload, size:', playerRef.current.size);
       reloadPromises.push(
         reloadSprite('player', playerSpriteUrl, (processedSprite) => {
-          playerRef.current.sprite = processedSprite;
+          gameStateRef.current.player.sprite = processedSprite;
         })
       );
     }
 
     await Promise.all(reloadPromises);
-    console.log('[FishEditorCanvas] All sprites reloaded!');
 
     // Notify parent
     if (onCacheRefreshed) {
@@ -874,7 +738,9 @@ export default function FishEditorCanvas({
   // Listen for global refresh event
   useEffect(() => {
     const handleRefresh = () => {
-      refreshAllSprites().catch(err => console.error('[FishEditorCanvas] Refresh error:', err));
+      refreshAllSprites().catch(() => {
+        // Refresh failed
+      });
     };
     window.addEventListener('refreshFishSprites', handleRefresh);
     return () => window.removeEventListener('refreshFishSprites', handleRefresh);
@@ -893,13 +759,10 @@ export default function FishEditorCanvas({
   useEffect(() => {
     const handlePreviewAnimation = (e: CustomEvent<{ action: string }>) => {
       const { action } = e.detail;
-      console.log(`[FishEditorCanvas] Preview animation requested: ${action}`);
 
-      if (animationSpriteManagerRef.current.hasSprite('player')) {
-        const sprite = animationSpriteManagerRef.current.getSprite('player', playerRef.current.animations || {});
+      if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+        const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', gameStateRef.current.player.animations || {});
         sprite.triggerAction(action as any);
-      } else {
-        console.warn('[FishEditorCanvas] No player animation sprite available for preview');
       }
     };
     window.addEventListener('previewAnimation', handlePreviewAnimation as EventListener);
@@ -928,7 +791,7 @@ export default function FishEditorCanvas({
       onLoaded(processedSprite);
     };
     img.onerror = () => {
-      console.error('[FishEditorCanvas] Failed to load growth sprite:', spriteUrl);
+      // Failed to load growth sprite
     };
     img.src = cacheBust(spriteUrl);
   }, []);
@@ -939,9 +802,9 @@ export default function FishEditorCanvas({
       const { fishId, size } = e.detail;
 
       // Update player if that's the target
-      if (fishId === 'player' || fishId === playerRef.current.id) {
-        const oldSize = playerRef.current.size;
-        playerRef.current.size = size;
+      if (fishId === 'player' || fishId === gameStateRef.current.player.id) {
+        const oldSize = gameStateRef.current.player.size;
+        gameStateRef.current.player.size = size;
 
         // Check if player growth stage changed
         if (playerCreature?.growthSprites) {
@@ -949,13 +812,12 @@ export default function FishEditorCanvas({
           const newStage = getGrowthStage(size, playerCreature.growthSprites);
 
           if (oldStage !== newStage) {
-            console.log(`[FishEditorCanvas] Player growth stage changed: ${oldStage} -> ${newStage}`);
             // Reload player sprite for new growth stage
             const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, size, 'player');
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
-              playerRef.current.sprite = removeBackground(img, chromaToleranceRef.current);
+              gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
             };
             img.src = cacheBust(spriteUrl);
           }
@@ -963,8 +825,8 @@ export default function FishEditorCanvas({
         return;
       }
 
-      // Update fish in fishListRef
-      const fish = fishListRef.current.find(f => f.id === fishId);
+      // Update fish in fish list
+      const fish = gameStateRef.current.fish.find(f => f.id === fishId);
       if (fish) {
         const oldSize = fish.size;
         fish.size = size;
@@ -991,7 +853,6 @@ export default function FishEditorCanvas({
           const newStage = getGrowthStage(size, creatureData.growthSprites);
 
           if (oldStage !== newStage) {
-            console.log(`[FishEditorCanvas] Fish ${fishId} growth stage changed: ${oldStage} -> ${newStage}`);
             fish.currentGrowthStage = newStage;
 
             // Store creature data for future lookups
@@ -1025,7 +886,7 @@ export default function FishEditorCanvas({
     const isSpawnedCreature = (item: SpawnedCreature | LegacySpawnItem): item is SpawnedCreature => {
       return 'stats' in item && 'rarity' in item;
     };
-    spawnPoolRef.current = spawnedFish.length
+    gameStateRef.current.spawnPool = spawnedFish.length
       ? (spawnedFish.filter(isSpawnedCreature) as SpawnedCreature[])
       : [];
 
@@ -1060,16 +921,16 @@ export default function FishEditorCanvas({
         onLoaded(processedSprite);
       };
       img.onerror = () => {
-        console.error('Failed to load fish sprite:', finalUrl);
+        // Failed to load fish sprite
       };
       // Always use cache busting to ensure fresh images
       img.src = cacheBust(finalUrl);
     };
 
     spawnedFish.forEach((fishItem) => {
-      if (eatenIdsRef.current.has(fishItem.id)) return;
+      if (gameStateRef.current.eatenIds.has(fishItem.id)) return;
 
-      const existingFish = fishListRef.current.find((f) => f.id === fishItem.id);
+      const existingFish = gameStateRef.current.fish.find((f) => f.id === fishItem.id);
       const previousSpriteUrl = fishSpriteUrlsRef.current.get(fishItem.id);
 
       // Resolve creature and instance size: support full Creature (stats + growthSprites) and legacy { id, sprite, type, creatureId }
@@ -1089,7 +950,7 @@ export default function FishEditorCanvas({
           : creatureForSprite?.stats?.size ?? (fishItem.type === 'prey' ? 30 : fishItem.type === 'predator' ? 100 : 60);
 
       if (!creatureForSprite) {
-        console.warn('[FishEditorCanvas] No creature data for', fishItem.id, '- cannot resolve growth-stage sprite');
+        // No creature data available - cannot resolve growth-stage sprite
       }
 
       // Resolve growth-stage sprite once: use its sprite + spriteResolutions so we load the correct stage (e.g. juvenile) and its resolution variants, not the base creature's
@@ -1104,10 +965,6 @@ export default function FishEditorCanvas({
       const initialGrowthStage = creatureForSprite?.growthSprites
         ? getGrowthStage(fishSizeForSprite, creatureForSprite.growthSprites)
         : undefined;
-      if (creatureForSprite?.growthSprites) {
-        console.log(`[FishEditorCanvas] Spawning ${fishItem.id} at size ${fishSizeForSprite} with ${initialGrowthStage} sprite`);
-      }
-
       // Detect changes: URL changed OR it was a data URL and now it's a blob URL (after save)
       const wasDataUrl = previousSpriteUrl?.startsWith('data:') || false;
       const isNowBlobUrl = currentSpriteUrl && !currentSpriteUrl.startsWith('data:');
@@ -1117,7 +974,7 @@ export default function FishEditorCanvas({
 
       // Debug logging for sprite changes
       if (existingFish && (urlChanged || savedToBlobAfterRegenerate)) {
-        console.log('[FishEditorCanvas] Sprite state for', fishItem.id, ':', {
+        console.log({
           previousUrl: previousSpriteUrl?.substring(0, 50),
           currentUrl: currentSpriteUrl?.substring(0, 50),
           wasDataUrl,
@@ -1151,16 +1008,15 @@ export default function FishEditorCanvas({
         // SPRITE or SIZE CHANGED - reload the correct growth-stage sprite
         const newVersion = (spriteVersionRef.current.get(fishItem.id) || 0) + 1;
         spriteVersionRef.current.set(fishItem.id, newVersion);
-        console.log('[FishEditorCanvas] Reloading sprite for fish:', fishItem.id, 'size:', fishSizeForSprite, sizeMismatch ? '(size synced)' : '(URL changed)');
         loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
           existingFish.sprite = processedSprite;
-          spriteCacheRef.current.set(cacheKey, processedSprite);
+          gameStateRef.current.spriteCache.set(cacheKey, processedSprite);
         }, { spriteResolutions, fishSize: fishSizeForResolution });
       } else if (!existingFish) {
         // NEW FISH - add to list
         loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
           // Cache by creature id + resolution for respawn in game mode
-          spriteCacheRef.current.set(cacheKey, processedSprite);
+          gameStateRef.current.spriteCache.set(cacheKey, processedSprite);
 
           let fishSize: number;
           let baseSpeed: number;
@@ -1181,8 +1037,8 @@ export default function FishEditorCanvas({
           const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
 
           // Spawn fish at a safe distance from player, swimming inward
-          const playerPos = playerRef.current;
-          const bounds = worldBoundsRef.current;
+          const playerPos = gameStateRef.current.player;
+          const bounds = gameStateRef.current.worldBounds;
           const MIN_SPAWN_DIST = 400; // Spawn off-screen
 
           // Random angle and spawn at edge of play area
@@ -1197,14 +1053,14 @@ export default function FishEditorCanvas({
 
           // Stagger spawn times to avoid performance spike
           // Each fish spawns 100-200ms after the previous one
-          const spawnIndex = fishListRef.current.length;
+          const spawnIndex = gameStateRef.current.fish.length;
           const staggerDelay = spawnIndex * (100 + Math.random() * 100);
 
           // Initialize animation sprite if creature has animations
           const animations = creatureForSprite?.animations;
           let animationSprite: AnimationSprite | undefined;
           if (animations && hasUsableAnimations(animations)) {
-            animationSprite = animationSpriteManagerRef.current.getSprite(fishItem.id, animations);
+            animationSprite = gameStateRef.current.animationSpriteManager.getSprite(fishItem.id, animations);
           }
 
           const newFish = {
@@ -1231,16 +1087,16 @@ export default function FishEditorCanvas({
             maxStamina: 100,
             isDashing: false,
           };
-          fishListRef.current.push(newFish);
+          gameStateRef.current.fish.push(newFish);
         }, { spriteResolutions, fishSize: fishSizeForResolution });
       }
     });
 
-    fishListRef.current = fishListRef.current.filter((fish) =>
+    gameStateRef.current.fish = gameStateRef.current.fish.filter((fish) =>
       spawnedFish.find((f) => f.id === fish.id) || fish.id.includes('-r-')
     );
     // Clear eaten set when user clears all fish
-    if (spawnedFish.length === 0) eatenIdsRef.current.clear();
+    if (spawnedFish.length === 0) gameStateRef.current.eatenIds.clear();
   }, [spawnedFish]);
 
   // Setup canvas and game loop
@@ -1274,58 +1130,36 @@ export default function FishEditorCanvas({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      keyKeysRef.current.add(key);
-
+      inputManagerRef.current.handleKeyDown(e.key);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      keyKeysRef.current.delete(key);
+      inputManagerRef.current.handleKeyUp(e.key);
     };
 
     // Wheel zoom handler (desktop) - works in all modes
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1; // 10% per scroll tick
-      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoomRef.current * zoomDelta));
-      targetZoomRef.current = newZoom;
-    };
-
-    // Helper to calculate distance between two touches
-    const getTouchDistance = (t1: Touch, t2: Touch): number => {
-      const dx = t1.clientX - t2.clientX;
-      const dy = t1.clientY - t2.clientY;
-      return Math.sqrt(dx * dx + dy * dy);
+      inputManagerRef.current.handleWheel(e.deltaY, CAMERA.MIN_ZOOM, CAMERA.MAX_ZOOM);
     };
 
     // Pinch-to-zoom handlers (mobile) - works in all modes
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        // Start pinch gesture
-        const dist = getTouchDistance(e.touches[0], e.touches[1]);
-        pinchRef.current = { startDistance: dist, startZoom: targetZoomRef.current };
-      }
+      const zoomState = inputManagerRef.current.getZoomState();
+      inputManagerRef.current.handleTouchStart(e.touches, zoomState.currentZoom);
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && pinchRef.current) {
+      if (inputManagerRef.current.handleTouchMove(e.touches, CAMERA.MIN_ZOOM, CAMERA.MAX_ZOOM)) {
         e.preventDefault(); // Prevent page zoom
-        const dist = getTouchDistance(e.touches[0], e.touches[1]);
-        const scale = dist / pinchRef.current.startDistance;
-        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchRef.current.startZoom * scale));
-        targetZoomRef.current = newZoom;
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) {
-        // End pinch gesture
-        pinchRef.current = null;
-      }
+      inputManagerRef.current.handleTouchEnd(e.touches);
     };
 
-    const hasKey = (k: string) => keyKeysRef.current.has(k);
+    const hasKey = (k: string) => inputManagerRef.current.hasKey(k);
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -1345,63 +1179,45 @@ export default function FishEditorCanvas({
     const FRICTION = 0.92;
 
     const gameLoop = () => {
-      const player = playerRef.current;
+      const player = gameStateRef.current.player;
       const isPaused = pausedRef.current;
 
       // Calculate delta time for frame-rate independent movement
-      const currentTime = performance.now();
-      let deltaTime = 1; // Default to 1 for first frame (normalized to 60fps)
-      if (lastFrameTimeRef.current > 0) {
-        const frameDelta = currentTime - lastFrameTimeRef.current;
-        // Normalize delta time to 60fps (16.67ms per frame)
-        // This means all movement values work as if running at 60fps
-        deltaTime = Math.min(frameDelta / 16.67, 3); // Cap at 3x to prevent huge jumps
-        frameTimesRef.current.push(frameDelta);
-        if (frameTimesRef.current.length > 60) frameTimesRef.current.shift();
-      }
-      lastFrameTimeRef.current = currentTime;
+      const deltaTime = gameStateRef.current.calculateDeltaTime();
 
       // Skip game state updates if paused, but continue to render
 
       // Track pause time for level timer
-      if (isPaused && !wasPausedRef.current) {
-        // Just became paused - record start time
-        pauseStartTimeRef.current = Date.now();
-        wasPausedRef.current = true;
-      } else if (!isPaused && wasPausedRef.current) {
-        // Just unpaused - add paused duration to total
-        totalPausedTimeRef.current += Date.now() - pauseStartTimeRef.current;
-        wasPausedRef.current = false;
-      }
+      gameStateRef.current.updatePauseTracking(isPaused);
 
       // Initialize game start time in game mode
-      if (gameMode && gameStartTimeRef.current === 0) {
-        gameStartTimeRef.current = Date.now();
-        fishEatenRef.current = 0;
-        scoreRef.current = 0;
-        totalPausedTimeRef.current = 0; // Reset paused time on new game
+      if (gameMode && gameStateRef.current.gameMode.startTime === 0) {
+        gameStateRef.current.gameMode.startTime = Date.now();
+        gameStateRef.current.gameMode.fishEaten = 0;
+        gameStateRef.current.gameMode.score = 0;
+        gameStateRef.current.gameMode.totalPausedTime = 0; // Reset paused time on new game
 
         // Load essence collected from run state
         const runState = loadRunState();
         if (runState) {
           const totalEssence = Object.values(runState.collectedEssence).reduce((sum, val) => sum + val, 0);
-          essenceCollectedRef.current = totalEssence;
+          gameStateRef.current.gameMode.essenceCollected = totalEssence;
         } else {
-          essenceCollectedRef.current = 0;
+          gameStateRef.current.gameMode.essenceCollected = 0;
         }
       }
 
       // Check game timer in game mode (only when not paused)
-      if (gameMode && !levelCompleteFiredRef.current && !gameOverFiredRef.current && !isPaused) {
-        const elapsed = Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current;
+      if (gameMode && !gameStateRef.current.gameMode.levelCompleteFired && !gameStateRef.current.gameMode.gameOverFired && !isPaused) {
+        const elapsed = gameStateRef.current.getElapsedGameTime();
         if (elapsed >= levelDuration) {
           // Level complete - end immediately
-          levelCompleteFiredRef.current = true;
+          gameStateRef.current.gameMode.levelCompleteFired = true;
           if (onLevelComplete) {
-            const timeSurvived = Math.floor((Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
-            onLevelComplete(scoreRef.current, {
-              size: playerRef.current.size,
-              fishEaten: fishEatenRef.current,
+            const timeSurvived = Math.floor(elapsed / 1000);
+            onLevelComplete(gameStateRef.current.gameMode.score, {
+              size: player.size,
+              fishEaten: gameStateRef.current.gameMode.fishEaten,
               timeSurvived,
             });
           }
@@ -1412,43 +1228,42 @@ export default function FishEditorCanvas({
         const runState = loadRunState();
         if (runState) {
           const totalEssence = Object.values(runState.collectedEssence).reduce((sum, val) => sum + val, 0);
-          essenceCollectedRef.current = totalEssence;
+          gameStateRef.current.gameMode.essenceCollected = totalEssence;
         }
       }
 
       // Dash mechanic (game mode only): Shift/Space or mobile dash button
-      const STAMINA_REGEN_RATE = 100; // per second
-      const wantsDash = hasKey('shift') || hasKey(' ') || (dashFromControlsRefProp?.current ?? false);
+      const inputState = inputManagerRef.current.getState();
+      const wantsDash = inputState.wantsDash || (dashFromControlsRefProp?.current ?? false);
       if (gameMode) {
         player.isDashing = wantsDash && player.stamina > 0;
         if (player.isDashing) {
           // Track hold duration for escalating drain (longer hold = faster drain)
           const frameMs = (deltaTime / 60) * 1000;
-          dashHoldDurationMsRef.current += frameMs;
-          const holdSeconds = dashHoldDurationMsRef.current / 1000;
+          gameStateRef.current.dashHoldDurationMs += frameMs;
+          const holdSeconds = gameStateRef.current.dashHoldDurationMs / 1000;
           const rampMultiplier = Math.min(1 + holdSeconds * DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP);
-          const drainRate = gameConfigRef.current?.dashStaminaDrainRate ?? DASH_STAMINA_DRAIN_RATE;
-          player.stamina = Math.max(0, player.stamina - drainRate * rampMultiplier * (deltaTime / 60));
+          updateStamina(player, deltaTime, { rampMultiplier, gameConfig: gameConfigRef.current });
         } else {
-          dashHoldDurationMsRef.current = 0;
-          player.stamina = Math.min(player.maxStamina, player.stamina + STAMINA_REGEN_RATE * (deltaTime / 60));
+          gameStateRef.current.dashHoldDurationMs = 0;
+          updateStamina(player, deltaTime, { gameConfig: gameConfigRef.current });
         }
         if (player.stamina <= 0) player.isDashing = false;
       } else {
         player.isDashing = false;
-        dashHoldDurationMsRef.current = 0;
+        gameStateRef.current.dashHoldDurationMs = 0;
       }
 
-      const effectiveMaxSpeed = (gameMode && player.isDashing) ? MAX_SPEED * DASH_SPEED_MULTIPLIER : MAX_SPEED;
+      const effectiveMaxSpeed = (gameMode && player.isDashing) ? MAX_SPEED * PHYSICS.DASH_SPEED_MULTIPLIER : MAX_SPEED;
 
       // Lock movement in edit mode or when paused
       const currentEditMode = editModeRef.current;
       if (!currentEditMode && !isPaused) {
         // Use joystick if active, otherwise keyboard
-        if (joystickActiveRef.current) {
+        if (inputState.joystick.active) {
           // Analog joystick control - smooth velocity (dash applies speed boost)
-          player.vx = joystickVelocityRef.current.x * effectiveMaxSpeed;
-          player.vy = joystickVelocityRef.current.y * effectiveMaxSpeed;
+          player.vx = inputState.joystick.x * effectiveMaxSpeed;
+          player.vy = inputState.joystick.y * effectiveMaxSpeed;
         } else {
           // Keyboard control with acceleration and friction (delta-time adjusted)
           const accelMult = (gameMode && player.isDashing) ? 1.3 : 1; // Snappier when dashing
@@ -1498,7 +1313,7 @@ export default function FishEditorCanvas({
       if (gameMode) {
         const rawSpeed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
         const animationAction = player.isDashing ? 'dash' : (rawSpeed < 0.2 ? 'idle' : 'swim');
-        dashParticleSystemRef.current.update(
+        gameStateRef.current.particles.dashPlayer.update(
           {
             x: player.x,
             y: player.y,
@@ -1530,22 +1345,22 @@ export default function FishEditorCanvas({
         player.hunger = Math.max(0, player.hunger - (effectiveDrainRate / HUNGER_FRAME_RATE) * deltaTime);
 
         // Check starvation death
-        if (player.hunger <= 0 && !gameOverFiredRef.current) {
+        if (player.hunger <= 0 && !gameStateRef.current.gameMode.gameOverFired) {
           // Trigger death animation on player if animation sprite exists
-          if (animationSpriteManagerRef.current.hasSprite('player')) {
-            const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+          if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+            const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
             sprite.triggerAction('death');
           }
 
-          gameOverFiredRef.current = true;
+          gameStateRef.current.gameMode.gameOverFired = true;
           if (onGameOver) {
-            const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
+            const timeSurvived = Math.floor((now - gameStateRef.current.gameMode.startTime - gameStateRef.current.gameMode.totalPausedTime) / 1000);
             onGameOver({
-              score: scoreRef.current,
+              score: gameStateRef.current.gameMode.score,
               cause: 'starved',
               size: player.size,
-              fishEaten: fishEatenRef.current,
-              essenceCollected: essenceCollectedRef.current,
+              fishEaten: gameStateRef.current.gameMode.fishEaten,
+              essenceCollected: gameStateRef.current.gameMode.essenceCollected,
               timeSurvived,
             });
           }
@@ -1565,7 +1380,7 @@ export default function FishEditorCanvas({
 
       // Fish-fish collisions: predator vs prey (eat or stamina battle) - game mode only
       if (gameMode) {
-        const fishList = fishListRef.current;
+        const fishList = gameStateRef.current.fish;
         const eatenIds = new Set<string>();
         for (let i = 0; i < fishList.length; i++) {
           const fishA = fishList[i];
@@ -1601,7 +1416,7 @@ export default function FishEditorCanvas({
               fishB.size = Math.min(PLAYER_MAX_SIZE, fishB.size + fishA.size * 0.15 * effMult);
               if (fishB.animationSprite?.hasAction?.('bite')) fishB.animationSprite.triggerAction('bite');
               for (let b = 0; b < 12; b++) {
-                bloodParticlesRef.current.push({
+                gameStateRef.current.particles.blood.push({
                   x: eatX + (Math.random() - 0.5) * fishA.size * 1.2,
                   y: eatY + (Math.random() - 0.5) * fishA.size * 1.2,
                   life: 1,
@@ -1618,7 +1433,7 @@ export default function FishEditorCanvas({
               fishA.size = Math.min(PLAYER_MAX_SIZE, fishA.size + fishB.size * 0.15 * effMult);
               if (fishA.animationSprite?.hasAction?.('bite')) fishA.animationSprite.triggerAction('bite');
               for (let b = 0; b < 12; b++) {
-                bloodParticlesRef.current.push({
+                gameStateRef.current.particles.blood.push({
                   x: eatX + (Math.random() - 0.5) * fishB.size * 1.2,
                   y: eatY + (Math.random() - 0.5) * fishB.size * 1.2,
                   life: 1,
@@ -1662,7 +1477,7 @@ export default function FishEditorCanvas({
                 predator.animationSprite.triggerAction('bite');
               }
               for (let b = 0; b < 12; b++) {
-                bloodParticlesRef.current.push({
+                gameStateRef.current.particles.blood.push({
                   x: eatX + (Math.random() - 0.5) * prey.size * 1.2,
                   y: eatY + (Math.random() - 0.5) * prey.size * 1.2,
                   life: 1,
@@ -1681,7 +1496,7 @@ export default function FishEditorCanvas({
                 prey.animationSprite.triggerAction('bite');
               }
               for (let b = 0; b < 12; b++) {
-                bloodParticlesRef.current.push({
+                gameStateRef.current.particles.blood.push({
                   x: eatX + (Math.random() - 0.5) * predator.size * 1.2,
                   y: eatY + (Math.random() - 0.5) * predator.size * 1.2,
                   life: 1,
@@ -1702,7 +1517,7 @@ export default function FishEditorCanvas({
                   prey.size = Math.min(PLAYER_MAX_SIZE, prey.size + predator.size * 0.08);
                   if (prey.animationSprite?.hasAction?.('bite')) prey.animationSprite.triggerAction('bite');
                   for (let b = 0; b < 10; b++) {
-                    bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
+                    gameStateRef.current.particles.blood.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
                   }
                 } else if (preyKo) {
                   prey.lifecycleState = 'knocked_out';
@@ -1716,15 +1531,15 @@ export default function FishEditorCanvas({
           }
         }
         if (eatenIds.size > 0) {
-          fishListRef.current = fishListRef.current.filter((f) => !eatenIds.has(f.id));
+          gameStateRef.current.fish = gameStateRef.current.fish.filter((f) => !eatenIds.has(f.id));
         }
       }
 
       const playerHead = getHeadPosition(player);
       const playerHeadR = getHeadRadius(player.size);
 
-      for (let idx = fishListRef.current.length - 1; idx >= 0; idx--) {
-        const fish = fishListRef.current[idx];
+      for (let idx = gameStateRef.current.fish.length - 1; idx >= 0; idx--) {
+        const fish = gameStateRef.current.fish[idx];
 
         // Skip collision for fish still fading in (not fully opaque yet)
         if ((fish.opacity ?? 1) < 1) {
@@ -1745,9 +1560,9 @@ export default function FishEditorCanvas({
             // KNOCKED OUT: Dashing fish or auto-eat can eat KO fish
             const cfgForKo = gameConfigRef.current;
             if (fish.lifecycleState === 'knocked_out' && (player.isDashing || (cfgForKo?.autoEat ?? false))) {
-              fishEatenRef.current += 1;
-              eatenIdsRef.current.add(fish.id);
-              fishListRef.current.splice(idx, 1);
+              gameStateRef.current.gameMode.fishEaten += 1;
+              gameStateRef.current.eatenIds.add(fish.id);
+              gameStateRef.current.fish.splice(idx, 1);
               const sizeRatio = player.size / fish.size;
               const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
               const sizeGain = fish.size * 0.15 * efficiencyMult;
@@ -1758,18 +1573,18 @@ export default function FishEditorCanvas({
               player.chompEndTime = now + 280;
               const eatX = (fish.x + player.x) * 0.5;
               const eatY = (fish.y + player.y) * 0.5;
-              if (animationSpriteManagerRef.current.hasSprite('player')) {
-                const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+              if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+                const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
                 sprite.triggerAction('bite');
               }
               for (let b = 0; b < 10; b++) {
-                bloodParticlesRef.current.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
+                gameStateRef.current.particles.blood.push({ x: eatX + (Math.random() - 0.5) * 20, y: eatY + (Math.random() - 0.5) * 20, life: 1, radius: 4 + Math.random() * 6 });
               }
               if (fish.creatureData?.essenceTypes) {
                 fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }, i: number) => {
                   const et = ESSENCE_TYPES[ec.type];
                   if (et) {
-                    chompParticlesRef.current.push({
+                    gameStateRef.current.particles.chomp.push({
                       x: eatX + (Math.random() - 0.5) * 24,
                       y: eatY - 20 - (i * 18),
                       life: 1.5,
@@ -1816,15 +1631,15 @@ export default function FishEditorCanvas({
                   fish.vx = (fish.vx ?? 0) * 0.3;
                   fish.vy = (fish.vy ?? 0) * 0.3;
                 } else {
-                  if (animationSpriteManagerRef.current.hasSprite('player')) {
-                    const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                  if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+                    const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
                     sprite.triggerAction('death');
                   }
-                  if (!gameOverFiredRef.current) {
-                    gameOverFiredRef.current = true;
+                  if (!gameStateRef.current.gameMode.gameOverFired) {
+                    gameStateRef.current.gameMode.gameOverFired = true;
                     if (onGameOver) {
-                      const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
-                      onGameOver({ score: scoreRef.current, cause: 'eaten', size: player.size, fishEaten: fishEatenRef.current, essenceCollected: essenceCollectedRef.current, timeSurvived });
+                      const timeSurvived = Math.floor((now - gameStateRef.current.gameMode.startTime - gameStateRef.current.gameMode.totalPausedTime) / 1000);
+                      onGameOver({ score: gameStateRef.current.gameMode.score, cause: 'eaten', size: player.size, fishEaten: gameStateRef.current.gameMode.fishEaten, essenceCollected: gameStateRef.current.gameMode.essenceCollected, timeSurvived });
                     }
                   }
                   return;
@@ -1843,15 +1658,15 @@ export default function FishEditorCanvas({
                 fish.vx = (fish.vx ?? 0) * 0.3;
                 fish.vy = (fish.vy ?? 0) * 0.3;
               } else if (playerKo) {
-                if (animationSpriteManagerRef.current.hasSprite('player')) {
-                  const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+                  const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
                   sprite.triggerAction('death');
                 }
-                if (!gameOverFiredRef.current) {
-                  gameOverFiredRef.current = true;
+                if (!gameStateRef.current.gameMode.gameOverFired) {
+                  gameStateRef.current.gameMode.gameOverFired = true;
                   if (onGameOver) {
-                    const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
-                    onGameOver({ score: scoreRef.current, cause: 'eaten', size: player.size, fishEaten: fishEatenRef.current, essenceCollected: essenceCollectedRef.current, timeSurvived });
+                    const timeSurvived = Math.floor((now - gameStateRef.current.gameMode.startTime - gameStateRef.current.gameMode.totalPausedTime) / 1000);
+                    onGameOver({ score: gameStateRef.current.gameMode.score, cause: 'eaten', size: player.size, fishEaten: gameStateRef.current.gameMode.fishEaten, essenceCollected: gameStateRef.current.gameMode.essenceCollected, timeSurvived });
                   }
                 }
                 return;
@@ -1859,22 +1674,22 @@ export default function FishEditorCanvas({
             } else if (fishAttacking) {
               // Predator ate player - GAME OVER
               // Trigger death animation on player before game over
-              if (animationSpriteManagerRef.current.hasSprite('player')) {
-                const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+              if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+                const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
                 sprite.triggerAction('death');
               }
 
               // Player is eaten by larger fish - GAME OVER
-              if (!gameOverFiredRef.current) {
-                gameOverFiredRef.current = true;
+              if (!gameStateRef.current.gameMode.gameOverFired) {
+                gameStateRef.current.gameMode.gameOverFired = true;
                 if (onGameOver) {
-                  const timeSurvived = Math.floor((now - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
+                  const timeSurvived = Math.floor((now - gameStateRef.current.gameMode.startTime - gameStateRef.current.gameMode.totalPausedTime) / 1000);
                   onGameOver({
-                    score: scoreRef.current,
+                    score: gameStateRef.current.gameMode.score,
                     cause: 'eaten',
                     size: player.size,
-                    fishEaten: fishEatenRef.current,
-                    essenceCollected: essenceCollectedRef.current,
+                    fishEaten: gameStateRef.current.gameMode.fishEaten,
+                    essenceCollected: gameStateRef.current.gameMode.essenceCollected,
                     timeSurvived,
                   });
                 }
@@ -1882,9 +1697,9 @@ export default function FishEditorCanvas({
               return; // Stop game loop
             } else if (playerAttacking) {
               // Player eats fish
-              fishEatenRef.current += 1;
-              eatenIdsRef.current.add(fish.id);
-              fishListRef.current.splice(idx, 1);
+              gameStateRef.current.gameMode.fishEaten += 1;
+              gameStateRef.current.eatenIds.add(fish.id);
+              gameStateRef.current.fish.splice(idx, 1);
 
               // Diminishing returns: bigger fish relative to prey = less growth
               // Encourages eating appropriately-sized targets, not grinding tiny fish
@@ -1899,38 +1714,29 @@ export default function FishEditorCanvas({
                 const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
                 const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
 
-                // Log size progress periodically (every 5 size units)
+                // Track size progress periodically (every 5 size units)
                 if (Math.floor(player.size / 5) !== Math.floor(oldPlayerSize / 5)) {
-                  console.log(`[Growth] Player size: ${player.size.toFixed(1)}, stage: ${newStage}, has growthSprites:`, Object.keys(playerCreature.growthSprites));
+                  // Size milestone reached
                 }
 
                 if (oldStage !== newStage) {
-                  console.log(`[Growth] Player grew from ${oldStage} to ${newStage} (size: ${oldPlayerSize.toFixed(1)} -> ${player.size.toFixed(1)})`);
                   // Reload sprite for new growth stage
                   const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
-                  console.log(`[Growth] Loading new sprite: ${spriteUrl.substring(0, 80)}...`);
                   const growthImg = new Image();
                   growthImg.crossOrigin = 'anonymous';
                   growthImg.onload = () => {
-                    console.log(`[Growth] Sprite loaded successfully for ${newStage}`);
                     player.sprite = removeBackground(growthImg, chromaToleranceRef.current);
                   };
-                  growthImg.onerror = (e) => {
-                    console.error(`[Growth] Failed to load sprite for ${newStage}:`, e);
+                  growthImg.onerror = () => {
+                    // Failed to load growth sprite
                   };
                   growthImg.src = spriteUrl;
 
                   // Update animation sprite's growth stage
-                  if (animationSpriteManagerRef.current.hasSprite('player')) {
-                    const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                  if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+                    const animSprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
                     animSprite.setGrowthStage(newStage);
-                    console.log(`[Growth] Updated animation sprite to ${newStage} stage`);
                   }
-                }
-              } else {
-                // Log if we're missing growth sprites
-                if (Math.floor(player.size / 10) !== Math.floor(oldPlayerSize / 10)) {
-                  console.log(`[Growth] Player size: ${player.size.toFixed(1)}, NO growthSprites available`);
                 }
               }
 
@@ -1944,11 +1750,9 @@ export default function FishEditorCanvas({
               const eatY = (fish.y + player.y) * 0.5;
 
               // Trigger bite animation on player (if animation sprite exists)
-              const hasBiteSprite = animationSpriteManagerRef.current.hasSprite('player');
-              console.log(`[Bite] Player ate fish. hasSprite=${hasBiteSprite}, hasAnimations=${!!player.animations}`);
+              const hasBiteSprite = gameStateRef.current.animationSpriteManager.hasSprite('player');
               if (hasBiteSprite) {
-                const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
-                console.log(`[Bite] Triggering bite action on sprite`);
+                const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
                 sprite.triggerAction('bite');
               }
 
@@ -1959,7 +1763,7 @@ export default function FishEditorCanvas({
 
               // Create chomp particles (CHOMP text + decoration symbols, NO hearts)
               for (let k = 0; k < 5; k++) {
-                chompParticlesRef.current.push({
+                gameStateRef.current.particles.chomp.push({
                   x: eatX + (Math.random() - 0.5) * 16,
                   y: eatY + (Math.random() - 0.5) * 16,
                   life: 1,
@@ -1974,7 +1778,7 @@ export default function FishEditorCanvas({
                 fish.creatureData.essenceTypes.forEach((essenceConfig, idx) => {
                   const essenceType = ESSENCE_TYPES[essenceConfig.type];
                   if (essenceType) {
-                    chompParticlesRef.current.push({
+                    gameStateRef.current.particles.chomp.push({
                       x: eatX + (Math.random() - 0.5) * 24,
                       y: eatY - 20 - (idx * 18), // Stack vertically
                       life: 1.5,
@@ -1989,7 +1793,7 @@ export default function FishEditorCanvas({
 
               // Add hunger restore notification
               if (hungerRestore > 0) {
-                chompParticlesRef.current.push({
+                gameStateRef.current.particles.chomp.push({
                   x: player.x,
                   y: player.y - player.size * 0.6,
                   life: 1.5,
@@ -2000,7 +1804,7 @@ export default function FishEditorCanvas({
                 });
               }
               for (let b = 0; b < 22; b++) {
-                bloodParticlesRef.current.push({
+                gameStateRef.current.particles.blood.push({
                   x: eatX + (Math.random() - 0.5) * fish.size * 1.2,
                   y: eatY + (Math.random() - 0.5) * fish.size * 1.2,
                   life: 1,
@@ -2011,8 +1815,8 @@ export default function FishEditorCanvas({
           } else {
             // Editor mode - only eat prey type
             if (fish.type !== 'prey') continue;
-            eatenIdsRef.current.add(fish.id);
-            fishListRef.current.splice(idx, 1);
+            gameStateRef.current.eatenIds.add(fish.id);
+            gameStateRef.current.fish.splice(idx, 1);
             // Diminishing returns in editor mode too
             const sizeRatio = player.size / fish.size;
             const efficiencyMult = Math.max(0.05, 1 / (1 + sizeRatio * 0.4));
@@ -2025,7 +1829,6 @@ export default function FishEditorCanvas({
               const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
               const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
               if (oldStage !== newStage) {
-                console.log(`[Growth] Player grew from ${oldStage} to ${newStage} (size: ${oldPlayerSize.toFixed(1)} -> ${player.size.toFixed(1)})`);
                 const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
                 const growthImg = new Image();
                 growthImg.crossOrigin = 'anonymous';
@@ -2035,8 +1838,8 @@ export default function FishEditorCanvas({
                 growthImg.src = spriteUrl;
 
                 // Update animation sprite's growth stage
-                if (animationSpriteManagerRef.current.hasSprite('player')) {
-                  const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+                if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+                  const animSprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
                   animSprite.setGrowthStage(newStage);
                 }
               }
@@ -2048,8 +1851,8 @@ export default function FishEditorCanvas({
             const eatY = (fish.y + player.y) * 0.5;
 
             // Trigger bite animation on player (if animation sprite exists)
-            if (animationSpriteManagerRef.current.hasSprite('player')) {
-              const sprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+            if (gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+              const sprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
               sprite.triggerAction('bite');
             }
 
@@ -2060,7 +1863,7 @@ export default function FishEditorCanvas({
 
             // Create chomp particles (CHOMP text + decoration symbols, NO hearts)
             for (let k = 0; k < 5; k++) {
-              chompParticlesRef.current.push({
+              gameStateRef.current.particles.chomp.push({
                 x: eatX + (Math.random() - 0.5) * 16,
                 y: eatY + (Math.random() - 0.5) * 16,
                 life: 1,
@@ -2070,7 +1873,7 @@ export default function FishEditorCanvas({
               });
             }
             for (let b = 0; b < 22; b++) {
-              bloodParticlesRef.current.push({
+              gameStateRef.current.particles.blood.push({
                 x: eatX + (Math.random() - 0.5) * fish.size * 1.2,
                 y: eatY + (Math.random() - 0.5) * fish.size * 1.2,
                 life: 1,
@@ -2081,7 +1884,7 @@ export default function FishEditorCanvas({
         }
       }
 
-      chompParticlesRef.current = chompParticlesRef.current.filter((p) => {
+      gameStateRef.current.particles.chomp = gameStateRef.current.particles.chomp.filter((p) => {
         p.life -= 0.01;
         // Decay punch scale for punch animation effect
         if (p.punchScale !== undefined && p.punchScale > 1) {
@@ -2090,18 +1893,18 @@ export default function FishEditorCanvas({
         return p.life > 0;
       });
 
-      bloodParticlesRef.current = bloodParticlesRef.current.filter((b) => {
+      gameStateRef.current.particles.blood = gameStateRef.current.particles.blood.filter((b) => {
         b.life -= 0.007;
         return b.life > 0;
       });
 
       // Game mode: continuous respawn so player doesn't run out of prey
-      if (gameMode && spawnPoolRef.current.length > 0) {
-        const pool = spawnPoolRef.current;
+      if (gameMode && gameStateRef.current.spawnPool.length > 0) {
+        const pool = gameStateRef.current.spawnPool;
         const now = performance.now();
         if (
-          now - lastRespawnTimeRef.current >= getRespawnInterval() &&
-          fishListRef.current.length < getMaxFish()
+          now - gameStateRef.current.lastRespawnTime >= getRespawnInterval() &&
+          gameStateRef.current.fish.length < getMaxFish()
         ) {
           // Bias toward small prey to compensate for predator competition
           const weightedPool: SpawnedCreature[] = [];
@@ -2123,7 +1926,7 @@ export default function FishEditorCanvas({
           const resolution = getResolutionKey(screenSize);
           const cacheId = creature.creatureId ?? creature.id;
           const cacheKey = `${cacheId}:${resolution}`;
-          let sprite = spriteCacheRef.current.get(cacheKey) || spriteCacheRef.current.get(cacheId);
+          let sprite = gameStateRef.current.spriteCache.get(cacheKey) || gameStateRef.current.spriteCache.get(cacheId);
           // On cache miss, load growth-stage sprite so AI fish always use same rules as player
           if (!sprite && canvas) {
             const spriteUrl = getGrowthAwareSpriteUrl(creature, fishSize, screenSize, creature.id);
@@ -2131,12 +1934,12 @@ export default function FishEditorCanvas({
             img.crossOrigin = 'anonymous';
             img.onload = () => {
               const processedSprite = removeBackground(img, chromaToleranceRef.current);
-              spriteCacheRef.current.set(cacheKey, processedSprite);
+              gameStateRef.current.spriteCache.set(cacheKey, processedSprite);
               const baseSpeed = creature.stats.speed ?? 2;
               const speedScale = 0.1;
               const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
               const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
-              const bounds = worldBoundsRef.current;
+              const bounds = gameStateRef.current.worldBounds;
               const MIN_SPAWN_DIST = 500;
               const angle = Math.random() * Math.PI * 2;
               const distance = MIN_SPAWN_DIST + Math.random() * 200;
@@ -2147,9 +1950,9 @@ export default function FishEditorCanvas({
               const newId = `${creature.id}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
               const anims = creature.animations;
               const animSprite = anims && hasUsableAnimations(anims)
-                ? animationSpriteManagerRef.current.getSprite(newId, anims)
+                ? gameStateRef.current.animationSpriteManager.getSprite(newId, anims)
                 : undefined;
-              fishListRef.current.push({
+              gameStateRef.current.fish.push({
                 id: newId,
                 x: spawnX,
                 y: spawnY,
@@ -2173,7 +1976,9 @@ export default function FishEditorCanvas({
                 animationSprite: animSprite,
               });
             };
-            img.onerror = () => console.error('[FishEditorCanvas] Respawn sprite load failed:', spriteUrl);
+            img.onerror = () => {
+              // Respawn sprite load failed
+            };
             img.src = cacheBust(spriteUrl);
           }
           if (sprite && canvas) {
@@ -2181,7 +1986,7 @@ export default function FishEditorCanvas({
             const speedScale = 0.1;
             const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
             const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
-            const bounds = worldBoundsRef.current;
+            const bounds = gameStateRef.current.worldBounds;
 
             // Respawn at edge of visible area, swimming inward
             const MIN_SPAWN_DIST = 500; // Off-screen
@@ -2197,7 +2002,7 @@ export default function FishEditorCanvas({
             const newId = `${cacheId}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
             const anims = creature.animations;
             const animSprite = anims && hasUsableAnimations(anims)
-              ? animationSpriteManagerRef.current.getSprite(newId, anims)
+              ? gameStateRef.current.animationSpriteManager.getSprite(newId, anims)
               : undefined;
             const newFish = {
               id: newId,
@@ -2222,37 +2027,32 @@ export default function FishEditorCanvas({
               animations: anims,
               animationSprite: animSprite,
             };
-            fishListRef.current.push(newFish);
+            gameStateRef.current.fish.push(newFish);
           }
-          lastRespawnTimeRef.current = now;
+          gameStateRef.current.lastRespawnTime = now;
         }
       }
 
       // Constrain player to world bounds (unified for all modes)
-      const bounds = worldBoundsRef.current;
+      const bounds = gameStateRef.current.worldBounds;
       player.x = Math.max(bounds.minX, Math.min(bounds.maxX, player.x));
       player.y = Math.max(bounds.minY, Math.min(bounds.maxY, player.y));
 
-      // Camera follow: in play mode (not edit, not paused), follow player
-      // In edit/paused mode, camera is controlled by pan (handled elsewhere)
-      if (!currentEditMode && !isPaused) {
-        cameraRef.current.x = player.x;
-        cameraRef.current.y = player.y;
-      }
+      // Camera follow is now handled in the rendering section with smooth lerp
 
       // Game mode specific: update score and report stats
       if (gameMode) {
         // Update score based on size
-        scoreRef.current = Math.floor((player.size - player.baseSize) * 10);
+        gameStateRef.current.gameMode.score = Math.floor((player.size - player.baseSize) * 10);
 
         // Report stats to parent (throttled to ~4fps to avoid excessive updates)
         if (onStatsUpdate && Math.random() < 0.07) {
-          const timeSurvived = Math.floor((Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current) / 1000);
+          const timeSurvived = Math.floor((Date.now() - gameStateRef.current.gameMode.startTime - gameStateRef.current.gameMode.totalPausedTime) / 1000);
           onStatsUpdate({
             size: player.size,
             hunger: player.hunger,
-            score: scoreRef.current,
-            fishEaten: fishEatenRef.current,
+            score: gameStateRef.current.gameMode.score,
+            fishEaten: gameStateRef.current.gameMode.fishEaten,
             timeSurvived,
           });
         }
@@ -2263,11 +2063,10 @@ export default function FishEditorCanvas({
       const AI_PREDATOR_CHASE_SPEED = 1.15; // Predators faster to catch prey
       const AI_PREY_FLEE_SPEED = 0.85; // Prey slightly slower when fleeing
       const AI_DETECTION_RANGE = 400;
-      const AI_STAMINA_REGEN = 100; // per second
       const AI_CHASE_TIMEOUT_MS = 4500; // Give up chase after 4.5s
 
       // Update AI fish (lock movement in edit mode or when paused)
-      fishListRef.current.forEach((fish) => {
+      gameStateRef.current.fish.forEach((fish) => {
         // Ensure AI fish have stamina (for prey/predator)
         if (fish.stamina === undefined) fish.stamina = 100;
         if (fish.maxStamina === undefined) fish.maxStamina = 100;
@@ -2297,9 +2096,14 @@ export default function FishEditorCanvas({
         }
 
         if (!currentEditMode && !isPaused) {
+          // Ensure AI fish have stamina (for prey/predator)
+          if (fish.stamina === undefined) fish.stamina = 100;
+          if (fish.maxStamina === undefined) fish.maxStamina = 100;
+          if (fish.isDashing === undefined) fish.isDashing = false;
+
           // KO fish: drift slowly, regenerate stamina at 50%, wake at 40%
           if (gameMode && fish.lifecycleState === 'knocked_out') {
-            fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 0) + AI_STAMINA_REGEN * KO_STAMINA_REGEN_MULTIPLIER * (deltaTime / 60));
+            fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 0) + STAMINA.AI_REGEN_RATE * KO_STAMINA_REGEN_MULTIPLIER * (deltaTime / 60));
             if ((fish.stamina ?? 0) >= (fish.maxStamina ?? 100) * KO_WAKE_THRESHOLD) {
               fish.lifecycleState = 'active';
             }
@@ -2311,10 +2115,10 @@ export default function FishEditorCanvas({
               fish.vy = (fish.vy! / driftMag) * KO_DRIFT_SPEED;
             }
           } else if (gameMode && (fish.type === 'prey' || fish.type === 'predator' || fish.type === 'mutant') && fish.lifecycleState === 'active') {
-            const others = fishListRef.current.filter(
+            const others = gameStateRef.current.fish.filter(
               (f) => f.id !== fish.id && (f.lifecycleState === 'active' || f.lifecycleState === 'knocked_out') && (f.opacity ?? 1) >= 1
             );
-            const speedMult = (fish.isDashing && (fish.stamina ?? 0) > 0) ? DASH_SPEED_MULTIPLIER : 1;
+            const speedMult = (fish.isDashing && (fish.stamina ?? 0) > 0) ? PHYSICS.DASH_SPEED_MULTIPLIER : 1;
             const baseSpeed = AI_BASE_SPEED * speedMult;
 
             if (fish.type === 'predator' || fish.type === 'mutant') {
@@ -2379,12 +2183,7 @@ export default function FishEditorCanvas({
                 fish.isDashing = false;
               }
 
-              const drainRate = gameConfigRef.current?.dashStaminaDrainRate ?? DASH_STAMINA_DRAIN_RATE;
-              if (fish.isDashing) {
-                fish.stamina = Math.max(0, (fish.stamina ?? 100) - drainRate * (deltaTime / 60));
-              } else {
-                fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 100) + AI_STAMINA_REGEN * (deltaTime / 60));
-              }
+              updateStamina(fish as StaminaEntity, deltaTime, { gameConfig: gameConfigRef.current });
               if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
             } else if (fish.type === 'prey') {
               // Prey: flee from predators or player (if bigger), slightly slower than predators
@@ -2437,13 +2236,8 @@ export default function FishEditorCanvas({
               }
 
               // Prey flee stamina penalty - prey drains faster when escaping (player/predators get upper hand)
-              const preyDrainRate = gameConfigRef.current?.dashStaminaDrainRate ?? DASH_STAMINA_DRAIN_RATE;
               const fleeDrainMult = fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1;
-              if (fish.isDashing) {
-                fish.stamina = Math.max(0, (fish.stamina ?? 100) - preyDrainRate * fleeDrainMult * (deltaTime / 60));
-              } else {
-                fish.stamina = Math.min(fish.maxStamina ?? 100, (fish.stamina ?? 100) + AI_STAMINA_REGEN * (deltaTime / 60));
-              }
+              updateStamina(fish as StaminaEntity, deltaTime, { fleeMultiplier: fleeDrainMult, gameConfig: gameConfigRef.current });
               if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
             }
 
@@ -2488,7 +2282,7 @@ export default function FishEditorCanvas({
         fish.animTime += 0.04 + Math.min(0.04, (fishSpeed / 1.5) * 0.04);
 
         // Keep fish in world bounds (unified for all modes) - bounce off edges
-        const bounds = worldBoundsRef.current;
+        const bounds = gameStateRef.current.worldBounds;
         if (fish.x < bounds.minX || fish.x > bounds.maxX) {
           fish.vx = -fish.vx;
           fish.x = Math.max(bounds.minX, Math.min(bounds.maxX, fish.x));
@@ -2503,7 +2297,7 @@ export default function FishEditorCanvas({
       if (gameMode) {
         const dashEntities = [
           { id: 'player', x: player.x, y: player.y, vx: player.vx, vy: player.vy, size: player.size, isDashing: player.isDashing },
-          ...fishListRef.current
+          ...gameStateRef.current.fish
             .filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed')
             .map((f) => ({
               id: f.id,
@@ -2515,13 +2309,13 @@ export default function FishEditorCanvas({
               isDashing: !!(f.isDashing && (f.stamina ?? 0) > 0),
             })),
         ];
-        multiEntityDashRef.current.update(dashEntities, deltaTime);
+        gameStateRef.current.particles.dashMultiEntity.update(dashEntities, deltaTime);
       }
 
       // Clean up fish that have finished despawning
       // Don't remove fish while in edit mode - we need them for respawn when exiting
       if (!currentEditMode) {
-        fishListRef.current = fishListRef.current.filter(f => f.lifecycleState !== 'removed');
+        gameStateRef.current.fish = gameStateRef.current.fish.filter(f => f.lifecycleState !== 'removed');
       }
 
       // Update water effect time
@@ -2541,13 +2335,19 @@ export default function FishEditorCanvas({
       let useEditModeCamera = false;
 
       const currentSelectedFishId = selectedFishIdRef.current;
+
+      // In play mode (not edit, not paused), follow player
+      if (!currentEditMode && !isPaused) {
+        targetCameraX = player.x;
+        targetCameraY = player.y;
+      }
       // Follow camera when editing OR when paused with a selected fish (for navigation)
-      if ((currentEditMode || isPaused) && currentSelectedFishId) {
+      else if ((currentEditMode || isPaused) && currentSelectedFishId) {
         // Check if selected fish is the player
         const isPlayerSelected = currentSelectedFishId === player.id;
 
         // Find selected fish in the spawned fish list or use player
-        let selectedFish = isPlayerSelected ? null : fishListRef.current.find((f) => f.id === currentSelectedFishId);
+        let selectedFish = isPlayerSelected ? null : gameStateRef.current.fish.find((f) => f.id === currentSelectedFishId);
         let selectedSize = 0;
         let selectedX = 0;
         let selectedY = 0;
@@ -2570,25 +2370,31 @@ export default function FishEditorCanvas({
           targetCameraY = selectedY;
         }
       }
+      // Free pan mode (edit/paused but no selection) - keep current camera position
+      else if (currentEditMode || isPaused) {
+        targetCameraX = gameStateRef.current.camera.x;
+        targetCameraY = gameStateRef.current.camera.y;
+      }
 
       // Only update camera target, NOT zoom (preserve user zoom from wheel/slider)
-      targetCameraRef.current = { x: targetCameraX, y: targetCameraY };
+      gameStateRef.current.camera.x = targetCameraX;
+      gameStateRef.current.camera.y = targetCameraY;
 
       // Smooth interpolation (lerp) for zoom and camera
       const lerpSpeed = 0.12; // Faster for snappier response while still smooth
-      animatedZoomRef.current += (targetZoomRef.current - animatedZoomRef.current) * lerpSpeed;
-      animatedCameraRef.current.x += (targetCameraRef.current.x - animatedCameraRef.current.x) * lerpSpeed;
-      animatedCameraRef.current.y += (targetCameraRef.current.y - animatedCameraRef.current.y) * lerpSpeed;
+      inputManagerRef.current.updateAnimatedZoom(lerpSpeed);
+      gameStateRef.current.camera.x += (targetCameraX - gameStateRef.current.camera.x) * lerpSpeed;
+      gameStateRef.current.camera.y += (targetCameraY - gameStateRef.current.camera.y) * lerpSpeed;
 
       // Use animated values
-      const currentZoom = animatedZoomRef.current;
-      const cameraX = animatedCameraRef.current.x;
-      const cameraY = animatedCameraRef.current.y;
+      const currentZoom = inputManagerRef.current.getZoomState().animatedZoom;
+      const cameraX = gameStateRef.current.camera.x;
+      const cameraY = gameStateRef.current.camera.y;
 
       // Check if we're close enough to target to snap (prevents endless tiny movements)
-      const zoomDiff = Math.abs(targetZoomRef.current - animatedZoomRef.current);
-      const cameraDiffX = Math.abs(targetCameraRef.current.x - animatedCameraRef.current.x);
-      const cameraDiffY = Math.abs(targetCameraRef.current.y - animatedCameraRef.current.y);
+      const zoomDiff = Math.abs(inputManagerRef.current.getZoomState().targetZoom - inputManagerRef.current.getZoomState().animatedZoom);
+      const cameraDiffX = Math.abs(gameStateRef.current.camera.x - gameStateRef.current.camera.x);
+      const cameraDiffY = Math.abs(gameStateRef.current.camera.y - gameStateRef.current.camera.y);
       const isAnimating = zoomDiff > 0.01 || cameraDiffX > 1 || cameraDiffY > 1;
 
       // Apply zoom
@@ -2598,7 +2404,7 @@ export default function FishEditorCanvas({
       const scaledHeight = canvas.height / currentZoom;
 
       // Determine if we're using edit mode camera
-      const usingEditCamera = useEditModeCamera || (isAnimating && targetZoomRef.current !== zoomRef.current);
+      const usingEditCamera = useEditModeCamera || (isAnimating && inputManagerRef.current.getZoomState().targetZoom !== zoomRef.current);
 
       // Calculate effective camera position BEFORE drawing (used for background parallax and transforms)
       let effectiveCamX = 0;
@@ -2610,17 +2416,18 @@ export default function FishEditorCanvas({
           effectiveCamY = cameraY;
         } else {
           // Free pan mode
-          effectiveCamX = cameraPanRef.current.x;
-          effectiveCamY = cameraPanRef.current.y;
+          effectiveCamX = gameStateRef.current.camera.x;
+          effectiveCamY = gameStateRef.current.camera.y;
         }
       } else {
         // Play mode: follow player
-        effectiveCamX = cameraRef.current.x;
-        effectiveCamY = cameraRef.current.y;
+        effectiveCamX = gameStateRef.current.camera.x;
+        effectiveCamY = gameStateRef.current.camera.y;
       }
 
       // Store for click detection
-      effectiveCameraRef.current = { x: effectiveCamX, y: effectiveCamY };
+      gameStateRef.current.camera.effectiveX = effectiveCamX;
+      gameStateRef.current.camera.effectiveY = effectiveCamY;
 
       // Draw background BEFORE camera translation (so it stays in place)
       // Use same parallax logic as game mode - background moves with camera but slower
@@ -2725,9 +2532,9 @@ export default function FishEditorCanvas({
 
       // Draw AI fish with LOD based on screen-space size
       // Determine render context for clip mode decisions
-      const renderContext: RenderContext = currentEditMode ? 'edit' : (gameMode ? 'game' : 'game');
+      const renderContext: 'edit' | 'game' = currentEditMode ? 'edit' : 'game';
       const buttonPositions = new Map<string, { x: number; y: number; size: number }>();
-      fishListRef.current.forEach((fish) => {
+      gameStateRef.current.fish.forEach((fish) => {
         // Skip rendering fish that are fully despawned (kept in list for potential respawn)
         if (fish.lifecycleState === 'removed') {
           return;
@@ -2815,11 +2622,11 @@ export default function FishEditorCanvas({
       if (gameMode) {
         const dashEntityIds = [
           'player',
-          ...fishListRef.current
+          ...gameStateRef.current.fish
             .filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed')
             .map((f) => f.id),
         ];
-        multiEntityDashRef.current.drawBehind(ctx, dashEntityIds);
+        gameStateRef.current.particles.dashMultiEntity.drawBehind(ctx, dashEntityIds);
       }
 
       // Draw player with LOD based on screen-space size
@@ -2831,8 +2638,8 @@ export default function FishEditorCanvas({
       let playerRendered = false;
 
       // Try animation sprite rendering first if animations available
-      if (playerClipMode === 'video' && playerHasAnimations && animationSpriteManagerRef.current.hasSprite('player')) {
-        const animSprite = animationSpriteManagerRef.current.getSprite('player', player.animations || {});
+      if (playerClipMode === 'video' && playerHasAnimations && gameStateRef.current.animationSpriteManager.hasSprite('player')) {
+        const animSprite = gameStateRef.current.animationSpriteManager.getSprite('player', player.animations || {});
         // Switch to dash animation when dashing (if available)
         const desiredAction = player.isDashing && animSprite.hasAction('dash')
           ? 'dash'
@@ -2843,10 +2650,6 @@ export default function FishEditorCanvas({
         }
         animSprite.update();
         const state = animSprite.getState();
-        // Log occasionally (every 60 frames)
-        if (Math.random() < 0.017) {
-          console.log(`[Render] Player animation: action=${state.currentAction}, frame=${state.currentFrame}, isLoaded=${state.isLoaded}`);
-        }
         playerRendered = animSprite.drawToContext(
           ctx,
           player.x,
@@ -2901,18 +2704,18 @@ export default function FishEditorCanvas({
       if (gameMode) {
         const dashEntityIds = [
           'player',
-          ...fishListRef.current
+          ...gameStateRef.current.fish
             .filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed')
             .map((f) => f.id),
         ];
-        multiEntityDashRef.current.drawInFront(ctx, dashEntityIds);
+        gameStateRef.current.particles.dashMultiEntity.drawInFront(ctx, dashEntityIds);
       }
 
       // Update edit button positions ref
       editButtonPositionsRef.current = buttonPositions;
 
       // Blood fog + CHOMP (world space, fixed at eat position — no movement)
-      bloodParticlesRef.current.forEach((b) => {
+      gameStateRef.current.particles.blood.forEach((b) => {
         const alpha = Math.max(0, b.life) * 0.55;
         const r = Math.max(3, b.radius * b.life);
         const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
@@ -2924,7 +2727,7 @@ export default function FishEditorCanvas({
         ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
         ctx.fill();
       });
-      chompParticlesRef.current.forEach((p) => {
+      gameStateRef.current.particles.chomp.forEach((p) => {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.globalAlpha = Math.max(0, p.life);
@@ -3017,7 +2820,7 @@ export default function FishEditorCanvas({
 
       // Draw edit buttons on fish (in screen space, accounting for camera)
       if (showEditButtonsRef.current && !currentEditMode && onEditFish) {
-        const cam = effectiveCameraRef.current;
+        const cam = gameStateRef.current.camera;
         buttonPositions.forEach((pos, fishId) => {
           // Calculate screen position accounting for camera offset
           // Formula: screenPos = (worldPos - cameraPos) * zoom + canvas.center
@@ -3053,12 +2856,12 @@ export default function FishEditorCanvas({
 
       if (gameMode) {
         // Game mode UI - account for paused time
-        const currentPausedTime = isPaused ? (Date.now() - pauseStartTimeRef.current) : 0;
-        const elapsed = Date.now() - gameStartTimeRef.current - totalPausedTimeRef.current - currentPausedTime;
+        const currentPausedTime = isPaused ? (Date.now() - gameStateRef.current.gameMode.pauseStartTime) : 0;
+        const elapsed = Date.now() - gameStateRef.current.gameMode.startTime - gameStateRef.current.gameMode.totalPausedTime - currentPausedTime;
         const timeLeft = Math.max(0, Math.ceil((levelDuration - elapsed) / 1000));
 
         // Stats panel - bottom left corner
-        const fishCount = fishListRef.current.length;
+        const fishCount = gameStateRef.current.fish.length;
         const statsY = canvas.height - 90;
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
@@ -3069,7 +2872,7 @@ export default function FishEditorCanvas({
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.font = 'bold 13px monospace';
-        ctx.fillText(`Score: ${scoreRef.current}`, 20, statsY + 18);
+        ctx.fillText(`Score: ${gameStateRef.current.gameMode.score}`, 20, statsY + 18);
         ctx.fillText(`Size: ${Math.floor(player.size)}`, 20, statsY + 36);
         ctx.fillText(`Time: ${timeLeft}s`, 20, statsY + 54);
         ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';

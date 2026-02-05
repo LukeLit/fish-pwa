@@ -318,7 +318,6 @@ export default function SpriteGenerationLab({
               setVisualMotif(entry.promptData.visualMotif);
             }
 
-            console.log('[SpriteLab] Loaded local sprites for', fish.id);
           }
         }
 
@@ -333,10 +332,8 @@ export default function SpriteGenerationLab({
                   const blob = await response.blob();
                   loadedSprites[stage] = await blobToDataUrl(blob);
                   loadedSources[stage] = 'blob';
-                  console.log(`[SpriteLab] Loaded ${stage} from blob storage`);
                 }
               } catch (err) {
-                console.error(`[SpriteLab] Failed to load ${stage} from blob:`, err);
               }
             }
           }
@@ -345,7 +342,6 @@ export default function SpriteGenerationLab({
         setSprites(loadedSprites);
         setSpriteSources(loadedSources);
       } catch (err) {
-        console.error('[SpriteLab] Failed to load sprites:', err);
       } finally {
         setIsLoadingExisting(false);
       }
@@ -395,7 +391,6 @@ export default function SpriteGenerationLab({
 
         setLastSaved(Date.now());
       } catch (err) {
-        console.error('[SpriteLab] Auto-save failed:', err);
       }
     }, 500);
 
@@ -452,7 +447,6 @@ export default function SpriteGenerationLab({
       setGenerationStatus(`${STAGE_LABELS[stage]} sprite generated!`);
       clearCanvasStatus();
     } catch (err: any) {
-      console.error('[SpriteLab] Generation failed:', err);
       setError(err.message || 'Generation failed');
       setGenerationStatus('');
       clearCanvasStatus();
@@ -502,7 +496,6 @@ export default function SpriteGenerationLab({
           }));
         }
       } catch (err: any) {
-        console.error(`[SpriteLab] Failed to generate ${stage}:`, err);
         setError(`Failed to generate ${stage}: ${err.message}`);
         break;
       }
@@ -637,7 +630,6 @@ export default function SpriteGenerationLab({
         throw new Error(saveResult.error || 'Failed to save creature metadata');
       }
 
-      console.log('[SpriteLab] Creature metadata saved:', saveResult);
 
       // Step 4: Clear local storage after successful save
       await deleteEntry(fish.id);
@@ -658,7 +650,6 @@ export default function SpriteGenerationLab({
       clearCanvasStatus();
 
       // Step 5: Dispatch refresh event to update canvas with new sprites
-      console.log('[SpriteLab] Dispatching refreshFishSprites event');
       window.dispatchEvent(new CustomEvent('refreshFishSprites'));
 
       // Step 6: Notify parent with updated fish data
@@ -666,7 +657,6 @@ export default function SpriteGenerationLab({
         onUploadComplete(updatedFish);
       }
     } catch (err: any) {
-      console.error('[SpriteLab] Upload failed:', err);
       setError(err.message || 'Upload failed');
       setUploadStatus('');
       clearCanvasStatus();
@@ -781,7 +771,6 @@ export default function SpriteGenerationLab({
       setLastSaved(null);
       setGenerationStatus('Local data cleared');
     } catch (err) {
-      console.error('[SpriteLab] Failed to clear local data:', err);
     }
   };
 

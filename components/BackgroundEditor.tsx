@@ -80,7 +80,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
         setMessage(`❌ Failed to upload video: ${result.error}`);
       }
     } catch (error) {
-      console.error('Video upload error:', error);
+      // Handle video upload error silently
       setMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
@@ -120,7 +120,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
         setMessage(`❌ Generation failed: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Image generation error:', error);
+      // Handle image generation error silently
       setMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsGenerating(false);
@@ -161,7 +161,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
         setIsGenerating(false);
       }
     } catch (error) {
-      console.error('Video generation error:', error);
+      // Handle video generation error silently
       setMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsGenerating(false);
     }
@@ -205,7 +205,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
       } catch (error) {
         clearInterval(pollInterval);
         setIsGenerating(false);
-        console.error('Polling error:', error);
+        // Handle polling error silently
         setMessage(`❌ Error polling status: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }, 5000); // Poll every 5 seconds
@@ -257,7 +257,6 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
         }
       } catch (error) {
         // No existing data, that's fine
-        console.log('No existing biome data, creating new');
       }
 
       // Update biome metadata
@@ -289,7 +288,7 @@ export default function BackgroundEditor({ currentBackground, onBackgroundChange
         setMessage(`⚠️ ${backgroundType === 'video' ? 'Video' : 'Image'} uploaded but metadata save failed: ${metadataData.error}`);
       }
     } catch (error) {
-      console.error('Save biome background error:', error);
+      // Handle save biome background error silently
       setMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);

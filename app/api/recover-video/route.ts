@@ -33,17 +33,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[RecoverVideo] Attempting to recover operation: ${operationId}`);
 
     // Check operation status
     const pollUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`;
-    console.log(`[RecoverVideo] Polling: ${pollUrl.replace(apiKey, 'API_KEY')}`);
 
     const pollResponse = await fetch(pollUrl);
 
     if (!pollResponse.ok) {
       const errorText = await pollResponse.text();
-      console.error(`[RecoverVideo] Poll failed: ${pollResponse.status} - ${errorText}`);
       return NextResponse.json({
         error: `Failed to check operation status: ${pollResponse.status}`,
         details: errorText,
@@ -51,7 +48,6 @@ export async function POST(request: NextRequest) {
     }
 
     const pollData = await pollResponse.json();
-    console.log(`[RecoverVideo] Operation status:`, JSON.stringify(pollData, null, 2));
 
     if (!pollData.done) {
       return NextResponse.json({
@@ -87,7 +83,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log(`[RecoverVideo] Found video URI: ${videoUri.substring(0, 100)}...`);
 
     // Download video with API key authentication
     let downloadUrl = videoUri;
@@ -96,12 +91,10 @@ export async function POST(request: NextRequest) {
       downloadUrl = `${videoUri}${separator}key=${apiKey}`;
     }
 
-    console.log(`[RecoverVideo] Downloading video...`);
     const videoResponse = await fetch(downloadUrl);
 
     if (!videoResponse.ok) {
       const errorText = await videoResponse.text().catch(() => '');
-      console.error(`[RecoverVideo] Download failed: ${videoResponse.status} - ${errorText.substring(0, 500)}`);
       return NextResponse.json({
         success: false,
         status: 'download_failed',
@@ -112,7 +105,6 @@ export async function POST(request: NextRequest) {
     }
 
     const videoBlob = await videoResponse.blob();
-    console.log(`[RecoverVideo] Downloaded: ${videoBlob.size} bytes`);
 
     // Save to blob storage
     const timestamp = Date.now();
@@ -120,14 +112,12 @@ export async function POST(request: NextRequest) {
     const safeLabel = label || 'recovered';
     const blobPath = `assets/videos/${safeId}/${safeLabel}_${timestamp}.mp4`;
 
-    console.log(`[RecoverVideo] Saving to: ${blobPath}`);
     const blobResult = await put(blobPath, videoBlob, {
       access: 'public',
       contentType: 'video/mp4',
       allowOverwrite: true,
     });
 
-    console.log(`[RecoverVideo] Saved to: ${blobResult.url}`);
 
     return NextResponse.json({
       success: true,
@@ -138,7 +128,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[RecoverVideo] Error:', error);
     return NextResponse.json({
       error: error.message || 'Recovery failed',
     }, { status: 500 });

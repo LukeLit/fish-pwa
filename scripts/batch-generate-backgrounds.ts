@@ -272,10 +272,8 @@ async function withRetry<T>(
     } catch (err) {
       lastErr = err;
       const isAbort = err instanceof Error && err.name === 'AbortError';
-      console.warn(`  ⚠ ${label} attempt ${attempt}/${MAX_RETRIES} failed${isAbort ? ' (timeout)' : ''}:`, err instanceof Error ? err.message : err);
       if (attempt < MAX_RETRIES) {
         const backoffMs = Math.min(5_000 * attempt, 15_000);
-        console.warn(`  ⏳ Retrying in ${backoffMs / 1000}s...`);
         await new Promise((r) => setTimeout(r, backoffMs));
       }
     }
@@ -322,7 +320,6 @@ async function generateBackground(
     visualMotif: spec.visualMotif,
   });
 
-  console.log(`  📝 Prompt preview: ${prompt.substring(0, 150)}...`);
 
   // 1) Generate image (with timeout and retry)
   // Backgrounds use 16:9 aspect ratio for widescreen display
@@ -418,11 +415,6 @@ async function generateBackground(
 }
 
 async function main() {
-  console.log('🎨 Background Batch Generator');
-  console.log('============================');
-  console.log(`Server: ${BASE_URL}`);
-  console.log(`Model: ${AI_MODEL}`);
-  console.log('');
 
   const skipExisting = process.env.BATCH_SKIP_EXISTING !== '0';
   let toProcess: BackgroundSpec[] = [...BACKGROUND_SPECS];
@@ -432,7 +424,6 @@ async function main() {
     toProcess = BACKGROUND_SPECS.filter((bg) => !existingIds.has(bg.id));
     const skipped = BACKGROUND_SPECS.length - toProcess.length;
     if (skipped > 0) {
-      console.log(`Skipping ${skipped} backgrounds that already exist (set BATCH_SKIP_EXISTING=0 to regenerate all).\n`);
     }
   }
 
@@ -441,10 +432,7 @@ async function main() {
     : toProcess.length;
   toProcess = toProcess.slice(0, limit);
 
-  console.log(`Processing ${toProcess.length} backgrounds (${BACKGROUND_SPECS.length} total defined).\n`);
-
   if (toProcess.length === 0) {
-    console.log('✅ No backgrounds to process. All done!');
     return;
   }
 
@@ -453,37 +441,26 @@ async function main() {
 
   for (let i = 0; i < toProcess.length; i++) {
     const spec = toProcess[i];
-    console.log(`\n🖼️  [${i + 1}/${toProcess.length}] Generating: ${spec.id} (${spec.name}) [${spec.biomeId}]`);
 
     try {
       const result = await generateBackground(spec);
       if (result.success) {
         successCount++;
-        console.log(`  ✅ Uploaded background ${result.id}`);
       } else {
         failCount++;
-        console.warn(`  ❌ Failed for ${result.id}: ${result.error}`);
       }
     } catch (err) {
       failCount++;
-      console.error(`  ❌ Unexpected error for ${spec.id}:`, err);
     }
 
     if (i < toProcess.length - 1 && DELAY_BETWEEN_BG_MS > 0) {
-      console.log(`  ⏳ Waiting ${DELAY_BETWEEN_BG_MS / 1000}s before next...`);
       await delay(DELAY_BETWEEN_BG_MS);
     }
   }
-
-  console.log('\n' + '='.repeat(40));
-  console.log(`✅ Success: ${successCount}`);
-  console.log(`❌ Failed: ${failCount}`);
-  console.log(`Total processed: ${toProcess.length}${limit < BACKGROUND_SPECS.length ? ` (${BACKGROUND_SPECS.length} defined)` : ''}`);
 }
 
 if (require.main === module) {
-  main().catch((err) => {
-    console.error('Batch generation failed:', err);
+  main().catch(() => {
     process.exit(1);
   });
 }

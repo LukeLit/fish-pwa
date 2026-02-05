@@ -35,27 +35,13 @@ const testFish = {
 };
 
 async function testGenerateFish() {
-  console.log('🧪 Testing modular prompt fish generation...\n');
-  console.log('Test fish:', testFish.name);
-  console.log('Biome:', testFish.biome);
-  console.log('Description chunks:', testFish.descriptionChunks);
-  console.log('Visual motif:', testFish.visualMotif);
-  console.log('Essence:', testFish.essence);
-  console.log('\n---\n');
-
   // Import the prompt builder (using dynamic import to handle path aliases)
   const { composeFishPrompt } = await import('../lib/ai/prompt-builder');
 
   // Compose the prompt
   const { prompt, cacheKey } = composeFishPrompt(testFish);
 
-  console.log('📝 Composed Prompt:');
-  console.log(prompt);
-  console.log('\n🔑 Cache Key:', cacheKey);
-  console.log('\n---\n');
-
   // Generate the sprite
-  console.log('🎨 Generating sprite...');
   const response = await fetch(`${BASE_URL}/api/generate-fish-image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -66,30 +52,17 @@ async function testGenerateFish() {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-    console.error('❌ Generation failed:', error);
     process.exit(1);
   }
 
   const data = await response.json();
   if (!data.success || !data.imageBase64) {
-    console.error('❌ No image data returned');
     process.exit(1);
   }
-
-  console.log('✅ Sprite generated successfully!');
-  console.log('\n💡 Next steps:');
-  console.log('   1. The sprite is in base64 format');
-  console.log('   2. You can save it using the Fish Editor UI');
-  console.log('   3. Or use scripts/batch-generate-fish.ts for bulk generation');
-  console.log('\n📊 Prompt stats:');
-  console.log(`   - Prompt length: ${prompt.length} characters`);
-  console.log(`   - Chunks used: ${prompt.split(',').length} segments`);
 }
 
 if (require.main === module) {
-  testGenerateFish().catch((err) => {
-    console.error('Test failed:', err);
+  testGenerateFish().catch(() => {
     process.exit(1);
   });
 }

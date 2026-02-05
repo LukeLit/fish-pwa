@@ -55,7 +55,6 @@ type FalModelKey = keyof typeof FAL_MODELS;
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  console.log('[FalVideo] Starting Fal.ai video generation...');
 
   try {
     if (!falApiKey) {
@@ -99,7 +98,6 @@ export async function POST(request: NextRequest) {
     // Enforce daily spending limit
     const spendingCheck = await canGenerateVideo();
     if (!spendingCheck.allowed) {
-      console.log(`[FalVideo] Daily spending limit reached: ${spendingCheck.reason}`);
       return NextResponse.json(
         {
           error: 'Daily limit reached',
@@ -110,9 +108,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[FalVideo] Model: ${modelConfig.name}, Aspect: ${aspectRatio}, Duration: ${duration}s`);
-    console.log(`[FalVideo] Prompt: ${prompt.substring(0, 100)}...`);
-    console.log(`[FalVideo] Image URL: ${imageUrl.substring(0, 80)}...`);
 
     // Build request based on model
     let result: any;
@@ -136,7 +131,6 @@ export async function POST(request: NextRequest) {
         logs: true,
         onQueueUpdate: (update) => {
           if (update.status === 'IN_PROGRESS') {
-            console.log(`[FalVideo] Processing: ${update.logs?.map((log: any) => log.message).join(', ') || 'generating...'}`);
           }
         },
       });
@@ -153,7 +147,6 @@ export async function POST(request: NextRequest) {
         logs: true,
         onQueueUpdate: (update) => {
           if (update.status === 'IN_PROGRESS') {
-            console.log(`[FalVideo] Processing: ${update.logs?.map((log: any) => log.message).join(', ') || 'generating...'}`);
           }
         },
       });
@@ -172,7 +165,6 @@ export async function POST(request: NextRequest) {
         logs: true,
         onQueueUpdate: (update) => {
           if (update.status === 'IN_PROGRESS') {
-            console.log(`[FalVideo] Processing: ${update.logs?.map((log: any) => log.message).join(', ') || 'generating...'}`);
           }
         },
       });
@@ -182,10 +174,9 @@ export async function POST(request: NextRequest) {
     await recordVideoGeneration();
 
     const elapsed = Date.now() - startTime;
-    console.log(`[FalVideo] Complete in ${elapsed}ms`);
 
     if (!result?.data?.video?.url) {
-      console.error('[FalVideo] No video URL in result:', result);
+      // Handle missing video URL silently
       return NextResponse.json(
         { error: 'No video generated' },
         { status: 500 }
@@ -202,7 +193,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[FalVideo] Error:', error);
+    // Handle generation error silently
     return NextResponse.json(
       { error: error.message || 'Video generation failed' },
       { status: 500 }

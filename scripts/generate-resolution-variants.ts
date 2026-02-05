@@ -170,22 +170,11 @@ function delay(ms: number): Promise<void> {
 }
 
 async function main() {
-  console.log('='.repeat(60));
-  console.log('Multi-Resolution Sprite Variant Generator');
-  console.log('='.repeat(60));
-  console.log(`Base URL: ${BASE_URL}`);
-  console.log(`Dry run: ${DRY_RUN}`);
-  console.log(`Limit: ${LIMIT === Infinity ? 'all' : LIMIT}`);
-  console.log('');
-
   // 1. List all sprites from both directories
-  console.log('Listing sprites from blob storage...');
   const [fishAssets, creatureAssets] = await Promise.all([
     listFishSprites(),
     listCreatureSprites(),
   ]);
-  console.log(`Found ${fishAssets.length} assets in fish/`);
-  console.log(`Found ${creatureAssets.length} assets in creatures/`);
 
   // Combine and tag with directory for upload path
   // Filter out any assets without valid pathname
@@ -193,12 +182,6 @@ async function main() {
     ...fishAssets.filter(a => a.pathname).map(a => ({ ...a, directory: 'fish' as const })),
     ...creatureAssets.filter(a => a.pathname).map(a => ({ ...a, directory: 'creatures' as const })),
   ];
-  console.log(`Total: ${allAssets.length} assets with valid pathnames`);
-
-  // Debug: show first asset structure
-  if (allAssets.length > 0) {
-    console.log('Sample asset structure:', JSON.stringify(allAssets[0], null, 2));
-  }
 
   // 2. Filter to only original sprites (not variants) and only PNG files
   const originals = allAssets.filter(asset =>
@@ -206,7 +189,6 @@ async function main() {
     asset.pathname.endsWith('.png') &&
     !isVariant(asset.pathname)
   );
-  console.log(`Found ${originals.length} original sprites (excluding variants)`);
 
   // 3. Build a set of existing variants for quick lookup
   const existingVariants = new Set(
@@ -238,54 +220,38 @@ async function main() {
     }
   }
 
-  console.log(`Found ${spritesNeedingVariants.length} sprites needing variants`);
-  console.log('');
-
   if (spritesNeedingVariants.length === 0) {
-    console.log('All sprites already have resolution variants. Nothing to do!');
     return;
   }
 
   // 5. Process sprites
   const toProcess = spritesNeedingVariants.slice(0, LIMIT);
-  console.log(`Processing ${toProcess.length} sprites...`);
-  console.log('');
 
   let processed = 0;
   let failed = 0;
 
   for (const { asset, baseFilename, missingVariants, directory } of toProcess) {
-    console.log(`[${processed + 1}/${toProcess.length}] ${directory}/${baseFilename}`);
-    console.log(`  Missing variants: ${missingVariants.map(s => `@${s}`).join(', ')}`);
-
     if (DRY_RUN) {
-      console.log('  [DRY RUN] Would generate variants');
       processed++;
       continue;
     }
 
     try {
       // Download original sprite
-      console.log('  Downloading original...');
       const originalBuffer = await downloadSprite(asset.url);
 
       // Generate and upload each missing variant
       for (const size of missingVariants) {
         const variantFilename = getVariantFilename(baseFilename, size);
-        console.log(`  Generating @${size} variant...`);
 
         const variantBuffer = await resizeImage(originalBuffer, size);
-        console.log(`  Uploading ${directory}/${variantFilename} (${Math.round(variantBuffer.length / 1024)}KB)...`);
 
         const url = await uploadVariant(variantFilename, variantBuffer, directory);
-        console.log(`  Uploaded: ${url}`);
       }
 
       processed++;
-      console.log('  Done!');
     } catch (error) {
       failed++;
-      console.error(`  ERROR: ${error instanceof Error ? error.message : error}`);
     }
 
     // Delay between sprites to avoid overwhelming the server
@@ -293,17 +259,8 @@ async function main() {
       await delay(DELAY_MS);
     }
   }
-
-  console.log('');
-  console.log('='.repeat(60));
-  console.log('Summary');
-  console.log('='.repeat(60));
-  console.log(`Processed: ${processed}`);
-  console.log(`Failed: ${failed}`);
-  console.log(`Skipped (already had variants): ${originals.length - spritesNeedingVariants.length}`);
 }
 
-main().catch((error) => {
-  console.error('Fatal error:', error);
+main().catch(() => {
   process.exit(1);
 });

@@ -247,7 +247,6 @@ export default function FishEditOverlay({
       });
       return prompt;
     } catch (err) {
-      console.error('Error composing prompt:', err);
       return '';
     }
   }, [
@@ -267,14 +266,6 @@ export default function FishEditOverlay({
       // This prevents overwriting local edits when parent re-renders
       // IMPORTANT: Don't reset if we're currently saving (isSaving) to prevent race conditions
       if ((!editedFish || editedFish.id !== fish.id) && !isSaving) {
-        console.log('[FishEditOverlay] Initializing editedFish from fish prop:', {
-          id: fish.id,
-          name: fish.name,
-          hasDescriptionChunks: !!fish.descriptionChunks?.length,
-          descriptionChunks: fish.descriptionChunks,
-          hasVisualMotif: !!fish.visualMotif,
-          visualMotif: fish.visualMotif,
-        });
         setEditedFish({
           ...fish,
           rarity: fish.rarity || 'common',
@@ -474,8 +465,6 @@ export default function FishEditOverlay({
 
         // Verify we got a sprite URL back
         if (!result.spriteUrl) {
-          console.error('[FishEditOverlay] WARNING: Save succeeded but no spriteUrl returned!');
-          console.error('[FishEditOverlay] Result:', JSON.stringify(result, null, 2));
           setSaveMessage('⚠️ Saved but no sprite URL returned. Check console.');
         }
 
@@ -542,11 +531,10 @@ export default function FishEditOverlay({
             const verifyResponse = await fetch(`/api/test-creature-save?id=${editedFish.id}`);
             const verifyResult = await verifyResponse.json();
             if (verifyResult.metadataSprite !== spriteUrl) {
-              console.error('[FishEditOverlay] MISMATCH! Metadata sprite:', verifyResult.metadataSprite, 'Expected:', spriteUrl);
               setSaveMessage(`⚠️ Saved but verification failed. Check console.`);
             }
           } catch (err) {
-            console.error('[FishEditOverlay] Verification error:', err);
+            // Verification failed
           }
         }, 1500);
       } else {
@@ -554,13 +542,11 @@ export default function FishEditOverlay({
         devLogError('Save', 'Save returned failure', result);
         onSave(previousFish); // ROLLBACK
         setSaveMessage(`❌ Save failed: ${result.error || 'Unknown error'}`);
-        console.error('[FishEditOverlay] Save failed:', result);
       }
     } catch (error: any) {
       // Exception during save - rollback optimistic update
       devLogError('Save', `Save error: ${error.message}`, error);
       onSave(previousFish); // ROLLBACK
-      console.error('[FishEditor] Save error:', error);
       setSaveMessage(`❌ Error: ${error.message || 'Failed to save'}`);
     } finally {
       setIsSaving(false);
@@ -609,7 +595,6 @@ export default function FishEditOverlay({
         setSaveMessage('✗ Failed to unlock: ' + (result.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error('Unlock error:', error);
       setSaveMessage('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsSaving(false);
@@ -645,7 +630,6 @@ export default function FishEditOverlay({
       const data = await response.json();
       if (data.success && data.imageBase64) {
         const spriteUrl = `data:image/png;base64,${data.imageBase64}`;
-        console.log('[FishEditOverlay] Generated sprite, updating state');
 
         // Update local state
         const updatedFish: FishData = {
@@ -663,7 +647,6 @@ export default function FishEditOverlay({
       }
     } catch (error: any) {
       setSaveMessage(`❌ Error: ${error.message || 'Failed to generate'}`);
-      console.error('[FishEditor] Generation error:', error);
     } finally {
       setIsGenerating(false);
     }
@@ -750,7 +733,6 @@ export default function FishEditOverlay({
         throw new Error(data.error || 'Animation generation failed');
       }
     } catch (error: any) {
-      console.error('[FishEditOverlay] Animation generation error:', error);
       setSaveMessage(`❌ ${error.message}`);
     } finally {
       setClipGenerationStatus('');
@@ -790,7 +772,7 @@ export default function FishEditOverlay({
 
       // Debug log for sprite updates
       if (field === 'sprite') {
-        console.log('[FishEditOverlay] Updating sprite:', value);
+        // Sprite updated
       }
 
       return updated;
@@ -2149,7 +2131,6 @@ export default function FishEditOverlay({
                 window.dispatchEvent(new CustomEvent('refreshFishSprites'));
               }}
               onUploadComplete={(updatedFish) => {
-                console.log('[FishEditOverlay] SpriteLab upload complete, refreshing sprites');
                 setEditedFish(updatedFish);
                 onSave(updatedFish);
                 setCanvasStatus('Reloading sprites...');
