@@ -37,6 +37,7 @@ yarn-error.log*
 
 # local / generated
 logs/
+docs/plans/LEVEL-REFACTOR/blob-snapshot.json
 nul
 .claude/
 test-fish-editor-api.js

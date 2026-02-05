@@ -57,5 +57,7 @@ Loader: `getLevelConfig(biomeId, levelId)` returns rules including `min_meters` 
 
 ## Implementation status
 
-- **Done**: Level config (`level-config.json`), level loader (`level-loader.ts`), `createLevel` (`create-level.ts`), GameCanvas wired to `createLevel`, fish-editor biome select and initial load use `createLevel`, spawn sync hardened with `canvasReady` dependency.
-- **Next**: Add more biomes/levels to `level-config.json` as needed; optional meter-scale patch (creature blob `metrics` + `sub_depth`) is follow-up.
+**Plan is fully implemented.**
+
+- **Done**: Level config (`level-config.json`) with meter bones (min/max_meters, phases, runs), level loader (`level-loader.ts`: `getLevelConfig`, `getBiomeConfig`, `getRunConfig`), `createLevel` (`create-level.ts`), GameCanvas wired to `createLevel`, fish-editor biome select and initial load use `createLevel` (with fallback spawn when `createLevel` returns empty), spawn sync hardened (`canvasReady` tied to `isClient`, `STAMINA` import fix so fish spawn and intros play).
+- **Next (optional)**: Add more biomes/levels to `level-config.json`; use `min_meters`/`max_meters` in `createLevel` once creatures have `metrics.base_meters`; meter-scale patch (creature blob `metrics` + `sub_depth`) is follow-up.

@@ -303,3 +303,42 @@ body {
   display: none;
   /* Chrome/Safari/Opera */
 }
+
+/* Fish selection Embla carousel - prize wheel style, center snap */
+.embla-fish {
+  --slide-size: 5rem;
+  --slide-spacing: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .embla-fish {
+    --slide-size: 5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .embla-fish {
+    --slide-size: 6rem;
+  }
+}
+
+.embla-fish__viewport {
+  overflow: hidden;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.embla-fish__container {
+  display: flex;
+  touch-action: pan-y pinch-zoom;
+  margin-left: calc(var(--slide-spacing) * -1);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.embla-fish__slide {
+  flex: 0 0 var(--slide-size);
+  min-width: 0;
+  padding-left: var(--slide-spacing);
+}

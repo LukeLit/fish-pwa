@@ -444,7 +444,7 @@ export function detectPlayerFishCollision(
       }
     } else if (evenlyMatched && bothDashing) {
       // Stamina battle
-      const playerStamina = Math.max(0, player.stamina - DASH_ATTACK_STAMINA_COST);
+      const playerStamina = Math.max(0, (player.stamina ?? 0) - DASH_ATTACK_STAMINA_COST);
       const fishStamina = Math.max(0, (fish.stamina ?? 100) - DASH_ATTACK_STAMINA_COST);
       const playerKo = playerStamina <= 0;
       const fishKo = fishStamina <= 0;

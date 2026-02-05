@@ -8,6 +8,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import useEmblaCarousel from 'embla-carousel-react';
 import { loadPlayerState } from '@/lib/game/player-state';
 import { getPlayableCreaturesFromLocal } from '@/lib/storage/local-fish-storage';
 import { clearRunState } from '@/lib/game/run-state';
@@ -20,6 +21,14 @@ import {
 } from '@/lib/rendering/background-renderer';
 import type { Creature } from '@/lib/game/types';
 import { cacheBust } from '@/lib/utils/cache-bust';
+
+function sortFishBySize(creatures: Creature[]) {
+  return [...creatures].sort((a, b) => {
+    const sizeA = a.metrics?.base_meters ?? (a.stats?.size ?? 60) / 100;
+    const sizeB = b.metrics?.base_meters ?? (b.stats?.size ?? 60) / 100;
+    return sizeA - sizeB;
+  });
+}
 
 export default function FishSelectionScreen() {
   const router = useRouter();
@@ -35,6 +44,16 @@ export default function FishSelectionScreen() {
   const animTimeRef = useRef(0);
   const animFrameRef = useRef<number>(0);
   const backgroundRef = useRef<LoadedBackground | null>(null);
+
+  // Embla carousel - dragFree enables proper momentum on fast swipes (snap mode was rubber-banding)
+  const scrollToIndexRef = useRef<number | null>(null);
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    align: 'center',
+    containScroll: false,
+    dragFree: true, // Momentum scroll - swipes work; without this fast swipes rubber-band back
+    loop: false,
+    duration: 35,
+  });
 
   // Load fish data
   useEffect(() => {
@@ -53,19 +72,22 @@ export default function FishSelectionScreen() {
               combinedFish.push(local);
             }
           });
-          setPlayableFish(combinedFish);
-          setSelectedFishId(combinedFish[0].id);
-          setSelectedFish(combinedFish[0]);
+          const sorted = sortFishBySize(combinedFish);
+          setPlayableFish(sorted);
+          setSelectedFishId(sorted[0].id);
+          setSelectedFish(sorted[0]);
         } else if (localFish.length > 0) {
-          setPlayableFish(localFish);
-          setSelectedFishId(localFish[0].id);
-          setSelectedFish(localFish[0]);
+          const sorted = sortFishBySize(localFish);
+          setPlayableFish(sorted);
+          setSelectedFishId(sorted[0].id);
+          setSelectedFish(sorted[0]);
         }
       } catch {
         if (localFish.length > 0) {
-          setPlayableFish(localFish);
-          setSelectedFishId(localFish[0].id);
-          setSelectedFish(localFish[0]);
+          const sorted = sortFishBySize(localFish);
+          setPlayableFish(sorted);
+          setSelectedFishId(sorted[0].id);
+          setSelectedFish(sorted[0]);
         }
       } finally {
         setLoading(false);
@@ -218,6 +240,45 @@ export default function FishSelectionScreen() {
     };
   }, [animate]);
 
+  // Sync Embla selection with selectedFishId
+  useEffect(() => {
+    if (!emblaApi || playableFish.length === 0) return;
+    const onSelect = () => {
+      const idx = emblaApi.selectedScrollSnap();
+      const fish = playableFish[idx];
+      if (fish) setSelectedFishId(fish.id);
+    };
+    emblaApi.on('select', onSelect);
+    return () => {
+      emblaApi.off('select', onSelect);
+    };
+  }, [emblaApi, playableFish]);
+
+  // When carousel settles (momentum stops), snap to nearest slide and center it
+  useEffect(() => {
+    if (!emblaApi || playableFish.length === 0) return;
+    const onSettle = () => {
+      const nearestIdx = emblaApi.selectedScrollSnap();
+      const fish = playableFish[nearestIdx];
+      if (fish) setSelectedFishId(fish.id);
+      emblaApi.scrollTo(nearestIdx);
+    };
+    emblaApi.on('settle', onSettle);
+    return () => {
+      emblaApi.off('settle', onSettle);
+    };
+  }, [emblaApi, playableFish]);
+
+  // When user CLICKS a fish, scroll carousel to it (don't fight swipe - only scroll on explicit click)
+  useEffect(() => {
+    if (!emblaApi || scrollToIndexRef.current === null) return;
+    const idx = scrollToIndexRef.current;
+    scrollToIndexRef.current = null;
+    if (idx >= 0 && idx !== emblaApi.selectedScrollSnap()) {
+      emblaApi.scrollTo(idx);
+    }
+  }, [emblaApi, selectedFishId, playableFish]);
+
   const handleBack = () => router.push('/');
 
   const handleDive = () => {
@@ -270,7 +331,9 @@ export default function FishSelectionScreen() {
             <div className="flex justify-center gap-2 sm:gap-3 md:gap-4 flex-wrap">
               <div className="dv-card-cyan px-3 sm:px-4 py-2 border-2 backdrop-blur-md bg-black/80">
                 <span className="text-xs sm:text-sm text-cyan-300 font-bold">SIZE</span>
-                <span className="text-xl sm:text-2xl font-bold text-white ml-2">{selectedFish.stats.size}</span>
+                <span className="text-xl sm:text-2xl font-bold text-white ml-2">
+                  {(selectedFish.metrics?.base_meters ?? selectedFish.stats.size / 100).toFixed(1)} m
+                </span>
               </div>
               <div className="px-3 sm:px-4 py-2 border-2 border-green-400 rounded-lg backdrop-blur-md bg-black/80 dv-glow-cyan">
                 <span className="text-xs sm:text-sm text-green-300 font-bold">SPD</span>
@@ -288,30 +351,61 @@ export default function FishSelectionScreen() {
           </div>
         </div>
 
-        {/* Fish Carousel - Compact */}
-        <div className="p-3 sm:p-4 animate-slide-in" style={{ animationDelay: '0.2s' }}>
-          <div className="flex gap-2 sm:gap-3 justify-center items-center overflow-x-auto pb-1">
-            {playableFish.map((fish) => (
-              <button
-                key={fish.id}
-                onClick={() => setSelectedFishId(fish.id)}
-                className={`relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-lg border-4 transition-all flex-shrink-0 ${selectedFishId === fish.id
-                  ? 'border-cyan-400 bg-cyan-900/60 shadow-[0_0_20px_rgba(34,211,238,0.8)] scale-110 animate-pulse'
-                  : 'border-purple-600/50 bg-gray-900/80 hover:border-cyan-500 hover:scale-105'
-                  }`}
-              >
-                {fish.sprite && (
-                  <Image
-                    src={cacheBust(getSpriteUrlForSize(fish, fish.stats?.size ?? 60))}
-                    alt={`${fish.name} fish`}
-                    fill
-                    className="object-contain p-1"
-                    unoptimized
-                  />
-                )}
-              </button>
-            ))}
+        {/* Fish Carousel - Embla prize-wheel style with center snap and inertia */}
+        <div className="px-2 sm:px-4 py-3 animate-slide-in flex items-center gap-1" style={{ animationDelay: '0.2s' }}>
+          <button
+            type="button"
+            onClick={() => emblaApi?.scrollPrev()}
+            aria-label="Previous fish"
+            className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-900/80 hover:bg-cyan-900/60 border-2 border-cyan-500/50 hover:border-cyan-400 flex items-center justify-center text-cyan-400 hover:text-cyan-300 transition-all shadow-lg z-10"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+
+          <div className="embla-fish flex-1 min-w-0">
+            <div className="embla-fish__viewport" ref={emblaRef}>
+              <div className="embla-fish__container">
+                {playableFish.map((fish, idx) => (
+                  <div key={fish.id} className="embla-fish__slide">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        scrollToIndexRef.current = idx;
+                        setSelectedFishId(fish.id);
+                      }}
+                      className={`relative w-full aspect-square rounded-lg border-4 transition-all duration-200 block ${selectedFishId === fish.id
+                        ? 'border-cyan-400 bg-cyan-900/60 shadow-[0_0_20px_rgba(34,211,238,0.8)] scale-125'
+                        : 'border-purple-600/50 bg-gray-900/80 hover:border-cyan-500 hover:scale-105'
+                        }`}
+                    >
+                      {fish.sprite && (
+                        <Image
+                          src={cacheBust(getSpriteUrlForSize(fish, fish.stats?.size ?? 60))}
+                          alt={`${fish.name} fish`}
+                          fill
+                          className="object-contain p-1 rounded-lg"
+                          unoptimized
+                        />
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => emblaApi?.scrollNext()}
+            aria-label="Next fish"
+            className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-900/80 hover:bg-cyan-900/60 border-2 border-cyan-500/50 hover:border-cyan-400 flex items-center justify-center text-cyan-400 hover:text-cyan-300 transition-all shadow-lg z-10"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
         </div>
 
         {/* Bottom Buttons */}

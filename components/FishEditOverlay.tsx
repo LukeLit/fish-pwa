@@ -69,6 +69,8 @@ export interface FishData {
   biomeId?: string;
   sizeTier?: 'prey' | 'mid' | 'predator' | 'boss' | string;
 
+  metrics?: { base_meters: number; base_art_scale?: number; sub_depth?: 'upper' | 'mid' | 'lower' };
+
   // NEW: Modular Prompt System
   descriptionChunks?: string[];
   visualMotif?: string;
@@ -266,11 +268,19 @@ export default function FishEditOverlay({
       // This prevents overwriting local edits when parent re-renders
       // IMPORTANT: Don't reset if we're currently saving (isSaving) to prevent race conditions
       if ((!editedFish || editedFish.id !== fish.id) && !isSaving) {
+        const fishMetrics = (fish as { metrics?: { base_meters?: number; base_art_scale?: number; sub_depth?: string } }).metrics;
+        const artScale = fish.stats?.size ?? 60;
+        const baseMeters = fishMetrics?.base_meters ?? artScale / 100;
         setEditedFish({
           ...fish,
           rarity: fish.rarity || 'common',
           playable: fish.playable ?? false,
           biomeId: fish.biomeId || 'shallow',
+          metrics: {
+            base_meters: baseMeters,
+            base_art_scale: fishMetrics?.base_art_scale ?? artScale,
+            sub_depth: fishMetrics?.sub_depth as 'upper' | 'mid' | 'lower' | undefined,
+          },
           essenceTypes: fish.essenceTypes || [{ type: 'shallow', baseYield: 10 }],
           spawnRules: fish.spawnRules || {
             canAppearIn: [fish.biomeId || 'shallow'],
@@ -292,13 +302,14 @@ export default function FishEditOverlay({
     }
     const original = originalFishRef.current;
     // Compare key fields to detect changes from original
-    const hasChanges = 
+    const hasChanges =
       editedFish.name !== original.name ||
       editedFish.biomeId !== original.biomeId ||
       editedFish.rarity !== original.rarity ||
       editedFish.playable !== original.playable ||
       editedFish.type !== original.type ||
       editedFish.sprite !== original.sprite ||
+      JSON.stringify(editedFish.metrics) !== JSON.stringify(original.metrics) ||
       JSON.stringify(editedFish.animations) !== JSON.stringify(original.animations) ||
       JSON.stringify(editedFish.essence) !== JSON.stringify(original.essence);
     setHasPendingChanges(hasChanges);
@@ -1263,8 +1274,8 @@ export default function FishEditOverlay({
                             setIsPreviewPlaying(false);
                           }}
                           className={`flex-shrink-0 w-12 h-12 rounded border-2 transition-colors ${idx === previewFrame
-                              ? 'border-blue-500'
-                              : 'border-gray-700 hover:border-gray-500'
+                            ? 'border-blue-500'
+                            : 'border-gray-700 hover:border-gray-500'
                             }`}
                           style={{ backgroundColor: '#FF00FF' }}
                         >
@@ -1336,10 +1347,10 @@ export default function FishEditOverlay({
                           onClick={() => setSelectedClipGrowthStage(stage)}
                           disabled={!hasSprite}
                           className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedClipGrowthStage === stage
-                              ? 'bg-blue-600 text-white'
-                              : hasSprite
-                                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                            ? 'bg-blue-600 text-white'
+                            : hasSprite
+                              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                             }`}
                         >
                           {stage.charAt(0).toUpperCase() + stage.slice(1)}
@@ -1363,10 +1374,10 @@ export default function FishEditOverlay({
                         onClick={() => handleGenerateAnimation(selectedClipGrowthStage, action)}
                         disabled={isGeneratingClip || !hasSprite}
                         className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${hasAnim
-                            ? 'bg-green-600/20 text-green-400 border border-green-600/30'
-                            : hasSprite
-                              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                          ? 'bg-green-600/20 text-green-400 border border-green-600/30'
+                          : hasSprite
+                            ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                           } disabled:opacity-50`}
                       >
                         {hasAnim ? '✓' : '+'} {action} ({config.frameCount}f)
@@ -1442,6 +1453,31 @@ export default function FishEditOverlay({
                   />
                   <span className="text-sm font-bold text-white">Playable (Can be selected as player fish)</span>
                 </label>
+              </div>
+
+              {/* Metric size (player-facing) */}
+              <div>
+                <label className="block text-sm font-bold text-white mb-2">Metric size (m)</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  max="50"
+                  step="0.1"
+                  value={editedFish.metrics?.base_meters ?? (editedFish.stats?.size ?? 60) / 100}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!Number.isNaN(val) && val > 0) {
+                      const metrics = {
+                        ...editedFish.metrics,
+                        base_meters: val,
+                        base_art_scale: editedFish.metrics?.base_art_scale ?? editedFish.stats?.size ?? 60,
+                      };
+                      updateField('metrics', metrics as unknown as FishFieldValue);
+                    }
+                  }}
+                  className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">Player-facing size in meters. Art scale uses stats.size.</p>
               </div>
 
               {/* Biome */}

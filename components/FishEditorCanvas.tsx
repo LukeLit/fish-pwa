@@ -87,6 +87,7 @@ interface FishEditorCanvasProps {
   zoom?: number;
   enableWaterDistortion?: boolean;
   deformationIntensity?: number;
+  showBoundaryOverlay?: boolean;
   // Game mode features
   gameMode?: boolean;
   levelDuration?: number; // in milliseconds
@@ -116,6 +117,7 @@ export default function FishEditorCanvas({
   zoom = 1,
   enableWaterDistortion = false,
   deformationIntensity = 1,
+  showBoundaryOverlay = false,
   gameMode = false,
   levelDuration = 60000,
   onGameOver,
@@ -150,6 +152,7 @@ export default function FishEditorCanvas({
   const fishDataRef = useRef<Map<string, FishData>>(fishData);
   const pausedRef = useRef<boolean>(paused);
   const showEditButtonsRef = useRef<boolean>(showEditButtons);
+  const showBoundaryOverlayRef = useRef<boolean>(showBoundaryOverlay);
   const editButtonPositionsRef = useRef<Map<string, { x: number; y: number; size: number }>>(new Map());
 
   // Initialize systems
@@ -180,6 +183,7 @@ export default function FishEditorCanvas({
     }
   }, [paused])
   useEffect(() => { showEditButtonsRef.current = showEditButtons }, [showEditButtons])
+  useEffect(() => { showBoundaryOverlayRef.current = showBoundaryOverlay }, [showBoundaryOverlay])
 
   // Shared spawn logic for player and AI
   const spawnPlayerFish = (fish: FishData) => {
@@ -1039,6 +1043,7 @@ export default function FishEditorCanvas({
         pauseStartTime: gameStateRef.current.gameMode.pauseStartTime,
         score: gameStateRef.current.gameMode.score,
         fishCount: gameStateRef.current.fish.length,
+        showBoundaryOverlay: showBoundaryOverlayRef.current,
         onEditFish,
         setLastPlayerAnimAction: (action) => { lastPlayerAnimActionRef.current = action; },
       });

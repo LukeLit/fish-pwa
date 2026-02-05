@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     const savedMetadata = await verifyResponse.json();
 
     if (savedMetadata.sprite !== spriteUrl) {
-      {
+      console.warn('Metadata sprite URL mismatch', {
         expected: spriteUrl,
         got: savedMetadata.sprite,
       });

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    {
+    console.log('Image variation request', {
       imageUrl: body.imageUrl.substring(0, 50) + '...',
       prompt: body.prompt.substring(0, 100) + '...',
       strength: body.strength,

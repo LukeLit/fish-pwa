@@ -46,6 +46,14 @@ export default function FishEditorPage() {
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [enableWaterDistortion, setEnableWaterDistortion] = useState<boolean>(false);
   const [deformationIntensity, setDeformationIntensity] = useState<number>(1);
+  const [showBoundaryOverlay, setShowBoundaryOverlay] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('fish_editor_show_boundary_overlay') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
@@ -979,6 +987,7 @@ export default function FishEditorPage() {
             zoom={zoom}
             enableWaterDistortion={enableWaterDistortion}
             deformationIntensity={deformationIntensity}
+            showBoundaryOverlay={showBoundaryOverlay}
             editMode={editMode}
             selectedFishId={selectedFishId}
             onEditFish={handleEditFish}
@@ -1021,12 +1030,19 @@ export default function FishEditorPage() {
             chromaTolerance,
             enableWaterDistortion,
             deformationIntensity,
+            showBoundaryOverlay,
             spawnedFishCount: spawnedFish.length,
           }}
           onZoomChange={setZoom}
           onChromaToleranceChange={setChromaTolerance}
           onWaterDistortionChange={setEnableWaterDistortion}
           onDeformationIntensityChange={setDeformationIntensity}
+          onBoundaryOverlayChange={(enabled: boolean) => {
+            setShowBoundaryOverlay(enabled);
+            try {
+              localStorage.setItem('fish_editor_show_boundary_overlay', String(enabled));
+            } catch { /* ignore */ }
+          }}
           onClearFish={handleClearFish}
           onBackToMenu={handleBackToMenu}
           onPendingChanges={setHasPendingChanges}

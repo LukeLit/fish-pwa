@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    {
+    console.log('Growth sprites', {
       hasJuvenile: !!growthSprites.juvenile,
       hasElder: !!growthSprites.elder,
     });

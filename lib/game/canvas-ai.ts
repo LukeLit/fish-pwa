@@ -4,6 +4,7 @@
  */
 
 import type { CanvasConfig } from './canvas-config';
+import type { StaminaEntity } from './canvas-stamina';
 import { DASH_SPEED_MULTIPLIER, KO_STAMINA_REGEN_MULTIPLIER, KO_WAKE_THRESHOLD, KO_DRIFT_SPEED, PREY_FLEE_STAMINA_MULTIPLIER } from './dash-constants';
 import { PHYSICS, SPAWN, ANIMATION } from './canvas-constants';
 
@@ -243,7 +244,7 @@ function updatePredatorBehavior(
     fish.isDashing = false;
   }
 
-  updateStamina(fish, deltaTime);
+  updateStamina(fish as StaminaEntity, deltaTime);
   if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
 }
 
@@ -309,6 +310,6 @@ function updatePreyBehavior(
 
   // Prey flee stamina penalty
   const fleeDrainMult = fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1;
-  updateStamina(fish, deltaTime, { fleeMultiplier: fleeDrainMult });
+  updateStamina(fish as StaminaEntity, deltaTime, { fleeMultiplier: fleeDrainMult });
   if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
 }

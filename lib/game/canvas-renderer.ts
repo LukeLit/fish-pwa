@@ -46,6 +46,7 @@ export interface RenderOptions {
   pauseStartTime: number;
   score: number;
   fishCount: number;
+  showBoundaryOverlay?: boolean;
   onEditFish?: (fishId: string) => void;
   setLastPlayerAnimAction: (action: string | null) => void;
 }
@@ -83,6 +84,7 @@ export function renderGame(options: RenderOptions): void {
     pauseStartTime,
     score,
     fishCount,
+    showBoundaryOverlay = false,
     onEditFish,
     setLastPlayerAnimAction,
   } = options;
@@ -304,6 +306,29 @@ export function renderGame(options: RenderOptions): void {
   // Draw particles
   renderBloodParticles(ctx, bloodParticles);
   renderChompParticles(ctx, chompParticles);
+
+  // Draw boundary overlay when player is near world edges (before restore - still in world coords)
+  if (showBoundaryOverlay) {
+    const BOUNDARY_THRESHOLD = 65;
+    const OVERLAY_THICKNESS = 80;
+    const b = WORLD_BOUNDS;
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = 'rgb(255, 0, 0)';
+    if (player.y >= b.maxY - BOUNDARY_THRESHOLD) {
+      ctx.fillRect(b.minX - 100, b.maxY - OVERLAY_THICKNESS, b.maxX - b.minX + 200, OVERLAY_THICKNESS + 50);
+    }
+    if (player.y <= b.minY + BOUNDARY_THRESHOLD) {
+      ctx.fillRect(b.minX - 100, b.minY - 50, b.maxX - b.minX + 200, OVERLAY_THICKNESS + 50);
+    }
+    if (player.x >= b.maxX - BOUNDARY_THRESHOLD) {
+      ctx.fillRect(b.maxX - OVERLAY_THICKNESS, b.minY - 100, OVERLAY_THICKNESS + 50, b.maxY - b.minY + 200);
+    }
+    if (player.x <= b.minX + BOUNDARY_THRESHOLD) {
+      ctx.fillRect(b.minX - 50, b.minY - 100, OVERLAY_THICKNESS + 50, b.maxY - b.minY + 200);
+    }
+    ctx.restore();
+  }
 
   // Restore zoom transform (now in screen space)
   ctx.restore();

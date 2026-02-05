@@ -25,6 +25,7 @@ type CreatureMetadata = {
   biomeId?: string;
   stats?: { size?: number };
   type?: string;
+  playable?: boolean;
   spawnRules?: { canAppearIn?: string[]; spawnWeight?: number };
   [key: string]: unknown;
 };
@@ -35,6 +36,21 @@ function inferSizeTierFromStats(creature: CreatureMetadata): 'prey' | 'mid' | 'p
   if (s <= 90) return 'mid';
   if (s <= 120) return 'predator';
   return 'boss';
+}
+
+function inferSubDepthFromSize(size: number): 'upper' | 'mid' | 'lower' {
+  if (size < 50) return 'upper';
+  if (size <= 100) return 'mid';
+  return 'lower';
+}
+
+function inferMetrics(creature: CreatureMetadata): { base_meters: number; base_art_scale: number; sub_depth: 'upper' | 'mid' | 'lower' } {
+  const size = creature.stats?.size ?? 60;
+  return {
+    base_meters: size / 100,
+    base_art_scale: size,
+    sub_depth: inferSubDepthFromSize(size),
+  };
 }
 
 async function listBiomeFiles(): Promise<string[]> {
@@ -83,10 +99,14 @@ async function main() {
       spawnWeight: creature.spawnRules?.spawnWeight ?? 10,
     };
 
+    const metrics = inferMetrics(creature);
+
     const merged: CreatureMetadata = {
       ...creature,
       sizeTier,
       spawnRules,
+      metrics,
+      playable: true, // All fish playable for preview; lock conditions per issue #90
     };
 
     const formData = new FormData();
@@ -115,7 +135,7 @@ async function main() {
 
     updated++;
     // eslint-disable-next-line no-console
-    console.log(`  ✅ ${id} → sizeTier=${sizeTier}`);
+    console.log(`  ✅ ${id} → sizeTier=${sizeTier}, metrics.base_meters=${metrics.base_meters.toFixed(2)}`);
   }
 
   // eslint-disable-next-line no-console

@@ -250,6 +250,15 @@ export interface GrowthSprites {
 }
 
 /**
+ * CreatureMetrics - Size/depth metrics for level band filtering
+ */
+export interface CreatureMetrics {
+  base_meters: number;
+  base_art_scale: number;
+  sub_depth?: 'upper' | 'mid' | 'lower';
+}
+
+/**
  * Creature - Complete creature data structure (extends BaseFishData)
  */
 export interface Creature extends BaseFishData {
@@ -264,6 +273,9 @@ export interface Creature extends BaseFishData {
 
   // Optional size tier used by biome ecosystems and runtime scaling
   sizeTier?: 'prey' | 'mid' | 'predator' | 'boss' | string;
+
+  // Metrics for depth band filtering (base_meters, base_art_scale, sub_depth)
+  metrics?: CreatureMetrics;
 
   // NEW: Modular Prompt System
   descriptionChunks?: string[]; // Modular prompt segments describing the creature

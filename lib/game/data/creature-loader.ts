@@ -1,4 +1,4 @@
-import type { Creature, GrowthSprites, SpriteResolutions, CreatureAnimations, EssenceData } from '../types';
+import type { Creature, CreatureMetrics, GrowthSprites, SpriteResolutions, CreatureAnimations, EssenceData } from '../types';
 import { getAllCreaturesFromBlob, getAllCreatures, getCreatureById as getCreatureByIdRaw } from './creatures';
 import { loadCreatureFromLocal } from '../../storage/local-fish-storage';
 import {
@@ -51,7 +51,7 @@ function asSpriteResolutions(value: unknown): SpriteResolutions | undefined {
   const high = typeof value.high === 'string' ? value.high : undefined;
   const medium = typeof value.medium === 'string' ? value.medium : undefined;
   const low = typeof value.low === 'string' ? value.low : undefined;
-  
+
   // Only return if we have at least one valid resolution
   if (high || medium || low) {
     return { high: high || '', medium: medium || '', low: low || '' };
@@ -61,14 +61,14 @@ function asSpriteResolutions(value: unknown): SpriteResolutions | undefined {
 
 function asGrowthSprites(value: unknown): GrowthSprites | undefined {
   if (!isRecord(value)) return undefined;
-  
+
   // GrowthSprites can have juvenile, adult, elder properties
   // Each is a GrowthSpriteData object with sprite, spriteResolutions, sizeRange
   const hasValidStructure =
     (value.juvenile !== undefined && isRecord(value.juvenile)) ||
     (value.adult !== undefined && isRecord(value.adult)) ||
     (value.elder !== undefined && isRecord(value.elder));
-  
+
   if (hasValidStructure) {
     return value as GrowthSprites;
   }
@@ -77,19 +77,32 @@ function asGrowthSprites(value: unknown): GrowthSprites | undefined {
 
 function asCreatureAnimations(value: unknown): CreatureAnimations | undefined {
   if (!isRecord(value)) return undefined;
-  
+
   // CreatureAnimations can have juvenile, adult, elder properties
   // Each can be a Partial<Record<AnimationAction, AnimationSequence>>
   // We'll just pass through the object if it looks valid
-  const hasValidStructure = 
+  const hasValidStructure =
     (value.juvenile !== undefined && isRecord(value.juvenile)) ||
     (value.adult !== undefined && isRecord(value.adult)) ||
     (value.elder !== undefined && isRecord(value.elder));
-  
+
   if (hasValidStructure) {
     return value as CreatureAnimations;
   }
   return undefined;
+}
+
+function asMetrics(value: unknown, fallbackSize: number): CreatureMetrics | undefined {
+  if (!isRecord(value)) return undefined;
+  const baseMeters = asNumber(value.base_meters, fallbackSize / 100);
+  const baseArtScale = asNumber(value.base_art_scale, fallbackSize);
+  const subDepth = value.sub_depth;
+  const validSubDepth = subDepth === 'upper' || subDepth === 'mid' || subDepth === 'lower' ? subDepth : undefined;
+  return {
+    base_meters: baseMeters,
+    base_art_scale: baseArtScale,
+    sub_depth: validSubDepth,
+  };
 }
 
 function asEssenceData(value: unknown): EssenceData | undefined {
@@ -140,6 +153,7 @@ export function normalizeCreature(raw: unknown): Creature | null {
     damage: asNumber(rawStats.damage, DEFAULT_STATS.damage),
   };
 
+  const metrics = asMetrics(raw.metrics, stats.size);
   const growthSprites = asGrowthSprites(raw.growthSprites);
   const spriteFromGrowth =
     growthSprites?.adult?.sprite ||
@@ -180,6 +194,7 @@ export function normalizeCreature(raw: unknown): Creature | null {
     grantedAbilities,
     playable: typeof raw.playable === 'boolean' ? raw.playable : false,
     sizeTier: typeof raw.sizeTier === 'string' ? raw.sizeTier : undefined,
+    metrics,
     spriteResolutions: asSpriteResolutions(raw.spriteResolutions),
     growthSprites,
     animations: asCreatureAnimations(raw.animations),
@@ -261,4 +276,17 @@ export function resolveCreatureRenderData(
     growthStage,
     clipMode,
   };
+}
+
+/**
+ * Get biome tags for a creature (for tag-based fish selection).
+ * Derives from essenceTypes; includes biomeId if not already in tags.
+ */
+export function getCreatureTags(creature: Creature): string[] {
+  const fromEssence = (creature.essenceTypes ?? []).map((e) => e.type);
+  const tags = [...new Set(fromEssence)];
+  if (creature.biomeId && !tags.includes(creature.biomeId)) {
+    tags.push(creature.biomeId);
+  }
+  return tags;
 }

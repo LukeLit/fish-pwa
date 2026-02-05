@@ -947,7 +947,7 @@ export class GameEngine {
     // Offer to mint fish if on fxhash and conditions met
     if (this.fxhash.isAvailable() && this.player.stats.maxSize >= 50 && this.player.mutations.length > 0) {
       // Could trigger minting UI here
-      {
+      console.log('Mint conditions met', {
         mutations: this.player.mutations,
         maxSize: this.player.stats.maxSize,
         phase: this.phases.getCurrentPhase(),

@@ -22,7 +22,17 @@ export interface CreateLevelResult {
  */
 export async function createLevel(biomeId: string, levelId: number): Promise<CreateLevelResult> {
   const rules = getLevelConfig(biomeId, levelId);
-  const pool = await loadCreaturesByBiome(biomeId);
+  let pool = await loadCreaturesByBiome(biomeId);
+
+  // Filter by depth band when rules specify min/max_meters and creature has metrics
+  const minM = rules.min_meters;
+  const maxM = rules.max_meters;
+  if (typeof minM === 'number' && typeof maxM === 'number') {
+    pool = pool.filter((c) => {
+      const baseMeters = c.metrics?.base_meters ?? (c.stats.size / 100);
+      return baseMeters >= minM && baseMeters <= maxM;
+    });
+  }
 
   if (pool.length === 0) {
     return { spawnList: [] };

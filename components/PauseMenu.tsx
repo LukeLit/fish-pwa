@@ -29,6 +29,7 @@ interface SceneSettings {
   chromaTolerance: number;
   enableWaterDistortion: boolean;
   deformationIntensity: number;
+  showBoundaryOverlay?: boolean;
   spawnedFishCount: number;
 }
 
@@ -74,6 +75,7 @@ interface PauseMenuProps {
   onChromaToleranceChange?: (tolerance: number) => void;
   onWaterDistortionChange?: (enabled: boolean) => void;
   onDeformationIntensityChange?: (intensity: number) => void;
+  onBoundaryOverlayChange?: (enabled: boolean) => void;
   onClearFish?: () => void;
   onBackToMenu?: () => void;
   /** Called when pending changes state changes in the fish editor */
@@ -112,6 +114,7 @@ export default function PauseMenu({
   onChromaToleranceChange,
   onWaterDistortionChange,
   onDeformationIntensityChange,
+  onBoundaryOverlayChange,
   onClearFish,
   onBackToMenu,
   onExitFishEdit,
@@ -563,6 +566,20 @@ export default function PauseMenu({
                       />
                     </div>
                   )}
+
+                  {/* Boundary Overlay */}
+                  <div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sceneSettings.showBoundaryOverlay ?? false}
+                        onChange={(e) => onBoundaryOverlayChange?.(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-bold text-white">Show Depth Boundary Overlay</span>
+                    </label>
+                    <p className="text-xs text-gray-400 mt-1">Low-opacity red when blocked at world edges</p>
+                  </div>
 
                   {/* Clear fish */}
                   <div className="pt-2">

@@ -5,9 +5,8 @@
 
 import { DashParticleSystem } from '@/lib/rendering/dash-particles';
 import { MultiEntityDashParticleManager } from '@/lib/rendering/multi-entity-dash-particles';
-import { getAnimationSpriteManager } from '@/lib/rendering/animation-sprite';
-import type { AnimationSprite, CreatureAnimations } from '@/lib/game/types';
-import type { Creature } from '@/lib/game/types';
+import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering/animation-sprite';
+import type { CreatureAnimations, Creature } from '@/lib/game/types';
 import { PLAYER_BASE_SIZE, PLAYER_MAX_SIZE } from './spawn-fish';
 import { HUNGER_MAX, HUNGER_DRAIN_RATE } from './hunger-constants';
 import { PARTICLES, WORLD_BOUNDS } from './canvas-constants';
