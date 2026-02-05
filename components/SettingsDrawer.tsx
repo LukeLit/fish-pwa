@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import FeedbackButton from './FeedbackButton';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
 import type { GameConfig } from '@/lib/meta/storage';
+import { useState as useLocalState } from 'react';
+import { DEFAULT_GAME_SETTINGS, type GameSettings } from '@/lib/game/game-settings';
+import { loadGameSettings, saveGameSettings } from '@/lib/storage/blob-storage';
 
 interface SettingsDrawerProps {
   /** Whether this is in game mode (shows different options) */
@@ -18,6 +21,43 @@ interface SettingsDrawerProps {
 }
 
 export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameConfigChange }: SettingsDrawerProps) {
+  // Fish Editor: Collapsible Game Settings (art size, auto-actions)
+  const [showGameSettings, setShowGameSettings] = useLocalState(false);
+  const [gameSettings, setGameSettings] = useLocalState<GameSettings>(DEFAULT_GAME_SETTINGS);
+  const [settingsStatus, setSettingsStatus] = useLocalState<string | null>(null);
+  const [settingsLoading, setSettingsLoading] = useLocalState(false);
+
+  // Only show in editor mode
+  const showEditorSettings = mode === 'editor';
+
+  // Load settings from blob storage
+  const handleLoadSettings = async () => {
+    setSettingsLoading(true);
+    setSettingsStatus(null);
+    try {
+      const loaded = await loadGameSettings(DEFAULT_GAME_SETTINGS);
+      setGameSettings(loaded);
+      setSettingsStatus('✅ Loaded settings from storage');
+    } catch (e) {
+      setSettingsStatus('❌ Failed to load settings');
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  // Save settings to blob storage
+  const handleSaveSettings = async () => {
+    setSettingsLoading(true);
+    setSettingsStatus(null);
+    try {
+      await saveGameSettings(gameSettings);
+      setSettingsStatus('✅ Saved settings to storage');
+    } catch (e) {
+      setSettingsStatus('❌ Failed to save settings');
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -175,6 +215,81 @@ export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameC
               <div className="pt-4 border-t border-gray-700 space-y-1">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Settings</p>
 
+                {/* Collapsible Game Settings (Editor only) */}
+                {showEditorSettings && (
+                  <div className="mb-2">
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-semibold mb-1"
+                      onClick={() => setShowGameSettings((v) => !v)}
+                      aria-expanded={showGameSettings}
+                    >
+                      <span>Game Settings</span>
+                      <svg className={`w-4 h-4 ml-2 transition-transform ${showGameSettings ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                    {showGameSettings && (
+                      <div className="p-4 bg-gray-900 rounded-lg border border-gray-700 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm text-white font-semibold">Art Size (px)</label>
+                          <input
+                            type="number"
+                            min={32}
+                            max={512}
+                            step={8}
+                            value={gameSettings.artSize}
+                            onChange={e => setGameSettings({ ...gameSettings, artSize: parseInt(e.target.value) || 128 })}
+                            className="w-20 bg-gray-800 text-white rounded px-2 py-1 text-sm border border-gray-600"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm text-white font-semibold">Auto-dash</label>
+                          <input
+                            type="checkbox"
+                            checked={gameSettings.autoDash}
+                            onChange={e => setGameSettings({ ...gameSettings, autoDash: e.target.checked })}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm text-white font-semibold">Auto-attack</label>
+                          <input
+                            type="checkbox"
+                            checked={gameSettings.autoAttack}
+                            onChange={e => setGameSettings({ ...gameSettings, autoAttack: e.target.checked })}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm text-white font-semibold">Auto-eat</label>
+                          <input
+                            type="checkbox"
+                            checked={gameSettings.autoEat}
+                            onChange={e => setGameSettings({ ...gameSettings, autoEat: e.target.checked })}
+                          />
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={handleLoadSettings}
+                            disabled={settingsLoading}
+                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium border border-gray-600 disabled:opacity-60"
+                          >
+                            Load
+                          </button>
+                          <button
+                            onClick={handleSaveSettings}
+                            disabled={settingsLoading}
+                            className="flex-1 bg-blue-700 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium border border-blue-600 disabled:opacity-60"
+                          >
+                            Save
+                          </button>
+                        </div>
+                        {settingsStatus && (
+                          <div className="text-xs text-gray-400 mt-1">{settingsStatus}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* ...existing settings... */}
                 <div className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-white bg-gray-800">
                   <div className="flex items-center gap-3">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400">
@@ -184,7 +299,6 @@ export default function SettingsDrawer({ mode, onOpenChange, gameConfig, onGameC
                   </div>
                   <span className="text-xs text-gray-500">Coming soon</span>
                 </div>
-
                 <div className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-white bg-gray-800">
                   <div className="flex items-center gap-3">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400">
