@@ -12,6 +12,7 @@ import {
   type RenderContext,
 } from '@/lib/rendering/fish-renderer';
 import { HUNGER_LOW_THRESHOLD, HUNGER_WARNING_PULSE_FREQUENCY, HUNGER_WARNING_PULSE_BASE, HUNGER_WARNING_INTENSITY } from './hunger-constants';
+import { computeEffectiveMaxStamina } from './stamina-hunger';
 import { RENDERING, UI, WORLD_BOUNDS } from './canvas-constants';
 import { getRunConfig, getDepthBandRules } from './data/level-loader';
 import type { PlayerEntity, FishEntity, ChompParticle, BloodParticle, CameraState } from './canvas-state';
@@ -220,6 +221,7 @@ export function renderGame(options: RenderOptions): void {
       ctx.fill();
     }
 
+    drawStateIcon(ctx, fishEntity, fishEntity.x, fishEntity.y, fishEntity.size, animatedZoom);
     ctx.restore();
     editButtonPositions.set(fishEntity.id, { x: fishEntity.x, y: fishEntity.y, size: fishEntity.size });
   });
@@ -297,6 +299,9 @@ export function renderGame(options: RenderOptions): void {
     ctx.stroke();
   }
 
+  if (gameMode) {
+    drawStateIcon(ctx, player, player.x, player.y, player.size, animatedZoom);
+  }
   editButtonPositions.set(player.id, { x: player.x, y: player.y, size: player.size });
 
   // Draw dash particles in front
@@ -722,7 +727,48 @@ function renderEditButtons(
 }
 
 /**
- * Render game UI (stats, hunger bar, stamina bar, timer)
+ * Draw state icon above entity (KO, exhausted, or despawning).
+ */
+function drawStateIcon(
+  ctx: CanvasRenderingContext2D,
+  entity: { lifecycleState?: string; stamina?: number; isExhausted?: boolean },
+  x: number,
+  y: number,
+  size: number,
+  zoom: number
+): void {
+  const iconY = y - size * 0.75;
+  const iconSize = Math.max(12, Math.min(24, size * 0.5 * zoom));
+  ctx.save();
+
+  const ko = entity.lifecycleState === 'knocked_out';
+  const exhausted = entity.lifecycleState === 'exhausted' || (entity as { isExhausted?: boolean }).isExhausted || ((entity.stamina ?? 1) <= 0 && !ko);
+
+  if (ko) {
+    ctx.fillStyle = 'rgba(255, 200, 0, 0.95)';
+    ctx.font = `bold ${iconSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★', x, iconY);
+  } else if (exhausted) {
+    ctx.fillStyle = 'rgba(100, 180, 255, 0.95)';
+    ctx.font = `bold ${iconSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('…', x, iconY);
+  } else if (entity.lifecycleState === 'despawning') {
+    ctx.fillStyle = 'rgba(180, 180, 180, 0.9)';
+    ctx.font = `bold ${iconSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✕', x, iconY);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Render game UI (stats, combined stamina bar, timer)
  */
 function renderGameUI(
   ctx: CanvasRenderingContext2D,
@@ -751,73 +797,60 @@ function renderGameUI(
   ctx.fillText(`Fish: ${fishCount}`, 20, statsY + 72);
   ctx.restore();
 
-  // Hunger bar
-  const hungerBarWidth = Math.min(UI.HUNGER_BAR_WIDTH, width - UI.HUNGER_BAR_MIN_WIDTH);
-  const hungerBarHeight = UI.HUNGER_BAR_HEIGHT;
-  const hungerBarX = (width - hungerBarWidth) / 2;
-  const hungerBarY = UI.HUNGER_BAR_Y;
-  const hungerPercent = player.hunger / 100;
+  // Combined stamina bar (hunger = capacity, stamina = fill) - Monster Hunter style
+  const barWidth = Math.min(UI.HUNGER_BAR_WIDTH, width - UI.HUNGER_BAR_MIN_WIDTH);
+  const barHeight = UI.STAMINA_BAR_HEIGHT;
+  const barX = (width - barWidth) / 2;
+  const barY = UI.HUNGER_BAR_Y;
+  const baseMax = player.baseMaxStamina ?? 100;
+  const effectiveMax = Math.max(0.01, computeEffectiveMaxStamina(baseMax, player.hunger));
+  const capacityPercent = player.hunger / 100;
+  const staminaPercent = effectiveMax > 0 ? player.stamina / effectiveMax : 0;
 
   ctx.save();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
   ctx.lineWidth = 2;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
-  ctx.strokeRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+  ctx.strokeRect(barX, barY, barWidth, barHeight);
 
-  let hungerColor;
-  if (hungerPercent > 0.5) {
-    hungerColor = '#f59e0b';
-  } else if (hungerPercent > 0.25) {
-    hungerColor = '#fbbf24';
-  } else {
-    hungerColor = '#ef4444';
-  }
+  const innerW = barWidth - UI.HUNGER_BAR_PADDING * 2;
+  const innerH = barHeight - UI.HUNGER_BAR_PADDING * 2;
+  const innerX = barX + UI.HUNGER_BAR_PADDING;
+  const innerY = barY + UI.HUNGER_BAR_PADDING;
 
-  ctx.fillStyle = hungerColor;
-  const fillWidth = (hungerBarWidth - UI.HUNGER_BAR_PADDING * 2) * hungerPercent;
-  ctx.fillRect(hungerBarX + UI.HUNGER_BAR_PADDING, hungerBarY + UI.HUNGER_BAR_PADDING, fillWidth, hungerBarHeight - UI.HUNGER_BAR_PADDING * 2);
+  const capacityWidth = innerW * capacityPercent;
+  let capacityColor = '#f59e0b';
+  if (capacityPercent <= 0.25) capacityColor = '#ef4444';
+  else if (capacityPercent <= 0.5) capacityColor = '#fbbf24';
+  ctx.fillStyle = capacityColor;
+  ctx.globalAlpha = 0.4;
+  ctx.fillRect(innerX, innerY, capacityWidth, innerH);
+  ctx.globalAlpha = 1;
 
-  if (hungerPercent <= 0.25) {
-    const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
-    ctx.shadowColor = hungerColor;
-    ctx.shadowBlur = 15 * pulse;
-    ctx.strokeStyle = hungerColor;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(hungerBarX, hungerBarY, hungerBarWidth, hungerBarHeight);
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = 'transparent';
-  }
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.font = 'bold 12px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`HUNGER: ${Math.ceil(player.hunger)}%`, hungerBarX + hungerBarWidth / 2, hungerBarY + hungerBarHeight / 2);
-  ctx.restore();
-
-  // Stamina bar
-  const staminaBarY = hungerBarY + hungerBarHeight + UI.STAMINA_BAR_SPACING;
-  const staminaPercent = player.stamina / player.maxStamina;
   const staminaColor = staminaPercent > UI.STAMINA_LOW_THRESHOLD ? '#22d3ee' : '#ef4444';
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.lineWidth = 2;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(hungerBarX, staminaBarY, hungerBarWidth, UI.STAMINA_BAR_HEIGHT);
-  ctx.strokeRect(hungerBarX, staminaBarY, hungerBarWidth, UI.STAMINA_BAR_HEIGHT);
   ctx.fillStyle = staminaColor;
-  const staminaFillWidth = (hungerBarWidth - UI.HUNGER_BAR_PADDING * 2) * staminaPercent;
-  ctx.fillRect(hungerBarX + UI.HUNGER_BAR_PADDING, staminaBarY + UI.HUNGER_BAR_PADDING, staminaFillWidth, UI.STAMINA_BAR_HEIGHT - UI.HUNGER_BAR_PADDING * 2);
+  const staminaFillWidth = capacityWidth * Math.min(1, staminaPercent);
+  ctx.fillRect(innerX, innerY, staminaFillWidth, innerH);
+
+  if (capacityPercent <= 0.25) {
+    const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
+    ctx.shadowColor = capacityColor;
+    ctx.shadowBlur = 15 * pulse;
+    ctx.strokeStyle = capacityColor;
+    ctx.strokeRect(barX, barY, barWidth, barHeight);
+    ctx.shadowBlur = 0;
+  }
+
   ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
   ctx.font = 'bold 12px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`STAMINA: ${Math.ceil(player.stamina)}%`, hungerBarX + hungerBarWidth / 2, staminaBarY + UI.STAMINA_BAR_HEIGHT / 2);
+  ctx.fillText(`STAMINA ${Math.ceil(player.stamina)} / ${Math.ceil(effectiveMax)}  (Hunger ${Math.ceil(player.hunger)}%)`, barX + barWidth / 2, barY + barHeight / 2);
   ctx.restore();
 
   // Timer
-  const timerY = staminaBarY + UI.STAMINA_BAR_HEIGHT + UI.TIMER_SPACING;
+  const timerY = barY + barHeight + UI.TIMER_SPACING;
   ctx.font = 'bold 20px monospace';
   if (timeLeft <= 10) {
     const flash = Math.sin(Date.now() * 0.01) > 0;

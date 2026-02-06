@@ -30,6 +30,12 @@ export const KO_DRIFT_SPEED = 0.5; // Slow drift while KO
 // Prey fleeing penalty - prey drains stamina faster when escaping (player/predators get upper hand)
 export const PREY_FLEE_STAMINA_MULTIPLIER = 1.5;
 
+// Slower regen when recovering from exhaustion (stamina in bottom 25% of max)
+export const EXHAUSTED_REGEN_MULTIPLIER = 0.4;
+
+// Extra penalty for prey recovering from exhausted (fled until stamina ran out)
+export const FLEEING_RECOVERY_MULTIPLIER = 0.6;
+
 // Size-based attack penalty - attacking larger target costs more stamina (small predator can't endlessly harass)
 export const ATTACK_LARGER_STAMINA_MULTIPLIER = 1.8;
 

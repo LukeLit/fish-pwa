@@ -364,6 +364,7 @@ export interface RunState {
     health: number; // Current health
     damage: number; // Current damage
     sprite: string; // Current sprite (can evolve)
+    baseMaxStamina?: number; // Stamina cap (upgradable)
   };
   collectedEssence: Record<string, number>; // Essence collected this run: { 'shallow': 45, ... }
   selectedUpgrades: string[]; // Array of UpgradeNode IDs selected this run

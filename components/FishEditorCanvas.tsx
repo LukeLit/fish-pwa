@@ -50,6 +50,7 @@ import { cacheBust } from '@/lib/utils/cache-bust';
 // Extracted systems
 import { getCanvasConfig } from '@/lib/game/canvas-config';
 import { CAMERA, SPAWN, WORLD_BOUNDS, PHYSICS, AI, COLLISION, ANIMATION, RENDERING, STAMINA, UI } from '@/lib/game/canvas-constants';
+import { initHungerStamina } from '@/lib/game/stamina-hunger';
 import { InputManager } from '@/lib/game/canvas-input';
 import { SpriteManager } from '@/lib/game/canvas-sprite-manager';
 import { updatePlayerPhysics, constrainToBounds, getAnimationAction } from '@/lib/game/canvas-physics';
@@ -90,6 +91,8 @@ interface FishEditorCanvasProps {
   showBoundaryOverlay?: boolean;
   showDepthBandOverlay?: boolean;
   runId?: string;
+  /** Current depth band (e.g. '1-1') – used for band-based fish spawn in game mode */
+  currentLevel?: string;
   /** Game mode: when set, canvas player size/sprite sync from this value (e.g. cheats) */
   syncedPlayerSize?: number;
   // Game mode features
@@ -98,6 +101,10 @@ interface FishEditorCanvasProps {
   onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
   onLevelComplete?: (score: number, finalStats?: Pick<PlayerGameStats, 'size' | 'fishEaten' | 'timeSurvived'>) => void;
   onStatsUpdate?: (stats: PlayerGameStats) => void;
+  /** Called when player sprite and all fish sprites are loaded (game mode). Start game after this. */
+  onReadyToPlay?: () => void;
+  /** When true, game timer does not start (used with loading overlay). */
+  loading?: boolean;
   // Edit mode features
   editMode?: boolean;
   selectedFishId?: string | null;
@@ -124,12 +131,15 @@ export default function FishEditorCanvas({
   showBoundaryOverlay = false,
   showDepthBandOverlay = false,
   runId = 'shallow_run',
+  currentLevel = '1-1',
   syncedPlayerSize,
   gameMode = false,
   levelDuration = 60000,
   onGameOver,
   onLevelComplete,
   onStatsUpdate,
+  onReadyToPlay,
+  loading = false,
   editMode = false,
   selectedFishId = null,
   onEditFish,
@@ -195,6 +205,39 @@ export default function FishEditorCanvas({
   useEffect(() => { showBoundaryOverlayRef.current = showBoundaryOverlay }, [showBoundaryOverlay])
   useEffect(() => { showDepthBandOverlayRef.current = showDepthBandOverlay }, [showDepthBandOverlay])
   useEffect(() => { runIdRef.current = runId }, [runId])
+  const currentLevelRef = useRef<string>(currentLevel);
+  useEffect(() => { currentLevelRef.current = currentLevel }, [currentLevel])
+
+  // Loading readiness for game mode: wait for player sprite + all fish sprites before starting
+  const playerSpriteLoadedRef = useRef(false);
+  const allFishLoadedRef = useRef(false);
+  const hasCalledReadyRef = useRef(false);
+  useEffect(() => {
+    if (gameMode && (spawnedFish.length > 0 || playerFishSprite)) {
+      playerSpriteLoadedRef.current = false;
+      allFishLoadedRef.current = false;
+      hasCalledReadyRef.current = false;
+    }
+  }, [gameMode, spawnedFish.length, playerFishSprite]);
+
+  const checkReady = useCallback(() => {
+    if (
+      gameMode &&
+      onReadyToPlay &&
+      playerSpriteLoadedRef.current &&
+      allFishLoadedRef.current &&
+      !hasCalledReadyRef.current &&
+      (spawnedFish.length > 0 || playerFishSprite)
+    ) {
+      hasCalledReadyRef.current = true;
+      onReadyToPlay();
+    }
+  }, [gameMode, onReadyToPlay, spawnedFish.length, playerFishSprite]);
+
+  const handleAllNewFishLoaded = useCallback(() => {
+    allFishLoadedRef.current = true;
+    checkReady();
+  }, [checkReady]);
 
   // Shared spawn logic for player and AI
   const spawnPlayerFish = (fish: FishData) => {
@@ -210,13 +253,16 @@ export default function FishEditorCanvas({
       const processedSprite = removeBackground(img, chromaToleranceRef.current);
       const spawned = spawnFishFromData(fish, { isPlayer: true });
       // Preserve baseSize for scoring while using spawned size as baseline
+      const baseMax = STAMINA.BASE_MAX_START;
+      const maxSta = baseMax * (gameStateRef.current.player.hunger / 100);
       gameStateRef.current.player = {
         ...spawned,
         baseSize: spawned.size,
         sprite: processedSprite,
         animations: fish.animations,
-        stamina: 100,
-        maxStamina: 100,
+        baseMaxStamina: baseMax,
+        stamina: Math.min(maxSta, gameStateRef.current.player.stamina ?? maxSta),
+        maxStamina: maxSta,
         isDashing: false,
         chompPhase: gameStateRef.current.player.chompPhase,
         chompEndTime: gameStateRef.current.player.chompEndTime,
@@ -253,29 +299,31 @@ export default function FishEditorCanvas({
       const existingIndex = gameStateRef.current.fish.findIndex(f => f.id === aiFish.id);
       if (existingIndex >= 0) {
         const prev = gameStateRef.current.fish[existingIndex];
-        gameStateRef.current.fish[existingIndex] = {
+        const merged = {
           ...aiFish,
           sprite: processedSprite,
           spawnTime: prev.spawnTime,
           despawnTime: prev.despawnTime,
           opacity: prev.opacity,
           lifecycleState: prev.lifecycleState || 'active',
-          stamina: prev.stamina ?? 100,
-          maxStamina: prev.maxStamina ?? 100,
+          stamina: prev.stamina ?? 40,
+          maxStamina: prev.maxStamina ?? 40,
           isDashing: prev.isDashing ?? false,
         };
+        if (merged.hunger === undefined) initHungerStamina(merged, { hungerDrainRate: 2.5 });
+        gameStateRef.current.fish[existingIndex] = merged;
       } else {
-        gameStateRef.current.fish.push({
+        const newFish = {
           ...aiFish,
           sprite: processedSprite,
           spawnTime: performance.now(),
           despawnTime: undefined,
           opacity: 0,
           lifecycleState: 'spawning' as FishLifecycleState,
-          stamina: 100,
-          maxStamina: 100,
           isDashing: false,
-        });
+        };
+        initHungerStamina(newFish, { hungerDrainRate: 2.5 });
+        gameStateRef.current.fish.push(newFish);
       }
     };
     img.onerror = () => {
@@ -587,11 +635,18 @@ export default function FishEditorCanvas({
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
+          playerSpriteLoadedRef.current = true;
+          checkReady();
         };
         img.onerror = () => {
           gameStateRef.current.player.sprite = null;
+          playerSpriteLoadedRef.current = true;
+          checkReady();
         };
         img.src = cacheBust(spriteToLoad);
+      } else {
+        playerSpriteLoadedRef.current = true;
+        checkReady();
       }
     } else if (playerFishSprite) {
       // No creature data, just load the base sprite
@@ -599,15 +654,21 @@ export default function FishEditorCanvas({
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
+        playerSpriteLoadedRef.current = true;
+        checkReady();
       };
       img.onerror = () => {
         gameStateRef.current.player.sprite = null;
+        playerSpriteLoadedRef.current = true;
+        checkReady();
       };
       img.src = cacheBust(playerFishSprite);
     } else {
       gameStateRef.current.player.sprite = null;
+      playerSpriteLoadedRef.current = true;
+      checkReady();
     }
-  }, [playerFishSprite, playerCreature, gameMode]);
+  }, [playerFishSprite, playerCreature, gameMode, checkReady]);
 
   // Game mode: when syncedPlayerSize changes (e.g. size cheat), apply to player and refresh sprite
   useEffect(() => {
@@ -915,15 +976,22 @@ export default function FishEditorCanvas({
     if (isClient && canvasRef.current) setCanvasReady(true);
   }, [isClient]);
 
-  useCanvasSpawnSync(spawnedFish, {
-    gameStateRef,
-    fishSpriteUrlsRef,
-    spriteVersionRef,
-    zoomRef,
-    chromaToleranceRef,
-    fishDataRef: fishDataRef as unknown as React.MutableRefObject<Map<string, FishDataLike>>,
-    canvasRef,
-  }, canvasReady);
+  useCanvasSpawnSync(
+    spawnedFish,
+    {
+      gameStateRef,
+      fishSpriteUrlsRef,
+      spriteVersionRef,
+      zoomRef,
+      chromaToleranceRef,
+      fishDataRef: fishDataRef as unknown as React.MutableRefObject<Map<string, FishDataLike>>,
+      canvasRef,
+    },
+    canvasReady,
+    gameMode ? runId : undefined,
+    gameMode ? currentLevel : undefined,
+    gameMode ? handleAllNewFishLoaded : undefined
+  );
 
   // Setup canvas and game loop
   useEffect(() => {
@@ -1015,6 +1083,9 @@ export default function FishEditorCanvas({
           dashFromControls: dashFromControlsRefProp?.current ?? false,
           chromaTolerance: chromaToleranceRef.current,
           selectedFishId: selectedFishIdRef.current,
+          runId: runIdRef.current,
+          currentLevel: currentLevelRef.current,
+          loading,
         },
         playerCreature: playerCreature,
         callbacks: {
@@ -1022,13 +1093,13 @@ export default function FishEditorCanvas({
           onGameOver,
           onStatsUpdate,
           onReloadPlayerSprite: (spriteUrl, onLoaded) => {
-                  const growthImg = new Image();
-                  growthImg.crossOrigin = 'anonymous';
-                  growthImg.onload = () => {
+            const growthImg = new Image();
+            growthImg.crossOrigin = 'anonymous';
+            growthImg.onload = () => {
               onLoaded(removeBackground(growthImg, chromaToleranceRef.current));
-                  };
+            };
             growthImg.onerror = () => { };
-                  growthImg.src = spriteUrl;
+            growthImg.src = spriteUrl;
           },
         },
         helpers: {

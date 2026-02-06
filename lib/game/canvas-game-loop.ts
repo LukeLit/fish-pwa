@@ -10,13 +10,22 @@ import type { PlayerEntity, FishEntity, FishLifecycleState } from './canvas-stat
 import type { Creature } from './types';
 import { getHeadPosition, getHeadRadius } from './canvas-collision';
 import { PHYSICS, AI, SPAWN, STAMINA, COLLISION, ANIMATION, PARTICLES, GAME } from './canvas-constants';
-import { createStaminaUpdater, type StaminaEntity } from './canvas-stamina';
+import {
+  updateStamina,
+  updateHunger,
+  canDash,
+  isStarved,
+  restoreHunger,
+  applyAttackToTarget,
+  applyStaminaCost,
+  initHungerStamina,
+} from './stamina-hunger';
 import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
 import { PLAYER_MAX_SIZE } from './spawn-fish';
 import {
   HUNGER_MAX,
   HUNGER_RESTORE_MULTIPLIER,
-  HUNGER_FRAME_RATE,
+  HUNGER_DRAIN_RATE,
 } from './hunger-constants';
 import {
   DASH_STAMINA_RAMP_PER_SECOND,
@@ -31,6 +40,8 @@ import {
   PREY_FLEE_STAMINA_MULTIPLIER,
   ATTACK_LARGER_STAMINA_MULTIPLIER,
   EXHAUSTED_SPEED_MULTIPLIER,
+  FLEEING_RECOVERY_MULTIPLIER,
+  EXHAUSTED_REGEN_MULTIPLIER,
   AI_DASH_STAMINA_DRAIN_RATE,
 } from './dash-constants';
 import { ESSENCE_TYPES } from './data/essence-types';
@@ -43,7 +54,7 @@ import {
   hasUsableAnimations,
 } from '@/lib/rendering/fish-renderer';
 import { cacheBust } from '@/lib/utils/cache-bust';
-
+import { getSpawnPositionInBand } from './spawn-position';
 
 export interface GameTickCallbacks {
   onLevelComplete?: (score: number, stats?: { size: number; fishEaten: number; timeSurvived: number }) => void;
@@ -77,6 +88,9 @@ export interface GameTickParams {
     dashFromControls: boolean;
     chromaTolerance: number;
     selectedFishId: string | null;
+    runId?: string;
+    currentLevel?: string;
+    loading?: boolean;
   };
   playerCreature: Creature | undefined;
   callbacks: GameTickCallbacks;
@@ -95,11 +109,11 @@ export function tickGameState(params: GameTickParams): boolean {
   const ACCELERATION = PHYSICS.ACCELERATION;
   const FRICTION = PHYSICS.FRICTION;
   const deltaTime = state.calculateDeltaTime();
-  const updateStamina = createStaminaUpdater((e) => e === state.player);
 
   state.updatePauseTracking(isPaused);
 
-  if (gameMode && state.gameMode.startTime === 0) {
+  const loading = options.loading === true;
+  if (gameMode && state.gameMode.startTime === 0 && !loading) {
     state.gameMode.startTime = Date.now();
     state.gameMode.fishEaten = 0;
     state.gameMode.score = 0;
@@ -129,16 +143,16 @@ export function tickGameState(params: GameTickParams): boolean {
 
   const wantsDash = input.wantsDash || dashFromControls;
   if (gameMode) {
-    player.isDashing = wantsDash && player.stamina > 0;
+    player.isDashing = wantsDash && canDash(player);
     if (player.isDashing) {
       const frameMs = (deltaTime / 60) * 1000;
       state.dashHoldDurationMs += frameMs;
       const holdSeconds = state.dashHoldDurationMs / 1000;
       const rampMultiplier = Math.min(1 + holdSeconds * DASH_STAMINA_RAMP_PER_SECOND, DASH_STAMINA_RAMP_CAP);
-      updateStamina(player, deltaTime, { rampMultiplier });
+      updateStamina(player, deltaTime, { rampMultiplier, isPlayer: true });
     } else {
       state.dashHoldDurationMs = 0;
-      updateStamina(player, deltaTime);
+      updateStamina(player, deltaTime, { isPlayer: true });
     }
     if (player.stamina <= 0) player.isDashing = false;
     player.isExhausted = player.stamina <= 0;
@@ -203,7 +217,8 @@ export function tickGameState(params: GameTickParams): boolean {
   player.animTime += ANIMATION.ANIM_TIME_BASE + normalizedSpeed * ANIMATION.ANIM_TIME_SPEED_MULT;
 
   if (gameMode) {
-    const animationAction = player.isDashing ? 'dash' : (rawPlayerSpeed < COLLISION.IDLE_SPEED_THRESHOLD ? 'idle' : 'swim');
+    const showDashParticles = !player.isExhausted && player.isDashing;
+    const animationAction = showDashParticles ? 'dash' : (rawPlayerSpeed < COLLISION.IDLE_SPEED_THRESHOLD ? 'idle' : 'swim');
     state.particles.dashPlayer.update(
       { x: player.x, y: player.y, vx: player.vx, vy: player.vy, size: player.size, animationAction },
       deltaTime
@@ -218,10 +233,9 @@ export function tickGameState(params: GameTickParams): boolean {
   }
 
   if (gameMode && !isPaused) {
-    const movementFactor = Math.max(COLLISION.STATIONARY_DRAIN_FRACTION, normalizedSpeed);
-    const effectiveDrainRate = player.hungerDrainRate * movementFactor;
-    player.hunger = Math.max(0, player.hunger - (effectiveDrainRate / HUNGER_FRAME_RATE) * deltaTime);
-    if (player.hunger <= 0 && !state.gameMode.gameOverFired) {
+    const movementFactor = Math.min(COLLISION.NON_DASH_MOVEMENT_DRAIN_CAP, Math.max(COLLISION.STATIONARY_DRAIN_FRACTION, normalizedSpeed));
+    updateHunger(player, deltaTime, { movementFactor });
+    if (isStarved(player) && !state.gameMode.gameOverFired) {
       if (state.animationSpriteManager.hasSprite('player')) {
         const sprite = state.animationSpriteManager.getSprite('player', player.animations || {});
         sprite.triggerAction('death');
@@ -294,37 +308,35 @@ export function tickGameState(params: GameTickParams): boolean {
           const attacker = predator.isDashing ? predator : prey;
           const target = predator.isDashing ? prey : predator;
           const targetSizeRatio = attacker.size / target.size;
-          const staminaMult = targetSizeRatio < 1 ? ATTACK_LARGER_STAMINA_MULTIPLIER : 1;
-          target.stamina = Math.max(0, (target.stamina ?? STAMINA.DEFAULT_MAX) - DASH_ATTACK_STAMINA_COST * staminaMult);
-          if ((target.stamina ?? 0) <= 0) {
-            target.lifecycleState = 'knocked_out';
-            target.stamina = 0;
+          applyAttackToTarget(attacker, target, DASH_ATTACK_STAMINA_COST, { targetSizeRatio });
+          if (target.lifecycleState === 'knocked_out') {
             target.vx = (target.vx ?? 0) * COLLISION.KO_VELOCITY_DAMP;
             target.vy = (target.vy ?? 0) * COLLISION.KO_VELOCITY_DAMP;
+          } else if ((target.stamina ?? 0) <= 0) {
+            target.lifecycleState = 'exhausted';
           }
         } else if (sizeRatio >= ATTACK_SIZE_RATIO) {
           eatenIds.add(prey.id);
           pushBloodAt(state, (predator.x + prey.x) * 0.5, (predator.y + prey.y) * 0.5, prey.size);
           predator.size = Math.min(PLAYER_MAX_SIZE, predator.size + prey.size * COLLISION.SIZE_GAIN_RATIO * effMult(predator.size, prey.size));
+          restoreHunger(predator, prey.size * HUNGER_RESTORE_MULTIPLIER);
           predator.animationSprite?.hasAction?.('bite') && predator.animationSprite.triggerAction('bite');
         } else if (sizeRatio <= 1 / ATTACK_SIZE_RATIO) {
           eatenIds.add(predator.id);
           pushBloodAt(state, (predator.x + prey.x) * 0.5, (predator.y + prey.y) * 0.5, predator.size);
           prey.size = Math.min(PLAYER_MAX_SIZE, prey.size + predator.size * COLLISION.SIZE_GAIN_RATIO * effMult(prey.size, predator.size));
+          restoreHunger(prey, predator.size * HUNGER_RESTORE_MULTIPLIER);
           prey.animationSprite?.hasAction?.('bite') && prey.animationSprite.triggerAction('bite');
         } else if (bothDashing) {
-          predator.stamina = Math.max(0, (predator.stamina ?? STAMINA.DEFAULT_MAX) - DASH_ATTACK_STAMINA_COST);
-          prey.stamina = Math.max(0, (prey.stamina ?? STAMINA.DEFAULT_MAX) - DASH_ATTACK_STAMINA_COST);
+          applyStaminaCost(predator, DASH_ATTACK_STAMINA_COST);
+          applyStaminaCost(prey, DASH_ATTACK_STAMINA_COST);
           if ((predator.stamina ?? 0) <= 0) {
             eatenIds.add(predator.id);
             pushBloodAt(state, (predator.x + prey.x) * 0.5, (predator.y + prey.y) * 0.5, 20);
             prey.size = Math.min(PLAYER_MAX_SIZE, prey.size + predator.size * COLLISION.STAMINA_BATTLE_SIZE_GAIN);
             prey.animationSprite?.hasAction?.('bite') && prey.animationSprite.triggerAction('bite');
           } else if ((prey.stamina ?? 0) <= 0) {
-            prey.lifecycleState = 'knocked_out';
-            prey.stamina = 0;
-            prey.vx = (prey.vx ?? 0) * COLLISION.KO_VELOCITY_DAMP;
-            prey.vy = (prey.vy ?? 0) * COLLISION.KO_VELOCITY_DAMP;
+            prey.lifecycleState = 'exhausted';
           }
         }
         break;
@@ -355,7 +367,7 @@ export function tickGameState(params: GameTickParams): boolean {
         state.eatenIds.add(fish.id);
         state.fish.splice(idx, 1);
         player.size = Math.min(PLAYER_MAX_SIZE, player.size + fish.size * 0.15 * effMult(player.size, fish.size));
-        player.hunger = Math.min(HUNGER_MAX, player.hunger + Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger));
+        restoreHunger(player, fish.size * HUNGER_RESTORE_MULTIPLIER);
         player.chompPhase = 1;
         player.chompEndTime = now + ANIMATION.CHOMP_DECAY_TIME;
         const eatX = (fish.x + player.x) * 0.5;
@@ -394,15 +406,17 @@ export function tickGameState(params: GameTickParams): boolean {
         const attacker = player.isDashing ? player : fish;
         const target = player.isDashing ? fish : player;
         const targetSizeRatio = (attacker as PlayerEntity).size / (target as FishEntity).size;
-        const staminaMult = targetSizeRatio < 1 ? ATTACK_LARGER_STAMINA_MULTIPLIER : 1;
-        (target as FishEntity).stamina = Math.max(0, ((target as FishEntity).stamina ?? 100) - DASH_ATTACK_STAMINA_COST * staminaMult);
-        if (((target as FishEntity).stamina ?? 0) <= 0) {
-          if (target === fish) {
-            fish.lifecycleState = 'knocked_out';
-            fish.stamina = 0;
+        if (target === fish) {
+          applyAttackToTarget(attacker, fish, DASH_ATTACK_STAMINA_COST, { targetSizeRatio });
+          if (fish.lifecycleState === 'knocked_out') {
             fish.vx = (fish.vx ?? 0) * COLLISION.KO_VELOCITY_DAMP;
             fish.vy = (fish.vy ?? 0) * COLLISION.KO_VELOCITY_DAMP;
-          } else {
+          } else if ((fish.stamina ?? 0) <= 0) {
+            fish.lifecycleState = 'exhausted';
+          }
+        } else {
+          applyStaminaCost(player, DASH_ATTACK_STAMINA_COST, { targetSizeRatio: 1 / targetSizeRatio });
+          if (player.stamina <= 0) {
             state.animationSpriteManager.hasSprite('player') &&
               state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('death');
             if (!state.gameMode.gameOverFired) {
@@ -420,13 +434,10 @@ export function tickGameState(params: GameTickParams): boolean {
           }
         }
       } else if (evenlyMatched && bothDashing) {
-        player.stamina = Math.max(0, player.stamina - DASH_ATTACK_STAMINA_COST);
-        fish.stamina = Math.max(0, (fish.stamina ?? 100) - DASH_ATTACK_STAMINA_COST);
+        applyStaminaCost(player, DASH_ATTACK_STAMINA_COST);
+        applyStaminaCost(fish, DASH_ATTACK_STAMINA_COST);
         if ((fish.stamina ?? 0) <= 0) {
-          fish.lifecycleState = 'knocked_out';
-          fish.stamina = 0;
-          fish.vx = (fish.vx ?? 0) * 0.3;
-          fish.vy = (fish.vy ?? 0) * 0.3;
+          fish.lifecycleState = 'exhausted';
         } else if (player.stamina <= 0) {
           state.animationSpriteManager.hasSprite('player') &&
             state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('death');
@@ -482,7 +493,7 @@ export function tickGameState(params: GameTickParams): boolean {
           }
         }
         const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger);
-        player.hunger = Math.min(HUNGER_MAX, player.hunger + hungerRestore);
+        restoreHunger(player, fish.size * HUNGER_RESTORE_MULTIPLIER);
         player.chompPhase = 1;
         player.chompEndTime = now + ANIMATION.CHOMP_DECAY_TIME;
         const eatX = (fish.x + player.x) * 0.5;
@@ -642,12 +653,12 @@ export function tickGameState(params: GameTickParams): boolean {
         img.onload = () => {
           const processedSprite = removeBackground(img, chromaTol);
           state.spriteCache.set(cacheKey, processedSprite);
-          spawnRespawnFish(state, creature, fishSize, processedSprite, player, now);
+          spawnRespawnFish(state, creature, fishSize, processedSprite, player, now, options.runId, options.currentLevel);
         };
         img.onerror = () => { };
         img.src = cacheBust(spriteUrl);
       } else {
-        spawnRespawnFish(state, creature, fishSize, sprite, player, now);
+        spawnRespawnFish(state, creature, fishSize, sprite, player, now, options.runId, options.currentLevel);
       }
       state.lastRespawnTime = now;
     }
@@ -679,9 +690,16 @@ export function tickGameState(params: GameTickParams): boolean {
   const AI_CHASE_TIMEOUT_MS = AI.CHASE_TIMEOUT_MS;
 
   state.fish.forEach((fish) => {
-    if (fish.stamina === undefined) fish.stamina = STAMINA.DEFAULT_MAX;
-    if (fish.maxStamina === undefined) fish.maxStamina = STAMINA.DEFAULT_MAX;
+    if (fish.hunger === undefined || fish.baseMaxStamina === undefined) {
+      initHungerStamina(fish, { hungerDrainRate: HUNGER_DRAIN_RATE });
+    }
     if (fish.isDashing === undefined) fish.isDashing = false;
+
+    if (gameMode && !isPaused && (fish.type === 'prey' || fish.type === 'predator' || fish.type === 'mutant')) {
+      const fishSpeed = Math.sqrt((fish.vx ?? 0) ** 2 + (fish.vy ?? 0) ** 2);
+      const movementFactor = Math.min(COLLISION.NON_DASH_MOVEMENT_DRAIN_CAP, Math.max(COLLISION.STATIONARY_DRAIN_FRACTION, Math.min(1, fishSpeed / 1.5)));
+      updateHunger(fish, deltaTime, { movementFactor });
+    }
 
     if (fish.despawnTime !== undefined) {
       const elapsed = now - fish.despawnTime;
@@ -699,7 +717,9 @@ export function tickGameState(params: GameTickParams): boolean {
     if (!currentEditMode && !isPaused) {
       if (gameMode && fish.lifecycleState === 'exhausted') {
         fish.isDashing = false;
-        updateStamina(fish as StaminaEntity, deltaTime);
+        const recoveringFromFlee = fish.recoveringFromExhausted && fish.type === 'prey';
+        const fleeRecoveryMult = EXHAUSTED_REGEN_MULTIPLIER * FLEEING_RECOVERY_MULTIPLIER;
+        updateStamina(fish, deltaTime, { regenMultiplier: recoveringFromFlee ? fleeRecoveryMult : undefined });
         fish.vx = (fish.vx ?? 0) + (Math.random() - 0.5) * AI.WANDER_JITTER;
         fish.vy = (fish.vy ?? 0) + (Math.random() - 0.5) * AI.WANDER_JITTER;
         const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * (fish.type === 'prey' ? AI_PREY_FLEE_SPEED : AI_PREDATOR_CHASE_SPEED);
@@ -708,13 +728,13 @@ export function tickGameState(params: GameTickParams): boolean {
           fish.vx = (fish.vx! / sp) * exhaustedMaxSpeed;
           fish.vy = (fish.vy! / sp) * exhaustedMaxSpeed;
         }
-        if ((fish.stamina ?? 0) >= (fish.maxStamina ?? STAMINA.DEFAULT_MAX)) {
+        if ((fish.stamina ?? 0) >= (fish.maxStamina ?? 0)) {
           fish.lifecycleState = 'active';
           fish.recoveringFromExhausted = false;
         }
       } else if (gameMode && fish.lifecycleState === 'knocked_out') {
-        fish.stamina = Math.min(fish.maxStamina ?? STAMINA.DEFAULT_MAX, (fish.stamina ?? 0) + STAMINA.AI_REGEN_RATE * KO_STAMINA_REGEN_MULTIPLIER * (deltaTime / 60));
-        if ((fish.stamina ?? 0) >= (fish.maxStamina ?? STAMINA.DEFAULT_MAX) * KO_WAKE_THRESHOLD) fish.lifecycleState = 'active';
+        updateStamina(fish, deltaTime, { regenRate: 50 * KO_STAMINA_REGEN_MULTIPLIER });
+        if ((fish.stamina ?? 0) >= (fish.maxStamina ?? 0) * KO_WAKE_THRESHOLD) fish.lifecycleState = 'active';
         fish.vx = (fish.vx ?? 0) * 0.98 + (Math.random() - 0.5) * KO_DRIFT_SPEED * 0.02;
         fish.vy = (fish.vy ?? 0) * 0.98 + (Math.random() - 0.5) * KO_DRIFT_SPEED * 0.02;
         const driftMag = Math.sqrt((fish.vx ?? 0) ** 2 + (fish.vy ?? 0) ** 2);
@@ -782,7 +802,7 @@ export function tickGameState(params: GameTickParams): boolean {
             fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
             fish.isDashing = false;
           }
-          updateStamina(fish as StaminaEntity, deltaTime, { drainRate: AI_DASH_STAMINA_DRAIN_RATE });
+          updateStamina(fish, deltaTime, { drainRate: AI_DASH_STAMINA_DRAIN_RATE });
           if ((fish.stamina ?? 0) <= 0) {
             fish.isDashing = false;
             fish.lifecycleState = 'exhausted';
@@ -836,7 +856,7 @@ export function tickGameState(params: GameTickParams): boolean {
             fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
             fish.isDashing = false;
           }
-          updateStamina(fish as StaminaEntity, deltaTime, {
+          updateStamina(fish, deltaTime, {
             drainRate: AI_DASH_STAMINA_DRAIN_RATE,
             fleeMultiplier: fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1,
           });
@@ -974,24 +994,34 @@ function spawnRespawnFish(
   fishSize: number,
   sprite: HTMLCanvasElement,
   player: PlayerEntity,
-  now: number
+  now: number,
+  runId?: string,
+  currentLevel?: string
 ): void {
   const baseSpeed = creature.stats?.speed ?? 2;
   const speedScale = AI.SPEED_SCALE;
   const vx = (Math.random() - 0.5) * baseSpeed * speedScale;
   const vy = (Math.random() - 0.5) * baseSpeed * speedScale;
   const bounds = state.worldBounds;
-  const angle = Math.random() * Math.PI * 2;
-  const distance = SPAWN.MIN_DISTANCE + Math.random() * SPAWN.MAX_DISTANCE_OFFSET;
-  let spawnX = player.x + Math.cos(angle) * distance;
-  let spawnY = player.y + Math.sin(angle) * distance;
-  spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
-  spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
+  let spawnX: number;
+  let spawnY: number;
+  if (runId != null && currentLevel != null) {
+    const pos = getSpawnPositionInBand(runId, currentLevel, { x: player.x, y: player.y }, SPAWN.MIN_DISTANCE);
+    spawnX = pos.x;
+    spawnY = pos.y;
+  } else {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = SPAWN.MIN_DISTANCE + Math.random() * SPAWN.MAX_DISTANCE_OFFSET;
+    spawnX = player.x + Math.cos(angle) * distance;
+    spawnY = player.y + Math.sin(angle) * distance;
+    spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
+    spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
+  }
   const cacheId = (creature as { creatureId?: string }).creatureId ?? creature.id;
   const newId = `${cacheId}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const anims = creature.animations;
   const animSprite = anims && hasUsableAnimations(anims) ? state.animationSpriteManager.getSprite(newId, anims) : undefined;
-  state.fish.push({
+  const newFish: FishEntity = {
     id: newId,
     x: spawnX,
     y: spawnY,
@@ -1008,10 +1038,10 @@ function spawnRespawnFish(
     despawnTime: undefined,
     opacity: 0,
     lifecycleState: 'spawning' as FishLifecycleState,
-    stamina: STAMINA.DEFAULT_MAX,
-    maxStamina: STAMINA.DEFAULT_MAX,
     isDashing: false,
     animations: anims,
     animationSprite: animSprite,
-  });
+  };
+  initHungerStamina(newFish, { hungerDrainRate: HUNGER_DRAIN_RATE });
+  state.fish.push(newFish);
 }

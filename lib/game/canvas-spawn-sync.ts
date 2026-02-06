@@ -8,7 +8,9 @@
 import { useEffect } from 'react';
 import type { Creature } from './types';
 import type { CanvasGameState, FishLifecycleState } from './canvas-state';
-import { SPAWN, AI, STAMINA } from './canvas-constants';
+import { SPAWN, AI } from './canvas-constants';
+import { initHungerStamina } from './stamina-hunger';
+import { getSpawnPositionInBand } from './spawn-position';
 import {
   getGrowthStage,
   getGrowthStageSprite,
@@ -54,11 +56,16 @@ export interface UseCanvasSpawnSyncRefs {
  * Adds new fish, updates sprites when URL/size changes, removes fish no longer in spawnedFish.
  * Run when spawnedFish changes. When canvasReady is true, sync runs even if canvas ref was
  * null on a previous run (fixes "no fish / no intro" when spawnedFish is set before canvas mounts).
+ * When runId and currentLevel are provided (game mode), fish spawn within their depth band
+ * at least MIN_DISTANCE from the player; otherwise fish spawn in a ring around the player (editor).
  */
 export function useCanvasSpawnSync(
   spawnedFish: SpawnedCreature[] | LegacySpawnItem[],
   refs: UseCanvasSpawnSyncRefs,
-  canvasReady?: boolean
+  canvasReady?: boolean,
+  runId?: string,
+  currentLevel?: string,
+  onAllNewFishLoaded?: () => void
 ): void {
   const {
     gameStateRef,
@@ -79,6 +86,12 @@ export function useCanvasSpawnSync(
     gameStateRef.current.spawnPool = spawnedFish.length
       ? (spawnedFish.filter(isSpawnedCreature) as SpawnedCreature[])
       : [];
+
+    const newFishItems = spawnedFish.filter(
+      (f) => !gameStateRef.current.eatenIds.has(f.id) && !gameStateRef.current.fish.some((e) => e.id === f.id)
+    );
+    const pending = { count: newFishItems.length };
+    if (pending.count === 0 && onAllNewFishLoaded) onAllNewFishLoaded();
 
     const loadSprite = (
       spriteUrl: string,
@@ -178,12 +191,25 @@ export function useCanvasSpawnSync(
 
           const playerPos = gameStateRef.current.player;
           const bounds = gameStateRef.current.worldBounds;
-          const angle = Math.random() * Math.PI * 2;
-          const distance = SPAWN.MIN_DISTANCE + Math.random() * SPAWN.MAX_DISTANCE_OFFSET;
-          let spawnX = playerPos.x + Math.cos(angle) * distance;
-          let spawnY = playerPos.y + Math.sin(angle) * distance;
-          spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
-          spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
+          let spawnX: number;
+          let spawnY: number;
+          if (runId != null && currentLevel != null) {
+            const pos = getSpawnPositionInBand(
+              runId,
+              currentLevel,
+              playerPos,
+              SPAWN.MIN_DISTANCE
+            );
+            spawnX = pos.x;
+            spawnY = pos.y;
+          } else {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = SPAWN.MIN_DISTANCE + Math.random() * SPAWN.MAX_DISTANCE_OFFSET;
+            spawnX = playerPos.x + Math.cos(angle) * distance;
+            spawnY = playerPos.y + Math.sin(angle) * distance;
+            spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, spawnX));
+            spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
+          }
 
           const spawnIndex = gameStateRef.current.fish.length;
           const staggerDelay = spawnIndex * (SPAWN.STAGGER_DELAY_MIN + Math.random() * (SPAWN.STAGGER_DELAY_MAX - SPAWN.STAGGER_DELAY_MIN));
@@ -214,11 +240,12 @@ export function useCanvasSpawnSync(
             lifecycleState: 'spawning' as FishLifecycleState,
             animations,
             animationSprite,
-            stamina: STAMINA.DEFAULT_MAX,
-            maxStamina: STAMINA.DEFAULT_MAX,
             isDashing: false,
           };
+          initHungerStamina(newFish, { hungerDrainRate: 2.5 });
           gameStateRef.current.fish.push(newFish);
+          pending.count--;
+          if (pending.count === 0 && onAllNewFishLoaded) onAllNewFishLoaded();
         }, { spriteResolutions, fishSize: fishSizeForResolution });
       }
     });
@@ -227,5 +254,5 @@ export function useCanvasSpawnSync(
       (fish) => spawnedFish.some((f) => f.id === fish.id) || fish.id.includes('-r-')
     );
     if (spawnedFish.length === 0) gameStateRef.current.eatenIds.clear();
-  }, [spawnedFish, canvasReady]);
+  }, [spawnedFish, canvasReady, runId, currentLevel, onAllNewFishLoaded]);
 }

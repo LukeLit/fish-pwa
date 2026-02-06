@@ -9,9 +9,12 @@ import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering
 import type { CreatureAnimations, Creature } from '@/lib/game/types';
 import { PLAYER_BASE_SIZE, PLAYER_MAX_SIZE } from './spawn-fish';
 import { HUNGER_MAX, HUNGER_DRAIN_RATE } from './hunger-constants';
-import { PARTICLES, WORLD_BOUNDS } from './canvas-constants';
+import { PARTICLES, WORLD_BOUNDS, STAMINA } from './canvas-constants';
+import { computeEffectiveMaxStamina } from './stamina-hunger';
+import { getDefaultPlayerSpawnPosition } from './spawn-position';
 
-export type FishLifecycleState = 'spawning' | 'active' | 'exhausted' | 'knocked_out' | 'despawning' | 'removed';
+import type { FishLifecycleState } from './combat-states';
+export type { FishLifecycleState };
 
 export interface FishEntity {
   id: string;
@@ -35,6 +38,9 @@ export interface FishEntity {
   animationSprite?: AnimationSprite;
   stamina?: number;
   maxStamina?: number;
+  baseMaxStamina?: number;
+  hunger?: number;
+  hungerDrainRate?: number;
   isDashing?: boolean;
   /** Set when entering exhausted; cleared when stamina refills to full. Prevents dashing until refill. */
   recoveringFromExhausted?: boolean;
@@ -58,6 +64,7 @@ export interface PlayerEntity {
   chompEndTime: number;
   hunger: number;
   hungerDrainRate: number;
+  baseMaxStamina: number;
   stamina: number;
   maxStamina: number;
   isDashing: boolean;
@@ -137,10 +144,11 @@ export class CanvasGameState {
   lastRespawnTime: number;
 
   constructor() {
+    const spawnPos = getDefaultPlayerSpawnPosition();
     this.player = {
       id: 'player',
-      x: 400,
-      y: 300,
+      x: spawnPos.x,
+      y: spawnPos.y,
       vx: 0,
       vy: 0,
       size: PLAYER_BASE_SIZE,
@@ -153,8 +161,9 @@ export class CanvasGameState {
       chompEndTime: 0,
       hunger: HUNGER_MAX,
       hungerDrainRate: HUNGER_DRAIN_RATE,
-      stamina: 100,
-      maxStamina: 100,
+      baseMaxStamina: STAMINA.BASE_MAX_START,
+      stamina: computeEffectiveMaxStamina(STAMINA.BASE_MAX_START, HUNGER_MAX),
+      maxStamina: computeEffectiveMaxStamina(STAMINA.BASE_MAX_START, HUNGER_MAX),
       isDashing: false,
       isExhausted: false,
     };
@@ -220,7 +229,9 @@ export class CanvasGameState {
     this.gameMode.fishEaten = 0;
     this.gameMode.totalPausedTime = 0;
     this.player.hunger = HUNGER_MAX;
-    this.player.stamina = 100;
+    const maxSta = computeEffectiveMaxStamina(this.player.baseMaxStamina, HUNGER_MAX);
+    this.player.stamina = maxSta;
+    this.player.maxStamina = maxSta;
     this.player.isDashing = false;
     this.player.isExhausted = false;
     this.dashHoldDurationMs = 0;
@@ -230,8 +241,9 @@ export class CanvasGameState {
    * Reset player to initial state
    */
   resetPlayer(): void {
-    this.player.x = 400;
-    this.player.y = 300;
+    const spawnPos = getDefaultPlayerSpawnPosition();
+    this.player.x = spawnPos.x;
+    this.player.y = spawnPos.y;
     this.player.vx = 0;
     this.player.vy = 0;
     this.player.size = PLAYER_BASE_SIZE;
@@ -242,7 +254,9 @@ export class CanvasGameState {
     this.player.chompPhase = 0;
     this.player.chompEndTime = 0;
     this.player.hunger = HUNGER_MAX;
-    this.player.stamina = 100;
+    const maxSta = computeEffectiveMaxStamina(this.player.baseMaxStamina, HUNGER_MAX);
+    this.player.stamina = maxSta;
+    this.player.maxStamina = maxSta;
     this.player.isDashing = false;
     this.player.isExhausted = false;
   }

@@ -51,6 +51,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
   const [showDepthBandOverlay, setShowDepthBandOverlay] = useState(true);
 
+  /** True until player + fish sprites are loaded; then canvas calls onReadyToPlay. */
+  const [loading, setLoading] = useState(true);
+
   const [playerStats, setPlayerStats] = useState<PlayerGameStats | null>(null);
   const [playerFishData, setPlayerFishData] = useState<FishData | null>(null);
   const [fishData, setFishData] = useState<Map<string, FishData>>(new Map());
@@ -352,6 +355,22 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
   return (
     <div className="relative w-full h-full bg-black">
+      {/* Loading overlay: spawn + art load before game starts */}
+      {loading && (
+        <div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 transition-opacity"
+          aria-busy
+          aria-label="Loading game"
+        >
+          <div
+            className="w-12 h-12 border-4 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin"
+            role="status"
+          />
+          <p className="mt-4 text-cyan-200 text-lg font-medium">Preparing ocean...</p>
+          <p className="mt-1 text-cyan-400/80 text-sm">Loading fish and art</p>
+        </div>
+      )}
+
       {/* Level Display */}
       <div className="absolute top-4 left-4 z-40 bg-black/70 px-4 py-2 rounded-lg border border-cyan-400">
         <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
@@ -410,7 +429,10 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         deformationIntensity={1}
         showDepthBandOverlay={showDepthBandOverlay}
         runId="shallow_run"
+        currentLevel={runState?.currentLevel ?? '1-1'}
         gameMode={true}
+        loading={loading}
+        onReadyToPlay={() => setLoading(false)}
         levelDuration={levelDuration}
         paused={paused}
         dashFromControlsRef={dashFromControlsRef}

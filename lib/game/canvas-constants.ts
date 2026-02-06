@@ -22,8 +22,8 @@ export const AI = {
   BASE_SPEED: 0.7,
   PREDATOR_CHASE_SPEED: 1.15, // Predators faster to catch prey
   PREY_FLEE_SPEED: 0.85, // Prey slightly slower when fleeing
-  DETECTION_RANGE: 400,
-  CHASE_TIMEOUT_MS: 4500, // Give up chase after 4.5s
+  DETECTION_RANGE: 200,
+  CHASE_TIMEOUT_MS: 2500, // Give up chase after 4.5s
   STAMINA_REGEN: 100, // per second
   SPEED_SCALE: 0.1, // Scale down for canvas movement
   PREDATOR_TARGET_SIZE_RATIO: 0.8, // Only chase if target smaller than fish.size * this
@@ -119,6 +119,7 @@ export const COLLISION = {
   HEAD_RADIUS_RATIO: 0.25, // Head hitbox radius (25% of size)
   IDLE_SPEED_THRESHOLD: 0.2, // Speed below this is considered idle
   STATIONARY_DRAIN_FRACTION: 0.1, // 10% of full hunger drain when not moving
+  NON_DASH_MOVEMENT_DRAIN_CAP: 0.5, // Max hunger drain from moving (non-dash); 1 = full drain at full speed
   FACING_SPEED_THRESHOLD: 0.1, // Min horizontal speed to update facing direction
   // Eating / size gain (shared by game loop and collision)
   SIZE_GAIN_RATIO: 0.15, // Eater gains 15% of eaten size (before efficiency)
@@ -153,9 +154,10 @@ export const RENDERING = {
 
 // Stamina constants
 export const STAMINA = {
-  PLAYER_REGEN_RATE: 100, // per second
-  AI_REGEN_RATE: 100, // per second
-  DEFAULT_MAX: 100, // Initial stamina/maxStamina for player and AI fish
+  PLAYER_REGEN_RATE: 60, // per second
+  AI_REGEN_RATE: 50, // per second
+  BASE_MAX_START: 40, // ~2 dash charges; upgradable
+  DEFAULT_MAX: 100, // Max upgradable cap
 } as const;
 
 // Art/Rendering constants - Size thresholds, LOD, sprite resolution, growth stages

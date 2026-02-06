@@ -54,6 +54,7 @@ export function createNewRunState(fishId: string): RunState | null {
       health: creature.stats.health,
       damage: creature.stats.damage,
       sprite: creature.sprite,
+      baseMaxStamina: 40,
     },
     collectedEssence: {},
     selectedUpgrades: [],

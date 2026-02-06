@@ -18,6 +18,7 @@ import type { Creature } from './types';
 import { FishData } from '@/components/FishEditOverlay';
 import type { SizeTier } from './data/creatures';
 import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
+import { getDefaultPlayerSpawnPosition } from './spawn-position';
 
 /**
  * Options for spawning a fish entity (game engine)
@@ -314,11 +315,10 @@ export function spawnFishFromData(
   fishData: FishData,
   options: SpawnFishFromDataOptions = {}
 ) {
-  const {
-    isPlayer = false,
-    position = { x: 400, y: 300 },
-    overrides = {},
-  } = options;
+  const { isPlayer = false, overrides = {} } = options;
+  const position =
+    options.position ??
+    (isPlayer ? getDefaultPlayerSpawnPosition() : { x: 400, y: 300 });
 
   // Merge overrides
   const data: FishData = { ...fishData, ...overrides };
