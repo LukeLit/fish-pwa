@@ -56,7 +56,7 @@ Level loader: `getLevelConfig(levelId)` (or equivalent) returns depth band rules
 
 **Future (document only):**
 
-- **Meter scale:** Add `metrics: { base_meters, base_art_scale }`, `sub_depth` to creature blobs via batch-update-creature-metadata so createLevel can filter by depth band.
+- **Meter scale:** Add `metrics: { base_meters, base_art_scale, min_meters?, max_meters?, sub_depth }` to creature blobs via batch-update-creature-metadata so createLevel can filter by depth band. See [FISH_METRICS_AND_DEPTH_BANDS.md](./FISH_METRICS_AND_DEPTH_BANDS.md).
 - **Tags / canAppearIn:** Creatures have tags (or biomeId/canAppearIn for backward compat); selection by tags + weights. Snapshot shows current state; follow-up to align blob with tag model.
 
 ---

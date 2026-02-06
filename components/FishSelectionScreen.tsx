@@ -20,6 +20,7 @@ import {
   type LoadedBackground,
 } from '@/lib/rendering/background-renderer';
 import type { Creature } from '@/lib/game/types';
+import { getCreatureSizeRange } from '@/lib/game/data/creature-loader';
 import { cacheBust } from '@/lib/utils/cache-bust';
 
 function sortFishBySize(creatures: Creature[]) {
@@ -332,7 +333,10 @@ export default function FishSelectionScreen() {
               <div className="dv-card-cyan px-3 sm:px-4 py-2 border-2 backdrop-blur-md bg-black/80">
                 <span className="text-xs sm:text-sm text-cyan-300 font-bold">SIZE</span>
                 <span className="text-xl sm:text-2xl font-bold text-white ml-2">
-                  {(selectedFish.metrics?.base_meters ?? selectedFish.stats.size / 100).toFixed(1)} m
+                  {(() => {
+                    const { minMeters, maxMeters } = getCreatureSizeRange(selectedFish);
+                    return `${minMeters.toFixed(1)}–${maxMeters.toFixed(1)} m`;
+                  })()}
                 </span>
               </div>
               <div className="px-3 sm:px-4 py-2 border-2 border-green-400 rounded-lg backdrop-blur-md bg-black/80 dv-glow-cyan">

@@ -1,8 +1,8 @@
 /**
  * Generate Growth Sprites API
- * 
+ *
  * Generates juvenile and elder sprite variations from an adult sprite.
- * Uses image-to-image generation to maintain visual consistency.
+ * Uses full composed prompt (when promptPayload provided) so colors and features stay consistent.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,11 +10,13 @@ import { put } from '@vercel/blob';
 import sharp from 'sharp';
 import type { GrowthSprites, GrowthStage, SpriteResolutions } from '@/lib/game/types';
 import { DEFAULT_GROWTH_RANGES } from '@/lib/rendering/fish-renderer';
+import { composeFishPrompt } from '@/lib/ai/prompt-builder';
+import type { BasicFishPromptData } from '@/lib/ai/prompt-builder';
 
 // Use same growth ranges as game/editor (20-300 scale)
 const DEFAULT_SIZE_RANGES = DEFAULT_GROWTH_RANGES;
 
-// Growth stage prompts
+// Growth stage prompts (prepended to full fish description)
 const GROWTH_STAGE_PROMPTS: Record<GrowthStage, string> = {
   juvenile: 'young, juvenile version, smaller, rounder, cuter proportions, bigger eyes relative to body',
   adult: '', // Adult uses the base sprite
@@ -23,30 +25,39 @@ const GROWTH_STAGE_PROMPTS: Record<GrowthStage, string> = {
 
 interface GenerateGrowthSpritesRequest {
   creatureId: string;
-  spriteUrl: string;           // Adult sprite URL
+  spriteUrl: string; // Adult sprite URL
   creatureName: string;
   descriptionChunks?: string[];
   biomeId?: string;
+  /** Full prompt-building inputs so server can compose same prompt as base sprite (includes adult size, colors, archetype). */
+  promptPayload?: BasicFishPromptData;
 }
 
 /**
- * Generate a variation of the sprite for a specific growth stage
+ * Generate a variation of the sprite for a specific growth stage.
+ * When promptPayload is provided, uses full composed prompt + stage phrase + "same palette as reference".
  */
 async function generateVariation(
   spriteUrl: string,
   stage: GrowthStage,
   creatureName: string,
-  descriptionChunks?: string[]
+  descriptionChunks?: string[],
+  promptPayload?: BasicFishPromptData
 ): Promise<string | null> {
   if (stage === 'adult') {
-    // Adult uses the base sprite
     return spriteUrl;
   }
 
   const stagePrompt = GROWTH_STAGE_PROMPTS[stage];
-  const baseDescription = descriptionChunks?.join(', ') || creatureName;
+  let fullDescription: string;
 
-  const prompt = `${stagePrompt}, ${baseDescription}, isolated on solid bright magenta background (#FF00FF), game sprite, side view right-facing, detailed scales and fins, consistent art style`;
+  if (promptPayload) {
+    const { prompt } = composeFishPrompt(promptPayload);
+    fullDescription = `${stagePrompt}, ${prompt}, same color palette and key features as reference image, only size and proportions differ`;
+  } else {
+    const baseDescription = descriptionChunks?.join(', ') || creatureName;
+    fullDescription = `${stagePrompt}, ${baseDescription}, isolated on solid bright magenta background (#FF00FF), game sprite, side view right-facing, detailed scales and fins, consistent art style`;
+  }
 
   try {
     // Call the image variation API
@@ -55,8 +66,8 @@ async function generateVariation(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         imageUrl: spriteUrl,
-        prompt,
-        strength: stage === 'juvenile' ? 0.65 : 0.55, // Less variation for elder to maintain identity
+        prompt: fullDescription,
+        strength: stage === 'juvenile' ? 0.65 : 0.55,
         negativePrompt: 'blurry, low quality, distorted, deformed, wrong colors, inconsistent style',
       }),
     });
@@ -164,7 +175,8 @@ export async function POST(request: NextRequest) {
       body.spriteUrl,
       'juvenile',
       body.creatureName,
-      body.descriptionChunks
+      body.descriptionChunks,
+      body.promptPayload
     );
 
     if (juvenileUrl) {
@@ -182,7 +194,8 @@ export async function POST(request: NextRequest) {
       body.spriteUrl,
       'elder',
       body.creatureName,
-      body.descriptionChunks
+      body.descriptionChunks,
+      body.promptPayload
     );
 
     if (elderUrl) {

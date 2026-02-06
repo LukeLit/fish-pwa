@@ -24,13 +24,14 @@ export async function createLevel(biomeId: string, levelId: number): Promise<Cre
   const rules = getLevelConfig(biomeId, levelId);
   let pool = await loadCreaturesByBiome(biomeId);
 
-  // Filter by depth band when rules specify min/max_meters and creature has metrics
+  // Filter by depth band: band-fit rule (creature range overlaps band range)
   const minM = rules.min_meters;
   const maxM = rules.max_meters;
   if (typeof minM === 'number' && typeof maxM === 'number') {
     pool = pool.filter((c) => {
-      const baseMeters = c.metrics?.base_meters ?? (c.stats.size / 100);
-      return baseMeters >= minM && baseMeters <= maxM;
+      const minMeters = c.metrics?.min_meters ?? c.metrics?.base_meters ?? (c.stats.size / 100);
+      const maxMeters = c.metrics?.max_meters ?? c.metrics?.base_meters ?? (c.stats.size / 100);
+      return minMeters <= maxM && maxMeters >= minM;
     });
   }
 

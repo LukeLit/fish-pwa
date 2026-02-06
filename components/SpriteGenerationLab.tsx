@@ -67,12 +67,8 @@ const STAGE_MODIFIERS: Record<GrowthStage, string> = {
 - Same species, same colors, same patterns - just younger and smaller
 DO NOT draw multiple fish. ONE fish only.`,
   adult: '', // Adult is the baseline - no modifier needed
-  elder: `SINGLE FISH ONLY - Draw exactly ONE fish, the ELDER/ANCIENT version:
-- Large body size, more angular and weathered proportions
-- Battle scars, slightly faded coloring, experienced/ancient appearance  
-- Larger, more developed fins
-- Same species, same colors, same patterns - just older and larger
-DO NOT draw multiple fish. DO NOT draw a comparison. ONE fish only.`,
+  elder: `ONE FISH ONLY. One subject. No second fish. No comparison. No before/after.
+Elder life stage: large body, weathered, battle-scarred, ancient. Same species, same colors, same patterns—just older and larger. Larger fins. Single fish only.`,
 };
 
 // Use same growth ranges as game/editor (20-300 scale) so sprites match everywhere
@@ -208,6 +204,7 @@ export default function SpriteGenerationLab({
 
   // Build prompt for a specific stage
   const buildPromptForStage = useCallback((stage: GrowthStage): string => {
+    const baseMeters = fish.metrics?.base_meters ?? (fish.stats?.size ?? 60) / 100;
     const { prompt: basePrompt } = composeFishPrompt({
       id: fish.id,
       name: fish.name,
@@ -218,19 +215,18 @@ export default function SpriteGenerationLab({
       descriptionChunks: descriptionChunks.length > 0 ? descriptionChunks : fish.descriptionChunks,
       visualMotif: visualMotif || fish.visualMotif,
       grantedAbilities: fish.grantedAbilities || [],
+      speciesArchetype: fish.speciesArchetype,
+      primaryColorHex: fish.primaryColorHex,
+      essenceColorDetails: fish.essenceColorDetails,
+      metrics: { base_meters: baseMeters },
     });
 
-    // Get color directives and species identity
-    const colorDirectives = getEssenceColorDirectives();
+    // Essence color directives disabled in Sprite Lab; reserved for mutations later.
+    // Base prompt already includes primaryColorHex and essenceColorDetails from composeFishPrompt.
     const speciesIdentity = buildSpeciesIdentity();
 
     // Build the full prompt
     let fullPrompt = basePrompt;
-
-    // Add color directives
-    if (colorDirectives) {
-      fullPrompt += colorDirectives;
-    }
 
     // Add species identity
     if (speciesIdentity) {
@@ -243,7 +239,7 @@ export default function SpriteGenerationLab({
     }
 
     return fullPrompt;
-  }, [fish, descriptionChunks, visualMotif, getEssenceRecord, derivedSizeTier, getEssenceColorDirectives, buildSpeciesIdentity]);
+  }, [fish, descriptionChunks, visualMotif, getEssenceRecord, derivedSizeTier, buildSpeciesIdentity]);
 
   // Update prompt preview when inputs change
   useEffect(() => {
@@ -1033,46 +1029,26 @@ export default function SpriteGenerationLab({
           <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 space-y-4">
             <h3 className="text-sm font-bold text-white">Customize Prompt Data</h3>
 
-            {/* Essence Color Preview */}
-            {(() => {
-              const essenceRecord = getEssenceRecord();
-              const entries = Object.entries(essenceRecord).sort((a, b) => b[1] - a[1]);
-              if (entries.length === 0) return null;
-
-              return (
-                <div>
-                  <label className="block text-xs text-gray-400 mb-2">Essence Colors (auto-derived from fish data)</label>
-                  <div className="flex flex-wrap gap-2">
-                    {entries.map(([type, yield_], i) => {
-                      const essence = ESSENCE_TYPES[type];
-                      if (!essence) return null;
-                      const placement = i === 0 ? 'Main body' : i === 1 ? 'Fins & belly' : 'Accents';
-                      return (
-                        <div
-                          key={type}
-                          className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg text-xs"
-                        >
-                          <div
-                            className="w-5 h-5 rounded-full border-2 border-white/30 shadow-inner"
-                            style={{ backgroundColor: essence.color }}
-                          />
-                          <div>
-                            <span className="text-gray-200 font-medium">
-                              {i === 0 ? 'Primary' : i === 1 ? 'Secondary' : 'Accent'}
-                            </span>
-                            <span className="text-gray-400 ml-1">({essence.name})</span>
-                            <div className="text-gray-500 text-[10px]">{placement}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
+            {/* Primary color swatch (used in composed prompt; essence colors reserved for mutations) */}
+            {fish.primaryColorHex && (
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">Primary color</label>
+                <div className="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg text-xs w-fit">
+                  <div
+                    className="w-6 h-6 rounded-full border-2 border-white/30 shadow-inner flex-shrink-0"
+                    style={{ backgroundColor: fish.primaryColorHex }}
+                    title={fish.primaryColorHex}
+                  />
+                  <div>
+                    <span className="text-gray-200 font-medium">Main body</span>
+                    <div className="text-gray-500 text-[10px]">{fish.primaryColorHex}</div>
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">
-                    These colors will be explicitly specified in the prompt to ensure consistency across all growth stages.
-                  </p>
                 </div>
-              );
-            })()}
+                <p className="mt-2 text-xs text-gray-500">
+                  Primary color is included in the prompt for consistency across growth stages. Essence-based colors are reserved for mutations later.
+                </p>
+              </div>
+            )}
 
             {/* Description Chunks */}
             <div>

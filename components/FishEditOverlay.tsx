@@ -15,6 +15,7 @@ import { setCanvasStatus, clearCanvasStatus } from '@/lib/ui/canvas-status';
 import { devLogSave, devLogError } from '@/lib/editor/dev-logger';
 import SpriteGenerationLab from './SpriteGenerationLab';
 import { getAnimationAssetManager } from '@/lib/rendering/animation-asset-manager';
+import { getCreatureSizeRange } from '@/lib/game/data/creature-loader';
 
 /**
  * Minimum time between clip generation requests (ms)
@@ -74,6 +75,9 @@ export interface FishData {
   // NEW: Modular Prompt System
   descriptionChunks?: string[];
   visualMotif?: string;
+  speciesArchetype?: string;
+  primaryColorHex?: string;
+  essenceColorDetails?: Array<{ essenceTypeId: string; description: string }>;
 
   // NEW: Enhanced Essence System
   essence?: EssenceData;
@@ -231,21 +235,29 @@ export default function FishEditOverlay({
   const composedPrompt = useMemo(() => {
     if (!editedFish) return '';
     try {
+      const essenceRecord = editedFish.essence?.primary
+        ? {
+            [editedFish.essence.primary.type]: editedFish.essence.primary.baseYield,
+            ...(editedFish.essence.secondary?.reduce((acc, sec) => {
+              acc[sec.type] = sec.baseYield;
+              return acc;
+            }, {} as Record<string, number>) || {}),
+          }
+        : undefined;
+      const baseMeters = editedFish.metrics?.base_meters ?? (editedFish.stats?.size ?? 60) / 100;
       const { prompt } = composeFishPrompt({
         id: editedFish.id,
         name: editedFish.name,
         biomeId: editedFish.biomeId,
         rarity: editedFish.rarity,
-        essence: editedFish.essence?.primary ? {
-          [editedFish.essence.primary.type]: editedFish.essence.primary.baseYield,
-          ...(editedFish.essence.secondary?.reduce((acc, sec) => {
-            acc[sec.type] = sec.baseYield;
-            return acc;
-          }, {} as Record<string, number>) || {}),
-        } : undefined,
+        essence: essenceRecord,
         descriptionChunks: getFallbackDescriptionChunks(editedFish),
         visualMotif: getFallbackVisualMotif(editedFish),
         grantedAbilities: editedFish.grantedAbilities,
+        speciesArchetype: editedFish.speciesArchetype,
+        primaryColorHex: editedFish.primaryColorHex,
+        essenceColorDetails: editedFish.essenceColorDetails,
+        metrics: { base_meters: baseMeters },
       });
       return prompt;
     } catch (err) {
@@ -260,6 +272,11 @@ export default function FishEditOverlay({
     editedFish?.descriptionChunks,
     editedFish?.visualMotif,
     editedFish?.grantedAbilities,
+    editedFish?.speciesArchetype,
+    editedFish?.primaryColorHex,
+    editedFish?.essenceColorDetails,
+    editedFish?.metrics,
+    editedFish?.stats?.size,
   ]);
 
   useEffect(() => {
@@ -1005,6 +1022,24 @@ export default function FishEditOverlay({
           {/* Details Tab */}
           {activeTab === 'details' && (
             <>
+              {/* Primary color swatch */}
+              {editedFish.primaryColorHex && (
+                <div className="border-t border-gray-700 pt-4">
+                  <label className="block text-sm font-bold text-white mb-2">Primary color</label>
+                  <div className="flex items-center gap-2 bg-gray-800/80 px-3 py-2 rounded-lg border border-gray-700 w-fit">
+                    <div
+                      className="w-7 h-7 rounded-full border-2 border-white/30 shadow-inner flex-shrink-0"
+                      style={{ backgroundColor: editedFish.primaryColorHex }}
+                      title={editedFish.primaryColorHex}
+                    />
+                    <div>
+                      <span className="text-gray-200 text-sm">Main body</span>
+                      <div className="text-gray-400 text-xs">{editedFish.primaryColorHex}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Description Chunks Editor */}
               <div className="border-t border-gray-700 pt-4">
                 <div className="flex items-center justify-between mb-2">
@@ -1477,7 +1512,9 @@ export default function FishEditOverlay({
                   }}
                   className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
                 />
-                <p className="text-xs text-gray-400 mt-1">Player-facing size in meters. Art scale uses stats.size.</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Size range: {getCreatureSizeRange(editedFish).minMeters.toFixed(1)}–{getCreatureSizeRange(editedFish).maxMeters.toFixed(1)} m (start → max when grown)
+                </p>
               </div>
 
               {/* Biome */}

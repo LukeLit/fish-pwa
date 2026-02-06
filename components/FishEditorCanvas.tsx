@@ -991,13 +991,13 @@ export default function FishEditorCanvas({
           onGameOver,
           onStatsUpdate,
           onReloadPlayerSprite: (spriteUrl, onLoaded) => {
-            const growthImg = new Image();
-            growthImg.crossOrigin = 'anonymous';
-            growthImg.onload = () => {
+                  const growthImg = new Image();
+                  growthImg.crossOrigin = 'anonymous';
+                  growthImg.onload = () => {
               onLoaded(removeBackground(growthImg, chromaToleranceRef.current));
-            };
+                  };
             growthImg.onerror = () => { };
-            growthImg.src = spriteUrl;
+                  growthImg.src = spriteUrl;
           },
         },
         helpers: {

@@ -72,6 +72,7 @@ const DEFAULT_LEVEL_RULES: LevelRules = {
   sub_depths: [],
 };
 
+/** Maps levelId to depth band: 1–3→1-x, 4–6→2-x, 7–9→3-x, 10–12→4-x. */
 function levelIdToDepthBandId(levelId: number): string {
   const levelIndex = Math.ceil(levelId / 3);
   const phase = ((levelId - 1) % 3) + 1;
@@ -104,7 +105,7 @@ export function getDepthBandRules(depthBandId: string, levelId: number = 1): Lev
 
 /**
  * Returns level rules for the given biome and level (1-based).
- * Maps levelId to depth band: 1,2,3 -> "1-1","1-2","1-3"; 4,5,6 -> "2-1","2-2","2-3".
+ * Maps levelId to depth band: 1–3→1-1,1-2,1-3; 4–6→2-x; 7–9→3-x; 10–12→4-x.
  * Fallback: if band is missing, returns a safe default so createLevel still runs.
  */
 export function getLevelConfig(biomeId: string, levelId: number): LevelRules {

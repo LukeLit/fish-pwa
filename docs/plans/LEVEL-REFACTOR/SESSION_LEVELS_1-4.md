@@ -36,8 +36,11 @@ So: 1-1, 1-2, 1-3 are depth steps within one level; only at Level Complete do we
 
 - [ ] **Blob: tags / canAppearIn aligned** so fish load by tags + weights. Snapshot shows current state; follow-up is to align creature metadata with tag model (e.g. `tags: string[]` or `canAppearIn` for primary/secondary tags).
 
-- [ ] **Optional: metrics.base_meters, sub_depth in blob.**  
-  Add via batch-update-creature-metadata so `createLevel` can filter by depth band min/max_meters and sub_depth. Use snapshot to tune level band ranges first.
+- [ ] **Optional: metrics.base_meters, min_meters, max_meters, sub_depth in blob.**  
+  Add via batch-update-creature-metadata so `createLevel` can filter by depth band min/max_meters and sub_depth. See [FISH_METRICS_AND_DEPTH_BANDS.md](./FISH_METRICS_AND_DEPTH_BANDS.md). Use snapshot to tune level band ranges first.
+
+- [ ] **Document new fish for 3-x/4-x.**  
+  See [NEW_FISH_REQUIREMENTS.md](./NEW_FISH_REQUIREMENTS.md) for fish to add to fill depth bands 3-x and 4-x.
 
 - [ ] **Game/editor: wire run to depth bands and createLevel(primaryTag, levelTags, depthBandId).**  
   Follow-up: drive run progression from `getRunConfig(runId)` (which now exposes `steps` and derived `levels`); eventually call createLevel with primary tag, level tags, and depth band id instead of (biomeId, levelId). Current `createLevel(biomeId, levelId)` still works via level-loader mapping.

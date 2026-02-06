@@ -1,0 +1,1306 @@
+[
+  {
+    "id": "cusk_eel_abyssal",
+    "name": "Cusk Eel",
+    "biome": "abyssal",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 10,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "elongated body",
+      "tapered tail",
+      "small head"
+    ],
+    "visualMotif": "faint blue glow"
+  },
+  {
+    "id": "tripod_fish_abyssal",
+    "name": "Tripod Fish",
+    "biome": "abyssal",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 12,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "long fin rays",
+      "flattened head",
+      "pale body"
+    ],
+    "visualMotif": "translucent fins"
+  },
+  {
+    "id": "abyssal_grenadier_abyssal",
+    "name": "Abyssal Grenadier",
+    "biome": "abyssal",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 14,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "large head",
+      "tapered body",
+      "big eyes"
+    ],
+    "visualMotif": "shadowy aura"
+  },
+  {
+    "id": "snailfish_abyssal",
+    "name": "Snailfish",
+    "biome": "abyssal",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 11,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "gelatinous body",
+      "rounded fins",
+      "tiny eyes"
+    ],
+    "visualMotif": "jelly-like sheen"
+  },
+  {
+    "id": "barreleye_abyssal",
+    "name": "Barreleye",
+    "biome": "abyssal",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 13,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "transparent head",
+      "upward-facing eyes",
+      "small mouth"
+    ],
+    "visualMotif": "glowing brain"
+  },
+  {
+    "id": "black_swallower_abyssal",
+    "name": "Black Swallower",
+    "biome": "abyssal",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 15,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "expandable stomach",
+      "slender body",
+      "sharp teeth"
+    ],
+    "visualMotif": "dark shimmer"
+  },
+  {
+    "id": "abyssal_angler_abyssal",
+    "name": "Abyssal Angler",
+    "biome": "abyssal",
+    "rarity": "common",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 18,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "lure on head",
+      "spiky fins",
+      "large mouth"
+    ],
+    "visualMotif": "eldritch glow"
+  },
+  {
+    "id": "eldritch",
+    "name": "Elder Lanternfish",
+    "biome": "abyssal",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 25,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 10,
+      "demonic": 5,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "multiple glowing lures",
+      "ancient runes on skin",
+      "tentacled fins"
+    ],
+    "visualMotif": "eldritch aura"
+  },
+  {
+    "id": "eldritch",
+    "name": "Abyssal Horror",
+    "biome": "abyssal",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 28,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 12,
+      "demonic": 8,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "massive size",
+      "many eyes",
+      "writhing tentacles"
+    ],
+    "visualMotif": "cosmic shimmer"
+  },
+  {
+    "id": "original",
+    "name": "Abyssal Mutant",
+    "biome": "abyssal",
+    "rarity": "rare",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 22,
+      "tropical": 0,
+      "polluted": 5,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "distorted features",
+      "extra fins",
+      "glowing veins"
+    ],
+    "visualMotif": "mutant glow"
+  },
+  {
+    "id": "bristlemouth_deep",
+    "name": "Bristlemouth",
+    "biome": "deep",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "deep_sea": 15
+    },
+    "descriptionChunks": [
+      "tiny bioluminescent body",
+      "rows of light-producing organs",
+      "delicate transparent fins",
+      "huge eyes"
+    ],
+    "visualMotif": "living constellation of the deep"
+  },
+  {
+    "id": "glass_squid_deep",
+    "name": "Glass Squid",
+    "biome": "deep",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "deep_sea": 18
+    },
+    "descriptionChunks": [
+      "completely transparent body",
+      "visible internal organs",
+      "glowing photophores",
+      "ghostly drifting movement"
+    ],
+    "visualMotif": "spectral deep-sea phantom"
+  },
+  {
+    "id": "giant_isopod_deep",
+    "name": "Giant Isopod",
+    "biome": "deep",
+    "rarity": "uncommon",
+    "sizeTier": "mid",
+    "essence": {
+      "deep_sea": 20
+    },
+    "descriptionChunks": [
+      "armored segmented body",
+      "multiple legs",
+      "prehistoric appearance",
+      "scavenging adapted"
+    ],
+    "visualMotif": "ancient armored scavenger"
+  },
+  {
+    "id": "vampire_squid_deep",
+    "name": "Vampire Squid",
+    "biome": "deep",
+    "rarity": "rare",
+    "sizeTier": "mid",
+    "essence": {
+      "deep_sea": 22
+    },
+    "descriptionChunks": [
+      "webbed arms like cloak",
+      "red eyes",
+      "bioluminescent tips",
+      "ancient living fossil"
+    ],
+    "visualMotif": "ancient deep-sea survivor with otherworldly features"
+  },
+  {
+    "id": "anglerfish_deep",
+    "name": "Anglerfish",
+    "biome": "deep",
+    "rarity": "rare",
+    "sizeTier": "predator",
+    "essence": {
+      "deep_sea": 30,
+      "shallow": 6
+    },
+    "descriptionChunks": [
+      "grotesque deep-sea predator",
+      "massive gaping mouth with needle-sharp teeth",
+      "bioluminescent lure extending from head",
+      "dark blue-black scaled body"
+    ],
+    "visualMotif": "terrifying abyssal ambush hunter with glowing lure"
+  },
+  {
+    "id": "gulper_eel_deep",
+    "name": "Gulper Eel",
+    "biome": "deep",
+    "rarity": "epic",
+    "sizeTier": "predator",
+    "essence": {
+      "deep_sea": 35
+    },
+    "descriptionChunks": [
+      "serpentine deep-sea predator",
+      "massively expandable jaw",
+      "bioluminescent tail lure",
+      "elongated eel-like body"
+    ],
+    "visualMotif": "bizarre abyssal predator with expandable jaws"
+  },
+  {
+    "id": "oarfish_deep",
+    "name": "Oarfish",
+    "biome": "deep",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "deep_sea": 50
+    },
+    "descriptionChunks": [
+      "serpentine ribbon-like body",
+      "bright red dorsal crest",
+      "silvery undulating form",
+      "legendary sea serpent appearance"
+    ],
+    "visualMotif": "mythical deep-sea leviathan"
+  },
+  {
+    "id": "lanternfish_deep_sea",
+    "name": "Lanternfish",
+    "biome": "deep_sea",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 2,
+      "deep_sea": 15,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "bulbous head with glowing lure",
+      "needle-like teeth"
+    ],
+    "visualMotif": "bioluminescent spots"
+  },
+  {
+    "id": "viperfish_deep_sea",
+    "name": "Viperfish",
+    "biome": "deep_sea",
+    "rarity": "common",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 18,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "elongated body",
+      "huge fangs",
+      "glowing photophores"
+    ],
+    "visualMotif": "electric blue streaks"
+  },
+  {
+    "id": "hatchetfish_deep_sea",
+    "name": "Hatchetfish",
+    "biome": "deep_sea",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 12,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "thin, hatchet-shaped body",
+      "reflective scales",
+      "large eyes"
+    ],
+    "visualMotif": "mirror sheen"
+  },
+  {
+    "id": "fangtooth_deep_sea",
+    "name": "Fangtooth",
+    "biome": "deep_sea",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 16,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "oversized teeth",
+      "compact body",
+      "dark coloration"
+    ],
+    "visualMotif": "shadowy aura"
+  },
+  {
+    "id": "gulper_eel_deep_sea",
+    "name": "Gulper Eel",
+    "biome": "deep_sea",
+    "rarity": "common",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 20,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "massive mouth",
+      "long, ribbon-like tail",
+      "translucent skin"
+    ],
+    "visualMotif": "glowing tail"
+  },
+  {
+    "id": "dragonfish_deep_sea",
+    "name": "Dragonfish",
+    "biome": "deep_sea",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 17,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "barbel with light",
+      "slender body",
+      "fangs"
+    ],
+    "visualMotif": "red bioluminescence"
+  },
+  {
+    "id": "anglerfish_deep_sea",
+    "name": "Anglerfish",
+    "biome": "deep_sea",
+    "rarity": "common",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 22,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "large mouth",
+      "lure on head",
+      "spiky fins"
+    ],
+    "visualMotif": "eldritch glow"
+  },
+  {
+    "id": "original",
+    "name": "Abyssal Horror",
+    "biome": "deep_sea",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 2,
+      "deep_sea": 30,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 10,
+      "demonic": 5,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "tentacled body",
+      "multiple glowing eyes",
+      "ancient runes on skin"
+    ],
+    "visualMotif": "eldritch aura"
+  },
+  {
+    "id": "fusion",
+    "name": "Leviathan Lantern",
+    "biome": "deep_sea",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 2,
+      "deep_sea": 28,
+      "tropical": 0,
+      "polluted": 0,
+      "cosmic": 8,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "massive size",
+      "multiple glowing lures",
+      "armored plates"
+    ],
+    "visualMotif": "crystalline armor"
+  },
+  {
+    "id": "original",
+    "name": "Deep Sea Mutant",
+    "biome": "deep_sea",
+    "rarity": "rare",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 2,
+      "deep_sea": 25,
+      "tropical": 0,
+      "polluted": 5,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "distorted features",
+      "extra fins",
+      "glowing veins"
+    ],
+    "visualMotif": "mutant glow"
+  },
+  {
+    "id": "sardine_medium",
+    "name": "Sardine",
+    "biome": "medium",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 8,
+      "deep_sea": 5
+    },
+    "descriptionChunks": [
+      "sleek silver body",
+      "schooling behavior",
+      "streamlined shape",
+      "reflective scales"
+    ],
+    "visualMotif": "swift twilight schooler"
+  },
+  {
+    "id": "juvenile_squid_medium",
+    "name": "Juvenile Squid",
+    "biome": "medium",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 6,
+      "deep_sea": 8
+    },
+    "descriptionChunks": [
+      "translucent mantle",
+      "small tentacles",
+      "large curious eyes",
+      "faint bioluminescent spots"
+    ],
+    "visualMotif": "ghostly twilight drifter"
+  },
+  {
+    "id": "mackerel_medium",
+    "name": "Mackerel",
+    "biome": "medium",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 10,
+      "deep_sea": 8
+    },
+    "descriptionChunks": [
+      "torpedo-shaped body",
+      "iridescent blue-green back",
+      "silver flanks",
+      "forked tail"
+    ],
+    "visualMotif": "fast twilight hunter"
+  },
+  {
+    "id": "ocean_sunfish_medium",
+    "name": "Ocean Sunfish",
+    "biome": "medium",
+    "rarity": "uncommon",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 12,
+      "deep_sea": 10
+    },
+    "descriptionChunks": [
+      "flat disc-shaped body",
+      "truncated tail fin",
+      "tiny mouth",
+      "bizarre silhouette"
+    ],
+    "visualMotif": "gentle twilight giant"
+  },
+  {
+    "id": "barracuda_medium",
+    "name": "Barracuda",
+    "biome": "medium",
+    "rarity": "uncommon",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 15,
+      "deep_sea": 12
+    },
+    "descriptionChunks": [
+      "elongated torpedo body",
+      "fearsome underbite with fangs",
+      "silver scales",
+      "lightning fast"
+    ],
+    "visualMotif": "sleek twilight ambusher"
+  },
+  {
+    "id": "thresher_shark_medium",
+    "name": "Thresher Shark",
+    "biome": "medium",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 20,
+      "deep_sea": 25
+    },
+    "descriptionChunks": [
+      "extremely long scythe-like tail",
+      "sleek gray body",
+      "large eyes for low light",
+      "elegant predator"
+    ],
+    "visualMotif": "twilight zone apex hunter"
+  },
+  {
+    "id": "hammerhead_shark_medium",
+    "name": "Hammerhead Shark",
+    "biome": "medium",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 18,
+      "deep_sea": 28
+    },
+    "descriptionChunks": [
+      "distinctive T-shaped head",
+      "wide-set eyes",
+      "sleek gray body",
+      "powerful tail"
+    ],
+    "visualMotif": "twilight zone apex with hammer head"
+  },
+  {
+    "id": "tiger_shark_medium",
+    "name": "Tiger Shark",
+    "biome": "medium",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 22,
+      "deep_sea": 30
+    },
+    "descriptionChunks": [
+      "dark vertical stripes on gray body",
+      "broad blunt snout",
+      "large powerful build",
+      "notorious apex predator"
+    ],
+    "visualMotif": "striped twilight apex hunter"
+  },
+  {
+    "id": "mutant_minnow_medium_polluted",
+    "name": "Mutant Minnow",
+    "biome": "medium_polluted",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 3,
+      "polluted": 12
+    },
+    "descriptionChunks": [
+      "extra pair of eyes",
+      "sickly green glow",
+      "twitching movements",
+      "translucent patches"
+    ],
+    "visualMotif": "radiation-touched survivor"
+  },
+  {
+    "id": "sludge_fish_medium_polluted",
+    "name": "Sludge Fish",
+    "biome": "medium_polluted",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 2,
+      "polluted": 10
+    },
+    "descriptionChunks": [
+      "murky brown coloring",
+      "asymmetric fins",
+      "oil-slick sheen",
+      "misshapen body"
+    ],
+    "visualMotif": "waste-dwelling scavenger"
+  },
+  {
+    "id": "toxic_bass_medium_polluted",
+    "name": "Toxic Bass",
+    "biome": "medium_polluted",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 8,
+      "polluted": 18
+    },
+    "descriptionChunks": [
+      "green bioluminescent spots",
+      "enlarged toxic glands",
+      "mutated jaw",
+      "chemical burns"
+    ],
+    "visualMotif": "polluted predator adaptation"
+  },
+  {
+    "id": "armored_carp_medium_polluted",
+    "name": "Armored Carp",
+    "biome": "medium_polluted",
+    "rarity": "uncommon",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 10,
+      "polluted": 15
+    },
+    "descriptionChunks": [
+      "industrial metal plating",
+      "rust-colored scales",
+      "reinforced skull",
+      "filter mouth"
+    ],
+    "visualMotif": "industrial waste survivor"
+  },
+  {
+    "id": "chemical_eel_medium_polluted",
+    "name": "Chemical Eel",
+    "biome": "medium_polluted",
+    "rarity": "uncommon",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 12,
+      "polluted": 25
+    },
+    "descriptionChunks": [
+      "neon green veins",
+      "corrosive slime coating",
+      "elongated mutant body",
+      "glowing eyes"
+    ],
+    "visualMotif": "toxic ambush hunter"
+  },
+  {
+    "id": "waste_leviathan_medium_polluted",
+    "name": "Waste Leviathan",
+    "biome": "medium_polluted",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 15,
+      "polluted": 40
+    },
+    "descriptionChunks": [
+      "massive mutated body",
+      "trash and debris encrusted",
+      "multiple tumorous growths",
+      "chemical aura"
+    ],
+    "visualMotif": "apex polluted nightmare"
+  },
+  {
+    "id": "toxic_behemoth_medium_polluted",
+    "name": "Toxic Behemoth",
+    "biome": "medium_polluted",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 12,
+      "polluted": 38
+    },
+    "descriptionChunks": [
+      "massive armored mutant",
+      "neon green toxic veins",
+      "industrial debris fused to scales",
+      "glowing corrosive eyes"
+    ],
+    "visualMotif": "polluted depths apex predator"
+  },
+  {
+    "id": "common_carp_polluted",
+    "name": "Common Carp",
+    "biome": "polluted",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 2,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 12,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "thick body",
+      "golden scales",
+      "whisker-like barbels"
+    ],
+    "visualMotif": "dull, oily sheen"
+  },
+  {
+    "id": "mosquitofish_polluted",
+    "name": "Mosquitofish",
+    "biome": "polluted",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 7,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "tiny size",
+      "rounded fins",
+      "silvery body"
+    ],
+    "visualMotif": "subtle sparkle"
+  },
+  {
+    "id": "channel_catfish_polluted",
+    "name": "Channel Catfish",
+    "biome": "polluted",
+    "rarity": "common",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 2,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 15,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "whiskered face",
+      "smooth skin",
+      "long body"
+    ],
+    "visualMotif": "faint blue glow"
+  },
+  {
+    "id": "fathead_minnow_polluted",
+    "name": "Fathead Minnow",
+    "biome": "polluted",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 6,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "small size",
+      "rounded head",
+      "grayish body"
+    ],
+    "visualMotif": "cloudy shimmer"
+  },
+  {
+    "id": "white_sucker_polluted",
+    "name": "White Sucker",
+    "biome": "polluted",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 10,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "downturned mouth",
+      "pale body",
+      "rounded fins"
+    ],
+    "visualMotif": "mottled patches"
+  },
+  {
+    "id": "pumpkinseed_polluted",
+    "name": "Pumpkinseed",
+    "biome": "polluted",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 8,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "bright orange spots",
+      "oval shape",
+      "spiky fins"
+    ],
+    "visualMotif": "sunburst pattern"
+  },
+  {
+    "id": "yellow_perch_polluted",
+    "name": "Yellow Perch",
+    "biome": "polluted",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 1,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 9,
+      "cosmic": 0,
+      "demonic": 0,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "vertical black bars",
+      "yellow body",
+      "forked tail"
+    ],
+    "visualMotif": "striped shimmer"
+  },
+  {
+    "id": "original",
+    "name": "Mutant Carp",
+    "biome": "polluted",
+    "rarity": "rare",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 20,
+      "cosmic": 0,
+      "demonic": 5,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "distorted body",
+      "extra eyes",
+      "toxic growths"
+    ],
+    "visualMotif": "radioactive slime"
+  },
+  {
+    "id": "original",
+    "name": "Zombie Guppy",
+    "biome": "polluted",
+    "rarity": "rare",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 18,
+      "cosmic": 0,
+      "demonic": 2,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "torn fins",
+      "exposed bone",
+      "pale, decaying scales"
+    ],
+    "visualMotif": "zombie rot"
+  },
+  {
+    "id": "original boss",
+    "name": "Toxic Catfish",
+    "biome": "polluted",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 0,
+      "deep_sea": 0,
+      "tropical": 0,
+      "polluted": 35,
+      "cosmic": 0,
+      "demonic": 10,
+      "robotic": 0
+    },
+    "descriptionChunks": [
+      "massive size",
+      "bulging tumors",
+      "glowing green eyes"
+    ],
+    "visualMotif": "toxic sludge"
+  },
+  {
+    "id": "goldfish_starter",
+    "name": "Goldfish",
+    "biome": "shallow",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {},
+    "descriptionChunks": [
+      "small golden-orange fish",
+      "rounded streamlined body",
+      "flowing translucent fins",
+      "bright reflective scales",
+      "large alert eyes"
+    ],
+    "primaryColorHex": "#FFD700",
+    "visualMotif": "swift schooling fish with vibrant coloration"
+  },
+  {
+    "id": "tiny_fish",
+    "name": "Guppy",
+    "biome": "shallow",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {},
+    "descriptionChunks": [
+      "extremely tiny colorful fish",
+      "vibrant rainbow scales",
+      "delicate transparent fins",
+      "quick darting movements"
+    ],
+    "visualMotif": "miniature tropical schooling fish"
+  },
+  {
+    "id": "small_prey",
+    "name": "Minnow",
+    "biome": "shallow",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {},
+    "descriptionChunks": [
+      "tiny silver fish",
+      "streamlined slender body",
+      "large reflective eyes",
+      "translucent fins",
+      "shimmering metallic scales"
+    ],
+    "visualMotif": "swift schooling prey fish"
+  },
+  {
+    "id": "medium_fish",
+    "name": "Perch",
+    "biome": "shallow",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {},
+    "descriptionChunks": [
+      "medium-sized silver fish",
+      "vertical black stripes",
+      "spiny dorsal fin",
+      "broad streamlined body",
+      "cautious alert posture"
+    ],
+    "visualMotif": "wary mid-sized schooling fish"
+  },
+  {
+    "id": "medium_predator",
+    "name": "Bass",
+    "biome": "shallow",
+    "rarity": "common",
+    "sizeTier": "predator",
+    "essence": {},
+    "descriptionChunks": [
+      "medium-sized predatory fish",
+      "muscular powerful body",
+      "large mouth with sharp teeth",
+      "dark green scaled body",
+      "aggressive forward-facing eyes"
+    ],
+    "visualMotif": "territorial shallow-water hunter"
+  },
+  {
+    "id": "large_predator",
+    "name": "Pike",
+    "biome": "shallow",
+    "rarity": "uncommon",
+    "sizeTier": "predator",
+    "essence": {},
+    "descriptionChunks": [
+      "large elongated predator",
+      "torpedo-shaped muscular body",
+      "massive jaw with razor teeth",
+      "camouflaged green-brown scales",
+      "menacing predatory stance"
+    ],
+    "visualMotif": "apex shallow-water ambush predator"
+  },
+  {
+    "id": "rare_tropical",
+    "name": "Tropical Parrotfish",
+    "biome": "shallow",
+    "rarity": "rare",
+    "sizeTier": "mid",
+    "essence": {},
+    "descriptionChunks": [
+      "vibrant rainbow-colored fish",
+      "parrot-like beak mouth",
+      "large flowing fins",
+      "iridescent multi-colored scales",
+      "elegant graceful movements"
+    ],
+    "visualMotif": "dazzling tropical reef dweller"
+  },
+  {
+    "id": "epic_shark",
+    "name": "Great White Shark",
+    "biome": "shallow",
+    "rarity": "epic",
+    "sizeTier": "boss",
+    "essence": {},
+    "descriptionChunks": [
+      "massive apex predator",
+      "powerful streamlined body",
+      "rows of serrated teeth",
+      "gray-white countershaded scales",
+      "intimidating presence",
+      "signature dorsal fin"
+    ],
+    "visualMotif": "legendary ocean apex predator"
+  },
+  {
+    "id": "clownfish_tropical",
+    "name": "Clownfish",
+    "biome": "shallow_tropical",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 5,
+      "tropical": 10
+    },
+    "descriptionChunks": [
+      "bright orange body",
+      "white vertical stripes",
+      "rounded fins",
+      "anemone dweller"
+    ],
+    "visualMotif": "iconic reef symbiote"
+  },
+  {
+    "id": "blue_tang_tropical",
+    "name": "Blue Tang",
+    "biome": "shallow_tropical",
+    "rarity": "common",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 5,
+      "tropical": 12
+    },
+    "descriptionChunks": [
+      "electric blue body",
+      "yellow tail fin",
+      "oval disc shape",
+      "black markings"
+    ],
+    "visualMotif": "vibrant reef swimmer"
+  },
+  {
+    "id": "rare_tropical",
+    "name": "Tropical Parrotfish",
+    "biome": "shallow_tropical",
+    "rarity": "rare",
+    "sizeTier": "prey",
+    "essence": {
+      "shallow": 10,
+      "tropical": 8
+    },
+    "descriptionChunks": [
+      "vibrant rainbow-colored fish",
+      "parrot-like beak mouth",
+      "large flowing fins",
+      "iridescent multi-colored scales"
+    ],
+    "visualMotif": "dazzling tropical reef dweller"
+  },
+  {
+    "id": "butterflyfish_tropical",
+    "name": "Butterflyfish",
+    "biome": "shallow_tropical",
+    "rarity": "common",
+    "sizeTier": "mid",
+    "essence": {
+      "shallow": 8,
+      "tropical": 15
+    },
+    "descriptionChunks": [
+      "bright yellow body",
+      "black eye stripe",
+      "disc-shaped silhouette",
+      "delicate trailing fins"
+    ],
+    "visualMotif": "elegant reef dancer"
+  },
+  {
+    "id": "lionfish_tropical",
+    "name": "Lionfish",
+    "biome": "shallow_tropical",
+    "rarity": "uncommon",
+    "sizeTier": "predator",
+    "essence": {
+      "shallow": 12,
+      "tropical": 20
+    },
+    "descriptionChunks": [
+      "venomous flowing spines",
+      "striped red and white body",
+      "fan-like pectoral fins",
+      "menacing display"
+    ],
+    "visualMotif": "dangerous beauty of the reef"
+  },
+  {
+    "id": "moray_eel_tropical",
+    "name": "Moray Eel",
+    "biome": "shallow_tropical",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 15,
+      "tropical": 30
+    },
+    "descriptionChunks": [
+      "serpentine muscular body",
+      "gaping jaws with needle teeth",
+      "mottled pattern",
+      "lurking in coral crevice"
+    ],
+    "visualMotif": "ambush predator of the reef"
+  },
+  {
+    "id": "reef_shark_tropical",
+    "name": "Reef Shark",
+    "biome": "shallow_tropical",
+    "rarity": "rare",
+    "sizeTier": "boss",
+    "essence": {
+      "shallow": 18,
+      "tropical": 35
+    },
+    "descriptionChunks": [
+      "sleek gray body with white underside",
+      "rounded snout",
+      "compact powerful build",
+      "patrols reef edges"
+    ],
+    "visualMotif": "tropical reef apex predator"
+  }
+]

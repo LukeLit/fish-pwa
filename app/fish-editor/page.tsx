@@ -591,6 +591,26 @@ export default function FishEditorPage() {
     setGrowthGenerationStatus('Starting generation...');
 
     try {
+      const essenceRecord =
+        selectedFish.essenceTypes?.reduce(
+          (acc, e) => ({ ...acc, [e.type]: e.baseYield }),
+          {} as Record<string, number>
+        ) ?? {};
+      const baseMeters =
+        selectedFish.metrics?.base_meters ?? (selectedFish.stats?.size ?? 60) / 100;
+      const promptPayload = {
+        id: selectedFish.id,
+        name: selectedFish.name,
+        biomeId: selectedFish.biomeId,
+        descriptionChunks: selectedFish.descriptionChunks,
+        visualMotif: selectedFish.visualMotif,
+        essence: Object.keys(essenceRecord).length ? essenceRecord : undefined,
+        speciesArchetype: selectedFish.speciesArchetype,
+        primaryColorHex: selectedFish.primaryColorHex,
+        essenceColorDetails: selectedFish.essenceColorDetails,
+        grantedAbilities: selectedFish.grantedAbilities,
+        metrics: { base_meters: baseMeters },
+      };
       const response = await fetch('/api/generate-growth-sprites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -600,6 +620,7 @@ export default function FishEditorPage() {
           creatureName: selectedFish.name,
           descriptionChunks: selectedFish.descriptionChunks,
           biomeId: selectedFish.biomeId,
+          promptPayload,
         }),
       });
 

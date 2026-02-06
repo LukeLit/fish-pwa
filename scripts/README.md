@@ -170,26 +170,42 @@ Total: 40
 
 **Tips:**
 - The script **skips fish that already exist** in blob storage (resume mode). Set `BATCH_SKIP_EXISTING=0` to regenerate all.
+- To generate **only specific new fish**, set `BATCH_NEW_IDS=id1,id2,...` (e.g. `BATCH_NEW_IDS=hammerhead_shark_medium,tiger_shark_medium,reef_shark_tropical,toxic_behemoth_medium_polluted`). The script will process only those ids and skip the rest.
 - The script processes all fish sequentially (one at a time) to avoid API rate limits
 - If a fish fails, the script continues with the next one
 - Failed fish can be re-run later (they won't overwrite successfully uploaded ones)
 
 ### Step 5: Patch Existing Creatures (Tiers & Ecosystems)
 
-If you added **size tiers** or **spawn rules** after some fish were already uploaded, patch existing blob creatures **without regenerating sprites**:
+If you added **size tiers**, **spawn rules**, **metrics**, or **prompt chunks** (descriptionChunks, visualMotif, speciesArchetype, primaryColorHex, essenceColorDetails) after some fish were already uploaded, patch existing blob creatures **without regenerating sprites**:
 
 ```bash
-# Dev server must be running
+# Dev server must be running (FISH_PWA_BASE_URL, default http://localhost:3000)
 npx tsx scripts/batch-update-creature-metadata.ts
 ```
 
 **What it does:**
-- Fetches all creatures from `/api/list-creatures`
-- For each creature, sets `sizeTier` from `docs/biomes/*.md` (or infers from `stats.size` if not in docs)
-- Ensures `spawnRules.canAppearIn` matches the biome from docs
+- Fetches all creatures from `/api/list-creatures` (current blob data)
+- Parses `docs/biomes/*.md` for canonical fish entries
+- For each creature: merges `sizeTier`, `spawnRules`, `metrics` (base_meters, min/max where known), and when the fish appears in docs, **prompt chunks**: `descriptionChunks`, `visualMotif`, `speciesArchetype`, `primaryColorHex`, `essenceColorDetails`
 - POSTs metadata-only to `/api/save-creature` (no sprite file), so existing art is unchanged
 
-Run this after adding tier/ecosystem support so existing fish participate correctly in `computeEncounterSize` and biome spawn pools.
+Run this after updating biome docs so existing fish in blob get the new prompt data (primary color, species archetype, essence color details, etc.) and correct metrics/sizeTier/spawnRules. To have a given fish receive primary color or species archetype, add **Primary Color: #XXXXXX** and/or **Species Archetype: fish|shark|squid|eel|ray|cephalopod** (and optionally **Essence Color Details: type — description**) to that fish’s entry in the biome markdown.
+
+**Patch custom chunks with hex (per-fish overrides):**  
+**`scripts/creature-prompt-patches.json`** is manually authored: primary hex, description chunks with hex (e.g. `"vertical black stripes #1a1a1a"`), species archetype, and essence color placement for fantasy/mutant fish. The patch script loads this file automatically (default path `scripts/creature-prompt-patches.json`). To use a different file: `npx tsx scripts/batch-update-creature-metadata.ts --patches path/to/file.json`. Each entry can set `primaryColorHex`, `descriptionChunks`, `visualMotif`, `speciesArchetype`, `essenceColorDetails`. Patches are applied after doc merge. See **`docs/PROMPT_PATCH_WORKFLOW.md`** for the full workflow.
+
+### Step 5b: Remove Duplicate Creatures (Dedupe)
+
+If blob storage has duplicate entries for the same fish (e.g. old id-with-name vs canonical doc id):
+
+```bash
+# Dev server must be running
+npx tsx scripts/dedupe-creatures.ts           # dry run: lists what would be deleted
+npx tsx scripts/dedupe-creatures.ts --execute  # delete duplicate blob entries
+```
+
+The script groups creatures by normalized name + biome, keeps the one whose id matches `docs/biomes/*.md` (or the entry with a clean name), and deletes the rest.
 
 ### Step 6: Track Fish in a Doc (Snapshot)
 

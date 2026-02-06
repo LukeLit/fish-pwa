@@ -263,6 +263,9 @@ interface Creature extends BaseFishData {
   sprite: string; // URL to sprite image (blob storage path)
   biomeId: string; // Native biome ID
   
+  // Metrics (optional): base_meters, base_art_scale, min_meters?, max_meters?, sub_depth? for depth-band filtering. See [FISH_METRICS_AND_DEPTH_BANDS.md](../plans/LEVEL-REFACTOR/FISH_METRICS_AND_DEPTH_BANDS.md).
+  metrics?: { base_meters: number; base_art_scale: number; min_meters?: number; max_meters?: number; sub_depth?: 'upper' | 'mid' | 'lower' };
+  
   // Stats
   stats: {
     size: number; // 20-200

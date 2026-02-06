@@ -12,7 +12,7 @@
  */
 export const ART_STYLE_CHUNK = [
   'stylized, vibrant, exaggerated features',
-  'inspired by concept art and cartoonish proportions',
+  'inspired by concept art, stylized proportions, no black outlines',
   'high visual clarity and strong silhouette',
   'playful, imaginative, and slightly surreal',
 ];
@@ -45,33 +45,74 @@ export const ANGLE_CHUNK = [
 export const TECH_ART_GUIDELINES_CHUNK = [
   'avoid gradients or soft shadows (prefer cell shading or hard edges)',
   'use bold, readable color palettes',
-  'maintain consistent outline thickness',
+  'no black outlines, borderless or cell-shaded rendering, clean fill colors',
   'ensure sprite reads well at small sizes (64–128px)',
   'avoid excessive detail that muddies the silhouette',
   'keep lighting consistent (top-left key light)',
 ];
 
 /**
+ * Species archetype chunks – body shape/silhouette so fish, sharks, squid, eels read differently.
+ */
+export const SPECIES_ARCHETYPE_CHUNKS: Record<string, string[]> = {
+  fish: [
+    'typical fish body',
+    'detailed scales and fins',
+    'side profile',
+  ],
+  shark: [
+    'elongated fusiform body',
+    'distinct dorsal fin',
+    'pointed snout',
+    'powerful tail',
+  ],
+  squid: [
+    'mantle body',
+    'tentacles at front',
+    'no dorsal fin',
+    'cephalopod silhouette',
+  ],
+  eel: [
+    'elongated serpentine body',
+    'no pelvic fins',
+    'continuous dorsal and anal fins',
+    'eel-like silhouette',
+  ],
+  ray: [
+    'flat disc-shaped body',
+    'wide pectoral fins',
+    'tail often slender',
+    'ray silhouette',
+  ],
+  cephalopod: [
+    'mantle with arms or tentacles',
+    'cephalopod body plan',
+    'no fish-style fins',
+  ],
+};
+
+/**
  * Essence-type specific visual modifiers.
+ * Hex values align with lib/game/data/essence-types.ts where defined.
  */
 export const ESSENCE_TYPE_CHUNKS: Record<string, string[]> = {
   shallow: [
-    'bright, freshwater colors',
+    'bright freshwater colors (#4ade80 green tones)',
     'subtle iridescence',
     'natural patterns',
   ],
   deep_sea: [
-    'dark, muted tones',
+    'dark muted tones (#1a237e blue tones)',
     'bioluminescent spots or streaks',
     'translucent skin',
   ],
   tropical: [
-    'vibrant, saturated colors',
+    'vibrant saturated colors (#fbbf24 golden tones)',
     'bold patterns',
     'ornate fins',
   ],
   polluted: [
-    'dull, sickly hues',
+    'dull sickly hues (#8b5cf6 purple accents)',
     'toxic growths',
     'mutated features',
     'patches of sludge',
@@ -187,6 +228,16 @@ export function getSharedAssetStyleChunks(): string[] {
     'transparent PNG (for final asset)',
     ...TECH_ART_GUIDELINES_CHUNK,
   ];
+}
+
+/**
+ * Get species archetype chunks for body shape/silhouette (if any).
+ * Default 'fish' when archetype unset or unknown.
+ */
+export function getSpeciesArchetypeChunks(archetype?: string | null): string[] {
+  if (!archetype) return SPECIES_ARCHETYPE_CHUNKS.fish;
+  const key = archetype.toLowerCase() as keyof typeof SPECIES_ARCHETYPE_CHUNKS;
+  return SPECIES_ARCHETYPE_CHUNKS[key] ?? SPECIES_ARCHETYPE_CHUNKS.fish;
 }
 
 /**

@@ -72,6 +72,20 @@ Fish adapted to the dimly lit twilight zone between surface and deep waters.
    - Size Tier: boss
    - Rarity: rare
 
+7. **Hammerhead Shark (hammerhead_shark_medium)**
+   - Description Chunks: ["distinctive T-shaped head", "wide-set eyes", "sleek gray body", "powerful tail"]
+   - Visual Motif: "twilight zone apex with hammer head"
+   - Essence: { shallow: 18, deep_sea: 28 }
+   - Size Tier: boss
+   - Rarity: rare
+
+8. **Tiger Shark (tiger_shark_medium)**
+   - Description Chunks: ["dark vertical stripes on gray body", "broad blunt snout", "large powerful build", "notorious apex predator"]
+   - Visual Motif: "striped twilight apex hunter"
+   - Essence: { shallow: 22, deep_sea: 30 }
+   - Size Tier: boss
+   - Rarity: rare
+
 ## Spawn Weights
 
 - Sardine: 30
@@ -80,6 +94,8 @@ Fish adapted to the dimly lit twilight zone between surface and deep waters.
 - Ocean Sunfish: 15
 - Barracuda: 10
 - Thresher Shark: 5
+- Hammerhead Shark: 4
+- Tiger Shark: 4
 
 ## Prompt Chunk Examples
 

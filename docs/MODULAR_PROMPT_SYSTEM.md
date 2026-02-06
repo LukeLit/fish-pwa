@@ -8,14 +8,26 @@ This document outlines the modular art prompt system for generating fish sprites
 - **Formatting Chunk**: Shared formatting (e.g., "side view, right-facing, isolated on solid bright magenta background (#FF00FF), no other elements, game sprite")
 - **Angle/View Chunk**: (Optional) Specific camera angle or pose
 - **Biome/Type Style Chunk**: Biome or special type (e.g., "polluted mutant", "abyssal horror")
-- **Description Chunks**: Unique, fish-specific descriptors (e.g., "elongated jaws, glowing eyes, armored fins"). Multiple allowed per fish, including upgrades/fusions.
+- **Description Chunks**: Unique, fish-specific descriptors. For **natural/non-mutant fish**, use species-appropriate, non-violent features (e.g., "rounded body", "orange scales", "flowing fins"). Reserve aggressive or fantastical wording (spikes, sharp teeth, bloody, etc.) for **ability/upgrade chunks** (e.g., spiked_skin, toxic) or **mutant/fantasy fish** (creatures with mutationSource, fusionParentIds, or fantasy biomes).
 - **Visual Motif Chunk**: (Optional) Special effects or motifs (e.g., "glowing veins", "toxic sludge")
+- **Primary Color** (optional): Hex for primary scale/skin color (e.g., `primaryColorHex: "#FFD700"`). Ensures consistent hue across base and growth sprites.
+- **Essence Color Details** (optional): Array of `{ essenceTypeId, description }` for fantasy essence accents; hex is resolved from essence types (e.g., polluted stripes on upper back). Use for fantasy/mutation/fusion fish.
+- **Species Archetype** (optional): Body shape/silhouette—e.g., `fish`, `shark`, `squid`, `eel`, `ray`, `cephalopod`. Drives different silhouettes in prompts.
 
 ## Data Storage
 - Shared prompt chunks are stored in a global config (for editor access and tweaking)
 - Each fish stores only its description chunk(s) and visual motif(s)
 - Upgrades and fusions store their own prompt chunks, which are composed with the fish's base prompt
 - Final prompt for art generation is built by concatenating all relevant chunks
+
+## Patching existing fish (hex + placement)
+
+To update **already-uploaded** creatures with primary hex, hex-in-chunks, species archetype, and essence color placement (without regenerating sprites):
+
+1. Edit **`scripts/creature-prompt-patches.json`** – manually authored per creature id: `primaryColorHex`, `descriptionChunks` (with hex in text where needed, e.g. `"vertical black stripes #1a1a1a"`), `visualMotif`, `speciesArchetype`, `essenceColorDetails` (placement text; hex resolved from essence types).
+2. With dev server running, run: **`npx tsx scripts/batch-update-creature-metadata.ts`**. The script merges from `docs/biomes/*.md` then applies the patch file overrides and saves metadata-only to blob.
+
+See **`docs/PROMPT_PATCH_WORKFLOW.md`** for full workflow. The Fish Editor composes prompts from the patched data (Details tab, Composed AI Prompt, and generation).
 
 ## Example (Fish Data)
 ```json
@@ -29,6 +41,9 @@ This document outlines the modular art prompt system for generating fish sprites
     "needle-like teeth"
   ],
   "visualMotif": "bioluminescent spots",
+  "primaryColorHex": "#1a237e",
+  "speciesArchetype": "fish",
+  "essenceColorDetails": [{ "essenceTypeId": "deep_sea", "description": "lure under jaw" }],
   "fusionParentIds": [],
   "mutationSource": null
 }

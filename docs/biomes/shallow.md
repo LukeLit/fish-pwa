@@ -27,6 +27,7 @@
 - **Rarity**: Common
 - **Playable**: Yes
 - **Stats**: Size 20, Speed 7, Health 15, Damage 3
+- **Primary Color**: #FFD700
 - **Description Chunks**:
   - small golden-orange fish
   - rounded streamlined body

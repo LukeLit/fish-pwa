@@ -72,6 +72,13 @@ Mutated fish adapted to toxic industrial runoff at medium depths.
    - Size Tier: boss
    - Rarity: rare
 
+7. **Toxic Behemoth (toxic_behemoth_medium_polluted)**
+   - Description Chunks: ["massive armored mutant", "neon green toxic veins", "industrial debris fused to scales", "glowing corrosive eyes"]
+   - Visual Motif: "polluted depths apex predator"
+   - Essence: { shallow: 12, polluted: 38 }
+   - Size Tier: boss
+   - Rarity: rare
+
 ## Spawn Weights
 
 - Mutant Minnow: 30
@@ -80,6 +87,7 @@ Mutated fish adapted to toxic industrial runoff at medium depths.
 - Armored Carp: 15
 - Chemical Eel: 8
 - Waste Leviathan: 4
+- Toxic Behemoth: 3
 
 ## Prompt Chunk Examples
 

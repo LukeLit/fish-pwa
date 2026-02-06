@@ -2,6 +2,8 @@
 
 This file lists fish currently in Vercel Blob Storage. Use it to see what’s imported, add more fish in `docs/biomes/*.md`, or add stats.
 
+Creatures may have `metrics` (`base_meters`, `min_meters`, `max_meters`, etc.) for depth-band filtering. See [FISH_METRICS_AND_DEPTH_BANDS.md](plans/LEVEL-REFACTOR/FISH_METRICS_AND_DEPTH_BANDS.md) for rules.
+
 **Refresh:** run `npx tsx scripts/export-creature-list.ts` (dev server must be running).
 
 **Last updated:** 2026-01-29 · **Total:** 66

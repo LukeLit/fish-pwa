@@ -1,0 +1,398 @@
+{
+  "_comment": "Manually authored prompt patches: primary hex, hex-in-chunks, essence detail placement. Run batch-update-creature-metadata to apply.",
+  "goldfish_starter": {
+    "primaryColorHex": "#FFD700",
+    "descriptionChunks": ["small fish", "rounded streamlined body", "flowing translucent fins", "bright reflective scales", "large alert eyes"],
+    "visualMotif": "swift schooling fish with vibrant coloration",
+    "speciesArchetype": "fish"
+  },
+  "tiny_fish": {
+    "primaryColorHex": "#FF6B9D",
+    "descriptionChunks": ["extremely tiny fish", "vibrant scales", "delicate transparent fins", "quick darting form", "large reflective eyes"],
+    "visualMotif": "miniature tropical schooling fish",
+    "speciesArchetype": "fish"
+  },
+  "small_prey": {
+    "primaryColorHex": "#B8C4CE",
+    "descriptionChunks": ["tiny fish", "streamlined slender body", "large reflective eyes", "translucent fins", "shimmering metallic scales"],
+    "visualMotif": "swift schooling prey fish",
+    "speciesArchetype": "fish"
+  },
+  "medium_fish": {
+    "primaryColorHex": "#C0C0C0",
+    "descriptionChunks": ["medium-sized fish", "vertical black stripes #1a1a1a", "spiny dorsal fin", "broad streamlined body", "cautious alert posture"],
+    "visualMotif": "wary mid-sized schooling fish",
+    "speciesArchetype": "fish"
+  },
+  "medium_predator": {
+    "primaryColorHex": "#2d5a27",
+    "descriptionChunks": ["medium-sized predatory fish", "muscular powerful body", "large mouth", "scaled body", "alert hunter posture"],
+    "visualMotif": "territorial shallow-water hunter",
+    "speciesArchetype": "fish"
+  },
+  "large_predator": {
+    "primaryColorHex": "#4a6741",
+    "descriptionChunks": ["large elongated predator", "torpedo-shaped muscular body", "massive jaw", "camouflaged green-brown scales #4a6741", "menacing predatory stance"],
+    "visualMotif": "apex shallow-water ambush predator",
+    "speciesArchetype": "fish"
+  },
+  "pike": {
+    "primaryColorHex": "#4a6741",
+    "descriptionChunks": ["large elongated predator", "torpedo-shaped muscular body", "massive jaw", "camouflaged green-brown scales #4a6741", "menacing predatory stance"],
+    "visualMotif": "apex shallow-water ambush predator",
+    "speciesArchetype": "fish"
+  },
+  "rare_tropical": {
+    "primaryColorHex": "#e879f9",
+    "descriptionChunks": ["vibrant fish", "parrot-like beak mouth", "large flowing fins", "iridescent multi-colored scales", "elegant graceful movements"],
+    "visualMotif": "dazzling tropical reef dweller",
+    "speciesArchetype": "fish"
+  },
+  "epic_shark": {
+    "primaryColorHex": "#9ca3af",
+    "descriptionChunks": ["massive apex predator", "powerful streamlined body", "rows of serrated teeth", "gray-white countershaded body #9ca3af upper / #e5e7eb belly", "signature dorsal fin"],
+    "visualMotif": "legendary ocean apex predator",
+    "speciesArchetype": "shark"
+  },
+  "cusk_eel_abyssal": {
+    "primaryColorHex": "#8B9A9E",
+    "descriptionChunks": ["elongated body", "tapered tail", "small head"],
+    "visualMotif": "faint blue glow",
+    "speciesArchetype": "eel",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "faint blue glow along lateral line"}]
+  },
+  "tripod_fish_abyssal": {
+    "primaryColorHex": "#E8E4D9",
+    "descriptionChunks": ["long fin rays", "flattened head", "pale body"],
+    "visualMotif": "translucent fins",
+    "speciesArchetype": "fish"
+  },
+  "abyssal_grenadier_abyssal": {
+    "primaryColorHex": "#5C5C5C",
+    "descriptionChunks": ["large head", "tapered body", "big eyes"],
+    "visualMotif": "shadowy aura",
+    "speciesArchetype": "fish"
+  },
+  "snailfish_abyssal": {
+    "primaryColorHex": "#F5C6C6",
+    "descriptionChunks": ["gelatinous body", "rounded fins", "tiny eyes"],
+    "visualMotif": "jelly-like sheen",
+    "speciesArchetype": "fish"
+  },
+  "barreleye_abyssal": {
+    "primaryColorHex": "#D4E4F7",
+    "descriptionChunks": ["transparent head", "upward-facing eyes", "small mouth"],
+    "visualMotif": "glowing brain",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "glowing brain visible through transparent dome"}]
+  },
+  "black_swallower_abyssal": {
+    "primaryColorHex": "#0d0d0d",
+    "descriptionChunks": ["expandable stomach", "slender body", "sharp teeth"],
+    "visualMotif": "dark shimmer",
+    "speciesArchetype": "fish"
+  },
+  "abyssal_angler_abyssal": {
+    "primaryColorHex": "#2a1810",
+    "descriptionChunks": ["lure on head", "spiky fins", "large mouth"],
+    "visualMotif": "eldritch glow",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "bioluminescent lure on head"}]
+  },
+  "eldritch": {
+    "primaryColorHex": "#1a237e",
+    "descriptionChunks": ["massive size", "many eyes", "writhing tentacles"],
+    "visualMotif": "cosmic shimmer",
+    "speciesArchetype": "cephalopod",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "glowing lures along dorsal spine"}, {"essenceTypeId": "cosmic", "description": "runic markings on flanks"}]
+  },
+  "bristlemouth_deep": {
+    "primaryColorHex": "#1a237e",
+    "descriptionChunks": ["tiny bioluminescent body", "rows of light-producing organs", "delicate transparent fins", "huge eyes"],
+    "visualMotif": "living constellation of the deep",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "photophores along ventral line"}]
+  },
+  "glass_squid_deep": {
+    "primaryColorHex": "#E8F4F8",
+    "descriptionChunks": ["completely transparent body", "visible internal organs", "glowing photophores", "ghostly drifting movement"],
+    "visualMotif": "spectral deep-sea phantom",
+    "speciesArchetype": "squid",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "photophores at tentacle tips"}]
+  },
+  "giant_isopod_deep": {
+    "primaryColorHex": "#6B5B4F",
+    "descriptionChunks": ["armored segmented body", "multiple legs", "prehistoric appearance", "scavenging adapted"],
+    "visualMotif": "ancient armored scavenger",
+    "speciesArchetype": "fish"
+  },
+  "vampire_squid_deep": {
+    "primaryColorHex": "#2d1b3d",
+    "descriptionChunks": ["webbed arms like cloak", "red eyes", "bioluminescent tips", "ancient living fossil"],
+    "visualMotif": "ancient deep-sea survivor with otherworldly features",
+    "speciesArchetype": "cephalopod",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "bioluminescent tips on arm ends"}]
+  },
+  "anglerfish_deep": {
+    "primaryColorHex": "#1a237e",
+    "descriptionChunks": ["grotesque deep-sea predator", "massive gaping mouth", "bioluminescent lure extending from head", "dark blue-black scaled body #1a237e"],
+    "visualMotif": "terrifying abyssal ambush hunter with glowing lure",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "lure on head"}]
+  },
+  "gulper_eel_deep": {
+    "primaryColorHex": "#1a1a2e",
+    "descriptionChunks": ["serpentine deep-sea predator", "massively expandable jaw", "bioluminescent tail lure", "elongated eel-like body"],
+    "visualMotif": "bizarre abyssal predator with expandable jaws",
+    "speciesArchetype": "eel",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "glowing lure at tail tip"}]
+  },
+  "oarfish_deep": {
+    "primaryColorHex": "#C0C0C0",
+    "descriptionChunks": ["serpentine ribbon-like body", "bright red dorsal crest #c53030", "silvery undulating form", "legendary sea serpent appearance"],
+    "visualMotif": "mythical deep-sea leviathan",
+    "speciesArchetype": "fish"
+  },
+  "lanternfish_deep_sea": {
+    "primaryColorHex": "#1a237e",
+    "descriptionChunks": ["bulbous head with glowing lure", "needle-like teeth"],
+    "visualMotif": "bioluminescent spots",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "lure under jaw"}]
+  },
+  "viperfish_deep_sea": {
+    "primaryColorHex": "#1a237e",
+    "descriptionChunks": ["elongated body", "huge fangs", "glowing photophores"],
+    "visualMotif": "electric blue streaks",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "photophores along flank"}]
+  },
+  "hatchetfish_deep_sea": {
+    "primaryColorHex": "#4a5568",
+    "descriptionChunks": ["thin hatchet-shaped body", "reflective scales", "large eyes"],
+    "visualMotif": "mirror sheen",
+    "speciesArchetype": "fish"
+  },
+  "fangtooth_deep_sea": {
+    "primaryColorHex": "#2d2d2d",
+    "descriptionChunks": ["oversized teeth", "compact body", "dark coloration"],
+    "visualMotif": "shadowy aura",
+    "speciesArchetype": "fish"
+  },
+  "gulper_eel_deep_sea": {
+    "primaryColorHex": "#1a1a2e",
+    "descriptionChunks": ["massive mouth", "long ribbon-like tail", "translucent skin"],
+    "visualMotif": "glowing tail",
+    "speciesArchetype": "eel",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "glow at tail tip"}]
+  },
+  "dragonfish_deep_sea": {
+    "primaryColorHex": "#1a1a2e",
+    "descriptionChunks": ["barbel with light", "slender body", "fangs"],
+    "visualMotif": "red bioluminescence",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "red glow on barbel"}]
+  },
+  "anglerfish_deep_sea": {
+    "primaryColorHex": "#1a237e",
+    "descriptionChunks": ["large mouth", "lure on head", "spiky fins"],
+    "visualMotif": "eldritch glow",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "lure on head"}]
+  },
+  "fusion": {
+    "primaryColorHex": "#1a237e",
+    "descriptionChunks": ["massive size", "multiple glowing lures", "armored plates"],
+    "visualMotif": "crystalline armor",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "glowing lures along dorsal spine"}]
+  },
+  "sardine_medium": {
+    "primaryColorHex": "#C0C0C0",
+    "descriptionChunks": ["sleek fish", "schooling behavior", "streamlined shape", "reflective scales"],
+    "visualMotif": "swift twilight schooler",
+    "speciesArchetype": "fish"
+  },
+  "juvenile_squid_medium": {
+    "primaryColorHex": "#E8F4F8",
+    "descriptionChunks": ["translucent mantle", "small tentacles", "large curious eyes", "faint bioluminescent spots"],
+    "visualMotif": "ghostly twilight drifter",
+    "speciesArchetype": "squid",
+    "essenceColorDetails": [{"essenceTypeId": "deep_sea", "description": "faint spots along mantle"}]
+  },
+  "mackerel_medium": {
+    "primaryColorHex": "#C0C0C0",
+    "descriptionChunks": ["torpedo-shaped body", "iridescent blue-green back #2d5a4a", "silver flanks #C0C0C0", "forked tail"],
+    "visualMotif": "fast twilight hunter",
+    "speciesArchetype": "fish"
+  },
+  "ocean_sunfish_medium": {
+    "primaryColorHex": "#9ca3af",
+    "descriptionChunks": ["flat disc-shaped body", "truncated tail fin", "tiny mouth", "bizarre silhouette"],
+    "visualMotif": "gentle twilight giant",
+    "speciesArchetype": "ray"
+  },
+  "barracuda_medium": {
+    "primaryColorHex": "#C0C0C0",
+    "descriptionChunks": ["elongated torpedo body", "fearsome underbite with fangs", "silver scales", "lightning fast"],
+    "visualMotif": "sleek twilight ambusher",
+    "speciesArchetype": "fish"
+  },
+  "thresher_shark_medium": {
+    "primaryColorHex": "#6B7280",
+    "descriptionChunks": ["extremely long scythe-like tail", "sleek gray body", "large eyes for low light", "elegant predator"],
+    "visualMotif": "twilight zone apex hunter",
+    "speciesArchetype": "shark"
+  },
+  "hammerhead_shark_medium": {
+    "primaryColorHex": "#6B7280",
+    "descriptionChunks": ["distinctive T-shaped head", "wide-set eyes", "sleek gray body", "powerful tail"],
+    "visualMotif": "twilight zone apex with hammer head",
+    "speciesArchetype": "shark"
+  },
+  "tiger_shark_medium": {
+    "primaryColorHex": "#6B7280",
+    "descriptionChunks": ["dark vertical stripes #374151 on gray body #6B7280", "broad blunt snout", "large powerful build", "notorious apex predator"],
+    "visualMotif": "striped twilight apex hunter",
+    "speciesArchetype": "shark"
+  },
+  "mutant_minnow_medium_polluted": {
+    "primaryColorHex": "#84cc16",
+    "descriptionChunks": ["extra pair of eyes", "sickly green glow", "twitching movements", "translucent patches"],
+    "visualMotif": "radiation-touched survivor",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "polluted", "description": "green glow around eyes and fins"}]
+  },
+  "sludge_fish_medium_polluted": {
+    "primaryColorHex": "#5c4033",
+    "descriptionChunks": ["murky brown coloring", "asymmetric fins", "oil-slick sheen", "misshapen body"],
+    "visualMotif": "waste-dwelling scavenger",
+    "speciesArchetype": "fish"
+  },
+  "toxic_bass_medium_polluted": {
+    "primaryColorHex": "#2d5a27",
+    "descriptionChunks": ["green bioluminescent spots", "enlarged toxic glands", "mutated jaw", "chemical burns"],
+    "visualMotif": "polluted predator adaptation",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "polluted", "description": "green spots along dorsal and flanks"}]
+  },
+  "armored_carp_medium_polluted": {
+    "primaryColorHex": "#b91c1c",
+    "descriptionChunks": ["industrial metal plating", "rust-colored scales", "reinforced skull", "filter mouth"],
+    "visualMotif": "industrial waste survivor",
+    "speciesArchetype": "fish"
+  },
+  "chemical_eel_medium_polluted": {
+    "primaryColorHex": "#166534",
+    "descriptionChunks": ["neon green veins", "corrosive slime coating", "elongated mutant body", "glowing eyes"],
+    "visualMotif": "toxic ambush hunter",
+    "speciesArchetype": "eel",
+    "essenceColorDetails": [{"essenceTypeId": "polluted", "description": "neon green veins along belly and dorsal"}]
+  },
+  "waste_leviathan_medium_polluted": {
+    "primaryColorHex": "#4a3728",
+    "descriptionChunks": ["massive mutated body", "trash and debris encrusted", "multiple tumorous growths", "chemical aura"],
+    "visualMotif": "apex polluted nightmare",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "polluted", "description": "sickly glow from growths and eyes"}]
+  },
+  "toxic_behemoth_medium_polluted": {
+    "primaryColorHex": "#166534",
+    "descriptionChunks": ["massive armored mutant", "neon green toxic veins", "industrial debris fused to scales", "glowing corrosive eyes"],
+    "visualMotif": "polluted depths apex predator",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "polluted", "description": "green veins along spine and jaw"}]
+  },
+  "common_carp_polluted": {
+    "primaryColorHex": "#D97706",
+    "descriptionChunks": ["thick body", "golden scales", "whisker-like barbels"],
+    "visualMotif": "dull oily sheen",
+    "speciesArchetype": "fish"
+  },
+  "mosquitofish_polluted": {
+    "primaryColorHex": "#B8C4CE",
+    "descriptionChunks": ["tiny size", "rounded fins", "silvery body"],
+    "visualMotif": "subtle sparkle",
+    "speciesArchetype": "fish"
+  },
+  "channel_catfish_polluted": {
+    "primaryColorHex": "#4B5563",
+    "descriptionChunks": ["whiskered face", "smooth skin", "long body"],
+    "visualMotif": "faint blue glow",
+    "speciesArchetype": "fish"
+  },
+  "fathead_minnow_polluted": {
+    "primaryColorHex": "#9ca3af",
+    "descriptionChunks": ["small size", "rounded head", "grayish body"],
+    "visualMotif": "cloudy shimmer",
+    "speciesArchetype": "fish"
+  },
+  "white_sucker_polluted": {
+    "primaryColorHex": "#E5E7EB",
+    "descriptionChunks": ["downturned mouth", "pale body", "rounded fins"],
+    "visualMotif": "mottled patches",
+    "speciesArchetype": "fish"
+  },
+  "pumpkinseed_polluted": {
+    "primaryColorHex": "#ea580c",
+    "descriptionChunks": ["bright orange spots #ea580c on flanks", "oval shape", "spiky fins"],
+    "visualMotif": "sunburst pattern",
+    "speciesArchetype": "fish"
+  },
+  "yellow_perch_polluted": {
+    "primaryColorHex": "#eab308",
+    "descriptionChunks": ["vertical black bars #1a1a1a", "yellow body", "forked tail"],
+    "visualMotif": "striped shimmer",
+    "speciesArchetype": "fish"
+  },
+  "clownfish_tropical": {
+    "primaryColorHex": "#ea580c",
+    "descriptionChunks": ["bright orange body", "white vertical stripes #ffffff", "rounded fins", "anemone dweller"],
+    "visualMotif": "iconic reef symbiote",
+    "speciesArchetype": "fish"
+  },
+  "blue_tang_tropical": {
+    "primaryColorHex": "#2563eb",
+    "descriptionChunks": ["electric blue body", "yellow tail fin #eab308", "oval disc shape", "black markings #1a1a1a along dorsal"],
+    "visualMotif": "vibrant reef swimmer",
+    "speciesArchetype": "fish"
+  },
+  "butterflyfish_tropical": {
+    "primaryColorHex": "#facc15",
+    "descriptionChunks": ["bright yellow body", "black eye stripe #1a1a1a", "disc-shaped silhouette", "delicate trailing fins"],
+    "visualMotif": "elegant reef dancer",
+    "speciesArchetype": "fish"
+  },
+  "lionfish_tropical": {
+    "primaryColorHex": "#f87171",
+    "descriptionChunks": ["venomous flowing spines", "striped red and white body #f87171 and #ffffff", "fan-like pectoral fins", "menacing display"],
+    "visualMotif": "dangerous beauty of the reef",
+    "speciesArchetype": "fish"
+  },
+  "moray_eel_tropical": {
+    "primaryColorHex": "#4a5568",
+    "descriptionChunks": ["serpentine muscular body", "gaping jaws with needle teeth", "mottled pattern #374151 and #6B7280", "lurking in coral crevice"],
+    "visualMotif": "ambush predator of the reef",
+    "speciesArchetype": "eel"
+  },
+  "reef_shark_tropical": {
+    "primaryColorHex": "#6B7280",
+    "descriptionChunks": ["sleek gray body with white underside #e5e7eb", "rounded snout", "compact powerful build", "patrols reef edges"],
+    "visualMotif": "tropical reef apex predator",
+    "speciesArchetype": "shark"
+  },
+  "original": {
+    "primaryColorHex": "#4B5563",
+    "descriptionChunks": ["distorted features", "extra fins", "glowing veins"],
+    "visualMotif": "mutant glow",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "polluted", "description": "glowing veins along belly and fins"}]
+  },
+  "original boss": {
+    "primaryColorHex": "#166534",
+    "descriptionChunks": ["massive size", "bulging tumors", "glowing green eyes"],
+    "visualMotif": "toxic sludge",
+    "speciesArchetype": "fish",
+    "essenceColorDetails": [{"essenceTypeId": "polluted", "description": "green glow from eyes and lesions"}]
+  }
+}

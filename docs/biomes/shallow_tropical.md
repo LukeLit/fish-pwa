@@ -73,6 +73,13 @@ Vibrant reef fish native to tropical shallow waters.
    - Size Tier: boss
    - Rarity: rare
 
+7. **Reef Shark (reef_shark_tropical)**
+   - Description Chunks: ["sleek gray body with white underside", "rounded snout", "compact powerful build", "patrols reef edges"]
+   - Visual Motif: "tropical reef apex predator"
+   - Essence: { shallow: 18, tropical: 35 }
+   - Size Tier: boss
+   - Rarity: rare
+
 ## Spawn Weights
 
 - Clownfish: 30
@@ -81,6 +88,7 @@ Vibrant reef fish native to tropical shallow waters.
 - Butterflyfish: 20
 - Lionfish: 10
 - Moray Eel: 5
+- Reef Shark: 4
 
 ## Prompt Chunk Examples
 

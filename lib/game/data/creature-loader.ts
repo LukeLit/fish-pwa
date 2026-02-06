@@ -1,4 +1,5 @@
 import type { Creature, CreatureMetrics, GrowthSprites, SpriteResolutions, CreatureAnimations, EssenceData } from '../types';
+import { ART } from '../canvas-constants';
 import { getAllCreaturesFromBlob, getAllCreatures, getCreatureById as getCreatureByIdRaw } from './creatures';
 import { loadCreatureFromLocal } from '../../storage/local-fish-storage';
 import {
@@ -98,10 +99,14 @@ function asMetrics(value: unknown, fallbackSize: number): CreatureMetrics | unde
   const baseArtScale = asNumber(value.base_art_scale, fallbackSize);
   const subDepth = value.sub_depth;
   const validSubDepth = subDepth === 'upper' || subDepth === 'mid' || subDepth === 'lower' ? subDepth : undefined;
+  const minMeters = typeof value.min_meters === 'number' && Number.isFinite(value.min_meters) ? value.min_meters : undefined;
+  const maxMeters = typeof value.max_meters === 'number' && Number.isFinite(value.max_meters) ? value.max_meters : undefined;
   return {
     base_meters: baseMeters,
     base_art_scale: baseArtScale,
     sub_depth: validSubDepth,
+    ...(minMeters != null && { min_meters: minMeters }),
+    ...(maxMeters != null && { max_meters: maxMeters }),
   };
 }
 
@@ -180,6 +185,20 @@ export function normalizeCreature(raw: unknown): Creature | null {
     ? raw.grantedAbilities.filter((entry) => typeof entry === 'string')
     : [];
 
+  const speciesArchetype = typeof raw.speciesArchetype === 'string' ? raw.speciesArchetype : undefined;
+  const primaryColorHex =
+    typeof raw.primaryColorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(raw.primaryColorHex)
+      ? raw.primaryColorHex
+      : undefined;
+  const essenceColorDetails = Array.isArray(raw.essenceColorDetails)
+    ? raw.essenceColorDetails
+        .filter(
+          (e): e is { essenceTypeId: string; description: string } =>
+            isRecord(e) && typeof e.essenceTypeId === 'string' && typeof e.description === 'string'
+        )
+        .map((e) => ({ essenceTypeId: e.essenceTypeId, description: e.description }))
+    : undefined;
+
   return {
     id,
     name,
@@ -201,6 +220,9 @@ export function normalizeCreature(raw: unknown): Creature | null {
     essence: asEssenceData(raw.essence),
     descriptionChunks: Array.isArray(raw.descriptionChunks) ? raw.descriptionChunks : undefined,
     visualMotif: typeof raw.visualMotif === 'string' ? raw.visualMotif : undefined,
+    speciesArchetype,
+    primaryColorHex,
+    essenceColorDetails: essenceColorDetails?.length ? essenceColorDetails : undefined,
     updatedAt: asTimestamp(raw.updatedAt),
     createdAt: asTimestamp(raw.createdAt),
   };
@@ -276,6 +298,24 @@ export function resolveCreatureRenderData(
     growthStage,
     clipMode,
   };
+}
+
+/**
+ * Get min and max size in meters for a creature.
+ * When metrics.min_meters/max_meters exist, use them; else base_meters and elder max or ART.SIZE_MAX.
+ */
+export function getCreatureSizeRange(creature: {
+  stats?: { size?: number };
+  metrics?: { base_meters?: number; min_meters?: number; max_meters?: number };
+  growthSprites?: {
+    elder?: { sizeRange?: { max?: number } };
+  };
+}): { minMeters: number; maxMeters: number } {
+  const baseFallback = creature.metrics?.base_meters ?? (creature.stats?.size ?? 60) / 100;
+  const minMeters = creature.metrics?.min_meters ?? baseFallback;
+  const elderMax = creature.growthSprites?.elder?.sizeRange?.max;
+  const maxMeters = creature.metrics?.max_meters ?? (elderMax != null ? elderMax / 100 : ART.SIZE_MAX / 100);
+  return { minMeters, maxMeters };
 }
 
 /**

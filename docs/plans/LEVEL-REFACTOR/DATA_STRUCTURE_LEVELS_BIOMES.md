@@ -62,9 +62,25 @@ So: 1-1, 1-2, 1-3 are **depth steps** within one level; digestion between them; 
 
 ---
 
+## Creature metrics
+
+Creatures may have `metrics` for depth-band filtering. See [FISH_METRICS_AND_DEPTH_BANDS.md](./FISH_METRICS_AND_DEPTH_BANDS.md) for full rules.
+
+| Field | Purpose |
+|-------|---------|
+| `base_meters` | Start size in meters (fallback when min/max absent) |
+| `base_art_scale` | Art units for rendering |
+| `min_meters` | Real-world min (near end of juvenile) |
+| `max_meters` | Real-world max when grown |
+| `sub_depth` | `'upper' | 'mid' | 'lower'` for progression |
+
+**Band-fit rule:** Creature fits depth band `(band_min, band_max)` when `(min_meters ?? base_meters) <= band_max` AND `(max_meters ?? base_meters) >= band_min`.
+
+---
+
 ## Data shape (summary)
 
-- **Creature** — `tags: string[]` (e.g. `["shallow"]`, `["shallow", "tropical"]`). Optionally keep `biomeId` as primary for backward compat; selection uses tags + weights.
+- **Creature** — `tags: string[]` (e.g. `["shallow"]`, `["shallow", "tropical"]`). Optionally keep `biomeId` as primary for backward compat; selection uses tags + weights. May have `metrics: { base_meters, base_art_scale, min_meters?, max_meters?, sub_depth? }`.
 - **Background** — `tags: string[]`; match to level by primary tag or tag overlap.
 - **Level (runtime)** — level name, primary tag, level tags (primary + secondary), depth band (from config).
 - **Level config** — depth bands only (no biome list). Flow: Level 1 = bands 1-1 → 1-2 → 1-3 → Complete → Level 2 = new primary tag + new depth bands.

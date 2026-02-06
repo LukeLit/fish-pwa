@@ -255,6 +255,8 @@ export interface GrowthSprites {
 export interface CreatureMetrics {
   base_meters: number;
   base_art_scale: number;
+  min_meters?: number;  // Real-world min (near end of juvenile)
+  max_meters?: number;  // Real-world max when grown
   sub_depth?: 'upper' | 'mid' | 'lower';
 }
 
@@ -280,6 +282,9 @@ export interface Creature extends BaseFishData {
   // NEW: Modular Prompt System
   descriptionChunks?: string[]; // Modular prompt segments describing the creature
   visualMotif?: string; // High-level visual theme/aesthetic
+  speciesArchetype?: string; // Body shape/silhouette: 'fish' | 'shark' | 'squid' | 'eel' | 'ray' | 'cephalopod' etc.
+  primaryColorHex?: string; // Primary scale/skin color e.g. '#FFD700'
+  essenceColorDetails?: Array<{ essenceTypeId: string; description: string }>; // e.g. [{ essenceTypeId: 'polluted', description: 'stripes on upper back' }]
 
   // NEW: Enhanced Essence System
   essence?: EssenceData; // New modular essence structure

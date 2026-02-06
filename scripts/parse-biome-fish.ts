@@ -16,7 +16,7 @@
  *   }[]
  */
 
-import { readFile, readdir } from 'fs/promises';
+import { readFile, readdir, writeFile } from 'fs/promises';
 import { join, basename, extname } from 'path';
 
 export interface ParsedFish {
@@ -28,6 +28,9 @@ export interface ParsedFish {
   essence: Record<string, number>;
   descriptionChunks: string[];
   visualMotif?: string;
+  speciesArchetype?: string;
+  primaryColorHex?: string;
+  essenceColorDetails?: Array<{ essenceTypeId: string; description: string }>;
 }
 
 const BIOME_DIR = 'docs/biomes';
@@ -53,10 +56,10 @@ export async function parseBiomeFile(path: string): Promise<ParsedFish[]> {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
 
-    // Pattern A: numbered list entry: "1. **Name**"
-    let match = line.match(/^\d+\.\s+\*\*(.+?)\*\*/);
+    // Pattern A: numbered list entry: "1. **Name**" or "1. **Name (id)**"
+    const numberedMatch = line.match(/^\d+\.\s+\*\*(.+?)(?:\s+\(([^)]+)\))?\*\*/);
     // Pattern B: heading with id: "#### Name (id)"
-    if (!match) {
+    if (!numberedMatch) {
       const headingMatch = line.match(/^####\s+(.+?)(?:\s+\(([^)]+)\))?\s*$/);
       if (headingMatch) {
         const name = headingMatch[1].trim();
@@ -68,10 +71,11 @@ export async function parseBiomeFile(path: string): Promise<ParsedFish[]> {
       }
     }
 
-    if (match) {
-      const name = match[1].trim();
+    if (numberedMatch) {
+      const name = numberedMatch[1].trim();
+      const explicitId = (numberedMatch[2] || '').trim();
       const block = extractFishBlock(lines, i + 1);
-      const parsed = parseFishBlock(name, undefined, biomeId, block);
+      const parsed = parseFishBlock(name, explicitId || undefined, biomeId, block);
       if (parsed) fish.push(parsed);
     }
   }
@@ -143,6 +147,9 @@ function parseFishBlock(
     sizeTier: 'prey',
     essence: {},
     descriptionChunks: [],
+    speciesArchetype: undefined,
+    primaryColorHex: undefined,
+    essenceColorDetails: undefined,
   };
 
   let typeFromDoc: string | undefined;
@@ -182,6 +189,36 @@ function parseFishBlock(
     if (/^(\*\*)?Rarity:/i.test(withoutDash) || keyNormalized === 'Rarity') {
       const val = withoutDash.split(':')[1]?.trim() || '';
       result.rarity = val.toLowerCase();
+      continue;
+    }
+
+    // Species Archetype
+    if (/^(\*\*)?Species Archetype:/i.test(withoutDash) || keyNormalized === 'Species Archetype') {
+      const val = withoutDash.split(':')[1]?.trim() || '';
+      if (val) result.speciesArchetype = val.toLowerCase().replace(/\s+/g, '_');
+      continue;
+    }
+
+    // Primary Color (hex)
+    if (/^(\*\*)?Primary Color:/i.test(withoutDash) || keyNormalized === 'Primary Color') {
+      const val = withoutDash.split(':')[1]?.trim() || '';
+      const hexMatch = val.match(/#[0-9A-Fa-f]{6}/);
+      if (hexMatch) result.primaryColorHex = hexMatch[0];
+      continue;
+    }
+
+    // Essence Color Details: "type — description" or "type: description"
+    if (/^(\*\*)?Essence Color Details:/i.test(withoutDash) || keyNormalized === 'Essence Color Details') {
+      const val = withoutDash.split(':')[1]?.trim() || '';
+      const parts = val.split(/[—:]/).map((s) => s.trim());
+      if (parts.length >= 2 && parts[0]) {
+        const essenceTypeId = parts[0].toLowerCase().replace(/\s+/g, '_');
+        const description = parts.slice(1).join(' ').trim();
+        if (description) {
+          result.essenceColorDetails = result.essenceColorDetails ?? [];
+          result.essenceColorDetails.push({ essenceTypeId, description });
+        }
+      }
       continue;
     }
 
@@ -276,6 +313,15 @@ function slugify(input: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
+function getOutPath(): string | undefined {
+  const argv = process.argv.slice(2);
+  const outIdx = argv.indexOf('--out');
+  if (outIdx !== -1 && argv[outIdx + 1]) return argv[outIdx + 1];
+  const oIdx = argv.indexOf('-o');
+  if (oIdx !== -1 && argv[oIdx + 1]) return argv[oIdx + 1];
+  return undefined;
+}
+
 async function main() {
   const files = await readdir(BIOME_DIR);
   const mdFiles = files.filter((f) => extname(f) === '.md');
@@ -287,9 +333,18 @@ async function main() {
     all.push(...entries);
   }
 
-  // Pretty-print JSON to stdout so callers can redirect to a file if needed.
-  // eslint-disable-next-line no-console
-  console.log(JSON.stringify(all, null, 2));
+  const outPath = getOutPath();
+  const json = JSON.stringify(all, null, 2);
+
+  if (outPath) {
+    await writeFile(outPath, json, 'utf-8');
+    // eslint-disable-next-line no-console
+    console.log(`Wrote ${all.length} fish to ${outPath}`);
+  } else {
+    // Pretty-print to stdout so callers can redirect (e.g. parse-biome-fish.ts > out.json)
+    // eslint-disable-next-line no-console
+    console.log(json);
+  }
 }
 
 if (require.main === module) {
