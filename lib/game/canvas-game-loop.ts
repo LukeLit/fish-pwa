@@ -31,6 +31,7 @@ import {
   PREY_FLEE_STAMINA_MULTIPLIER,
   ATTACK_LARGER_STAMINA_MULTIPLIER,
   EXHAUSTED_SPEED_MULTIPLIER,
+  AI_DASH_STAMINA_DRAIN_RATE,
 } from './dash-constants';
 import { ESSENCE_TYPES } from './data/essence-types';
 import {
@@ -677,7 +678,10 @@ export function tickGameState(params: GameTickParams): boolean {
           fish.vx = (fish.vx! / sp) * exhaustedMaxSpeed;
           fish.vy = (fish.vy! / sp) * exhaustedMaxSpeed;
         }
-        if ((fish.stamina ?? 0) >= (fish.maxStamina ?? STAMINA.DEFAULT_MAX)) fish.lifecycleState = 'active';
+        if ((fish.stamina ?? 0) >= (fish.maxStamina ?? STAMINA.DEFAULT_MAX)) {
+          fish.lifecycleState = 'active';
+          fish.recoveringFromExhausted = false;
+        }
       } else if (gameMode && fish.lifecycleState === 'knocked_out') {
         fish.stamina = Math.min(fish.maxStamina ?? STAMINA.DEFAULT_MAX, (fish.stamina ?? 0) + STAMINA.AI_REGEN_RATE * KO_STAMINA_REGEN_MULTIPLIER * (deltaTime / 60));
         if ((fish.stamina ?? 0) >= (fish.maxStamina ?? STAMINA.DEFAULT_MAX) * KO_WAKE_THRESHOLD) fish.lifecycleState = 'active';
@@ -740,7 +744,7 @@ export function tickGameState(params: GameTickParams): boolean {
             const len = Math.sqrt(dx * dx + dy * dy) || 1;
             fish.vx = (dx / len) * maxSpeed;
             fish.vy = (dy / len) * maxSpeed;
-            fish.isDashing = distToTarget < fish.size * AI.DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
+            fish.isDashing = !fish.recoveringFromExhausted && distToTarget < fish.size * AI.DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
           } else {
             fish.chaseTargetId = undefined;
             fish.chaseStartTime = undefined;
@@ -748,10 +752,11 @@ export function tickGameState(params: GameTickParams): boolean {
             fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
             fish.isDashing = false;
           }
-          updateStamina(fish as StaminaEntity, deltaTime);
+          updateStamina(fish as StaminaEntity, deltaTime, { drainRate: AI_DASH_STAMINA_DRAIN_RATE });
           if ((fish.stamina ?? 0) <= 0) {
             fish.isDashing = false;
             fish.lifecycleState = 'exhausted';
+            fish.recoveringFromExhausted = true;
             const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREDATOR_CHASE_SPEED;
             const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
             if (sp > exhaustedMaxSpeed && sp > 0) {
@@ -795,16 +800,20 @@ export function tickGameState(params: GameTickParams): boolean {
             const mag = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
             fish.vx = (fleeX / mag) * maxSpeed;
             fish.vy = (fleeY / mag) * maxSpeed;
-            fish.isDashing = nearestThreatDist < fish.size * AI.PREY_DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
+            fish.isDashing = !fish.recoveringFromExhausted && nearestThreatDist < fish.size * AI.PREY_DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
           } else {
             fish.vx += (Math.random() - 0.5) * AI.WANDER_JITTER;
             fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
             fish.isDashing = false;
           }
-          updateStamina(fish as StaminaEntity, deltaTime, { fleeMultiplier: fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1 });
+          updateStamina(fish as StaminaEntity, deltaTime, {
+            drainRate: AI_DASH_STAMINA_DRAIN_RATE,
+            fleeMultiplier: fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1,
+          });
           if ((fish.stamina ?? 0) <= 0) {
             fish.isDashing = false;
             fish.lifecycleState = 'exhausted';
+            fish.recoveringFromExhausted = true;
             const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREY_FLEE_SPEED;
             const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
             if (sp > exhaustedMaxSpeed && sp > 0) {
@@ -859,7 +868,15 @@ export function tickGameState(params: GameTickParams): boolean {
 
   if (gameMode) {
     const dashEntities = [
-      { id: 'player', x: player.x, y: player.y, vx: player.vx, vy: player.vy, size: player.size, isDashing: player.isDashing },
+      {
+        id: 'player',
+        x: player.x,
+        y: player.y,
+        vx: player.vx,
+        vy: player.vy,
+        size: player.size,
+        isDashing: !player.isExhausted && player.isDashing,
+      },
       ...state.fish
         .filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed')
         .map((f) => ({
@@ -869,7 +886,7 @@ export function tickGameState(params: GameTickParams): boolean {
           vx: f.vx ?? 0,
           vy: f.vy ?? 0,
           size: f.size,
-          isDashing: !!(f.isDashing && (f.stamina ?? 0) > 0),
+          isDashing: f.lifecycleState !== 'exhausted' && !!(f.isDashing && (f.stamina ?? 0) > 0),
         })),
     ];
     state.particles.dashMultiEntity.update(dashEntities, deltaTime);

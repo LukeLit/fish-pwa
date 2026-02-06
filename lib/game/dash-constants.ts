@@ -5,7 +5,9 @@
 
 // Dash mechanics
 export const DASH_SPEED_MULTIPLIER = 2;
-export const DASH_STAMINA_DRAIN_RATE = 16; // per second (2x for challenge)
+export const DASH_STAMINA_DRAIN_RATE = 16; // per second (player)
+/** AI drain faster so they visibly run out and enter exhausted during chase/flee */
+export const AI_DASH_STAMINA_DRAIN_RATE = 32;
 /** Each second of holding dash adds this to the drain multiplier (1 + holdSeconds * this). Capped at DASH_STAMINA_RAMP_CAP. */
 export const DASH_STAMINA_RAMP_PER_SECOND = 0.5;
 /** Max drain multiplier from holding dash (e.g. 2.5 = 2.5x base rate after ~3s hold) */

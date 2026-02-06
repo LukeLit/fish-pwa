@@ -89,6 +89,9 @@ export class DashParticleSystem {
       if (streakCount < 8 && Math.random() < 0.15) {
         this.spawnStreak(state, moveAngle);
       }
+    } else if (this.previousAction === 'dash') {
+      // Stopped dashing (e.g. exhausted): clear particles so they don't linger
+      this.particles = [];
     }
 
     this.previousAction = animationAction;

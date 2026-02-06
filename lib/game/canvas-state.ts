@@ -36,6 +36,8 @@ export interface FishEntity {
   stamina?: number;
   maxStamina?: number;
   isDashing?: boolean;
+  /** Set when entering exhausted; cleared when stamina refills to full. Prevents dashing until refill. */
+  recoveringFromExhausted?: boolean;
   chaseTargetId?: string;
   chaseStartTime?: number;
 }
