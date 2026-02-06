@@ -268,6 +268,29 @@ export async function loadCreaturesByBiome(biomeId: string): Promise<Creature[]>
   );
 }
 
+/** Load creatures that match any of the given biome/tag IDs (union pool). Dedupes by creature id. Fetches blob once. */
+export async function loadCreaturesByBiomes(biomeIds: string[]): Promise<Creature[]> {
+  if (biomeIds.length === 0) return [];
+  const tagSet = new Set(biomeIds);
+  const blobCreatures = await getAllCreaturesFromBlob();
+  const normalized = blobCreatures
+    .map(normalizeCreature)
+    .filter((c): c is Creature => c != null)
+    .filter(
+      (c) =>
+        tagSet.has(c.biomeId) || c.spawnRules.canAppearIn.some((b) => tagSet.has(b))
+    );
+  if (normalized.length > 0) return normalized;
+  const fallback = getAllCreatures()
+    .map(normalizeCreature)
+    .filter((c): c is Creature => c != null)
+    .filter(
+      (c) =>
+        tagSet.has(c.biomeId) || c.spawnRules.canAppearIn.some((b) => tagSet.has(b))
+    );
+  return fallback;
+}
+
 export async function loadAllCreatures(): Promise<Creature[]> {
   const blobCreatures = await getAllCreaturesFromBlob();
   const normalizedBlob = blobCreatures

@@ -1,4 +1,5 @@
 {
+  "level_tags": ["shallow", "shallow_tropical", "medium", "medium_polluted", "deep", "deep_sea", "abyssal", "polluted"],
   "depth_bands": {
     "1-1": {
       "phases": 3,

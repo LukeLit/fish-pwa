@@ -6,7 +6,7 @@
 
 import type { Creature } from './types';
 import { getLevelConfig } from './data/level-loader';
-import { loadCreaturesByBiome } from './data/creature-loader';
+import { loadCreaturesByBiome, loadCreaturesByBiomes } from './data/creature-loader';
 import { computeEncounterSize } from './spawn-fish';
 
 export type SpawnedCreatureForLevel = Creature & { id: string; creatureId?: string };
@@ -22,27 +22,30 @@ export interface CreateLevelResult {
  */
 export async function createLevel(biomeId: string, levelId: number): Promise<CreateLevelResult> {
   const rules = getLevelConfig(biomeId, levelId);
-  let pool = await loadCreaturesByBiome(biomeId);
+  const pool = rules.level_tags?.length
+    ? await loadCreaturesByBiomes(rules.level_tags)
+    : await loadCreaturesByBiome(biomeId);
+  let filteredPool = pool;
 
   // Filter by depth band: band-fit rule (creature range overlaps band range)
   const minM = rules.min_meters;
   const maxM = rules.max_meters;
   if (typeof minM === 'number' && typeof maxM === 'number') {
-    pool = pool.filter((c) => {
+    filteredPool = pool.filter((c) => {
       const minMeters = c.metrics?.min_meters ?? c.metrics?.base_meters ?? (c.stats.size / 100);
       const maxMeters = c.metrics?.max_meters ?? c.metrics?.base_meters ?? (c.stats.size / 100);
       return minMeters <= maxM && maxMeters >= minM;
     });
   }
 
-  if (pool.length === 0) {
+  if (filteredPool.length === 0) {
     return { spawnList: [] };
   }
 
-  const preyCreatures = pool.filter((c) => c.type === 'prey');
-  const predatorCreatures = pool.filter((c) => c.type === 'predator');
+  const preyCreatures = filteredPool.filter((c) => c.type === 'prey');
+  const predatorCreatures = filteredPool.filter((c) => c.type === 'predator');
   const apexPool = predatorCreatures.length > 0 ? predatorCreatures : [];
-  const preyPool = preyCreatures.length > 0 ? preyCreatures : pool;
+  const preyPool = preyCreatures.length > 0 ? preyCreatures : filteredPool;
 
   const spawnList: SpawnedCreatureForLevel[] = [];
   let spawnIndex = 0;

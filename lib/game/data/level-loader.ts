@@ -20,6 +20,8 @@ export interface LevelRules {
   fish_count: number;
   apex_count: number;
   sub_depths: string[];
+  /** Optional sub-tags (biome IDs) for fish pool; when set, pool = union of creatures from these tags. */
+  level_tags?: string[];
 }
 
 /** Stored depth band entry (no level_id; id is the band key e.g. "1-1"). */
@@ -54,6 +56,7 @@ export interface RunConfig {
 }
 
 type LevelConfig = {
+  level_tags?: string[];
   biomes?: Record<string, { id: string; depth_range_meters: DepthRangeMeters; levels: LevelRules[] }>;
   depth_bands?: Record<string, DepthBandEntry>;
   runs?: Record<string, { id: string; name: string; primary_biome?: string; steps?: string[]; levels?: RunLevelRef[] }>;
@@ -80,6 +83,10 @@ function levelIdToDepthBandId(levelId: number): string {
 }
 
 function parseDepthBandEntry(bandId: string, entry: DepthBandEntry, levelId: number): LevelRules {
+  const levelTags =
+    Array.isArray((config as LevelConfig).level_tags) && (config as LevelConfig).level_tags!.length > 0
+      ? (config as LevelConfig).level_tags
+      : undefined;
   return {
     level_id: levelId,
     phases: typeof entry.phases === 'number' ? entry.phases : DEFAULT_LEVEL_RULES.phases,
@@ -88,6 +95,7 @@ function parseDepthBandEntry(bandId: string, entry: DepthBandEntry, levelId: num
     fish_count: typeof entry.fish_count === 'number' ? entry.fish_count : DEFAULT_LEVEL_RULES.fish_count,
     apex_count: typeof entry.apex_count === 'number' ? entry.apex_count : DEFAULT_LEVEL_RULES.apex_count,
     sub_depths: Array.isArray(entry.sub_depths) ? entry.sub_depths.filter((s) => typeof s === 'string') : [],
+    level_tags: levelTags,
   };
 }
 
@@ -122,6 +130,10 @@ export function getLevelConfig(biomeId: string, levelId: number): LevelRules {
   if (levels?.length) {
     const rules = levels.find((l) => l.level_id === levelId);
     if (rules) {
+      const levelTags =
+        Array.isArray((config as LevelConfig).level_tags) && (config as LevelConfig).level_tags!.length > 0
+          ? (config as LevelConfig).level_tags
+          : undefined;
       return {
         level_id: rules.level_id,
         phases: typeof rules.phases === 'number' ? rules.phases : DEFAULT_LEVEL_RULES.phases,
@@ -130,6 +142,7 @@ export function getLevelConfig(biomeId: string, levelId: number): LevelRules {
         fish_count: typeof rules.fish_count === 'number' ? rules.fish_count : DEFAULT_LEVEL_RULES.fish_count,
         apex_count: typeof rules.apex_count === 'number' ? rules.apex_count : DEFAULT_LEVEL_RULES.apex_count,
         sub_depths: Array.isArray(rules.sub_depths) ? rules.sub_depths.filter((s) => typeof s === 'string') : [],
+        level_tags: levelTags,
       };
     }
   }
