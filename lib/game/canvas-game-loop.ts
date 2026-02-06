@@ -11,7 +11,7 @@ import type { Creature } from './types';
 import { getHeadPosition, getHeadRadius } from './canvas-collision';
 import { PHYSICS, AI, SPAWN, STAMINA, COLLISION, ANIMATION, PARTICLES, GAME } from './canvas-constants';
 import { createStaminaUpdater, type StaminaEntity } from './canvas-stamina';
-import { loadRunState } from './run-state';
+import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
 import { PLAYER_MAX_SIZE } from './spawn-fish';
 import {
   HUNGER_MAX,
@@ -514,6 +514,14 @@ export function tickGameState(params: GameTickParams): boolean {
             });
           }
         });
+        // Persist essence to run state for digestion screen
+        let runState = loadRunState();
+        if (runState && fish.creatureData?.essenceTypes?.length) {
+          fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }) => {
+            runState = addEssenceToRun(runState!, ec.type, ec.baseYield);
+          });
+          saveRunState(runState);
+        }
         if (hungerRestore > 0) {
           state.particles.chomp.push({
             x: player.x,
@@ -566,6 +574,28 @@ export function tickGameState(params: GameTickParams): boolean {
           text: k === 0 ? 'CHOMP' : ['!', '•', '*', '★'][k % 4],
           punchScale: 1.5,
         });
+      }
+      fish.creatureData?.essenceTypes?.forEach((ec: { type: string; baseYield: number }, i: number) => {
+        const et = ESSENCE_TYPES[ec.type];
+        if (et) {
+          state.particles.chomp.push({
+            x: eatX + (Math.random() - 0.5) * 24,
+            y: eatY - 20 - i * 18,
+            life: 1.5,
+            scale: 1.4,
+            text: `+${ec.baseYield} ${et.name}`,
+            color: et.color,
+            punchScale: 1.8,
+          });
+        }
+      });
+      // Persist essence to run state for digestion screen
+      let runState = loadRunState();
+      if (runState && fish.creatureData?.essenceTypes?.length) {
+        fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }) => {
+          runState = addEssenceToRun(runState!, ec.type, ec.baseYield);
+        });
+        saveRunState(runState);
       }
       pushBloodAt(state, eatX, eatY, fish.size * 1.2);
     }

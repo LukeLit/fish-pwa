@@ -33,6 +33,7 @@ export default function UpgradeSelectionScreen({
 }: UpgradeSelectionScreenProps) {
   const [selectedUpgrades, setSelectedUpgrades] = useState<UpgradeNode[]>([]);
   const [hoveredUpgrade, setHoveredUpgrade] = useState<string | null>(null);
+  const [usedFallbackTree, setUsedFallbackTree] = useState(false);
 
   useEffect(() => {
     // Generate initial upgrade options
@@ -40,12 +41,25 @@ export default function UpgradeSelectionScreen({
   }, [essenceType]);
 
   const generateUpgradeOptions = () => {
-    const upgradePool = getUpgradeTree(essenceType);
-    
+    let upgradePool = getUpgradeTree(essenceType);
+    let fallback = false;
+
     if (upgradePool.length === 0) {
-      console.warn(`No upgrades found for essence type: ${essenceType}`);
+      upgradePool = getUpgradeTree('shallow');
+      fallback = true;
+    }
+    if (upgradePool.length === 0) {
+      upgradePool = getUpgradeTree('meta');
+      fallback = true;
+    }
+    if (upgradePool.length === 0) {
+      console.warn(`No upgrades found for essence type: ${essenceType} or fallbacks`);
+      setUsedFallbackTree(false);
+      setSelectedUpgrades([]);
       return;
     }
+
+    setUsedFallbackTree(fallback);
 
     // Create weighted pool based on impact level
     const weightedPool: UpgradeNode[] = [];
@@ -146,6 +160,12 @@ export default function UpgradeSelectionScreen({
         <p className="dv-subtitle text-center mb-6 sm:mb-8 text-base sm:text-lg">
           Choose an Upgrade
         </p>
+
+        {usedFallbackTree && (
+          <p className="text-amber-400/90 text-center text-sm sm:text-base mb-4 px-4">
+            No {getEssenceName(essenceType)} upgrades available; showing general upgrades.
+          </p>
+        )}
 
         {/* Upgrade Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">

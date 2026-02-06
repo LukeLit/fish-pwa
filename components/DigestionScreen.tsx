@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import FeedbackButton from './FeedbackButton';
 import { UIButton, UIPanel, UICard } from './ui';
+import { getAllEssenceTypes } from '@/lib/game/data/essence-types';
 
 interface DigestionScreenProps {
   collectedEssence: Record<string, number>;
@@ -21,7 +22,7 @@ interface LevelUpInfo {
   remaining: number;
 }
 
-const LEVEL_UP_THRESHOLD = 30;
+const LEVEL_UP_THRESHOLD = 15;
 
 export default function DigestionScreen({
   collectedEssence,
@@ -104,25 +105,30 @@ export default function DigestionScreen({
           DIGESTION SEQUENCE
         </h1>
 
-        {/* Essence Display */}
+        {/* Essence Display - always show all known types with progress */}
         <div className="mb-6 sm:mb-8 space-y-3 animate-slide-in">
           <h2 className="text-xl sm:text-2xl dv-subtitle mb-3 sm:mb-4">Essence Collected:</h2>
-          {Object.entries(collectedEssence).map(([type, amount], index) => (
-            <UICard
-              key={type}
-              variant="cyan"
-              className="flex justify-between items-center animate-slide-in"
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              <span 
-                className="font-bold text-lg sm:text-xl uppercase tracking-wider"
-                style={{ color: getEssenceColor(type) }}
+          {getAllEssenceTypes().map((essenceType, index) => {
+            const amount = collectedEssence[essenceType.id] ?? 0;
+            return (
+              <UICard
+                key={essenceType.id}
+                variant="cyan"
+                className="flex justify-between items-center animate-slide-in"
+                style={{ animationDelay: `${index * 0.1}s` }}
               >
-                {getEssenceName(type)}
-              </span>
-              <span className="text-white font-bold text-xl sm:text-2xl">{amount}</span>
-            </UICard>
-          ))}
+                <span
+                  className="font-bold text-lg sm:text-xl uppercase tracking-wider"
+                  style={{ color: essenceType.color }}
+                >
+                  {essenceType.name}
+                </span>
+                <span className="text-white font-bold text-xl sm:text-2xl">
+                  {amount} / {LEVEL_UP_THRESHOLD}
+                </span>
+              </UICard>
+            );
+          })}
         </div>
 
         {/* Level-up calculations */}
