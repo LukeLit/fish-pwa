@@ -13,6 +13,7 @@ import {
 } from '@/lib/rendering/fish-renderer';
 import { HUNGER_LOW_THRESHOLD, HUNGER_WARNING_PULSE_FREQUENCY, HUNGER_WARNING_PULSE_BASE, HUNGER_WARNING_INTENSITY } from './hunger-constants';
 import { RENDERING, UI, WORLD_BOUNDS } from './canvas-constants';
+import { getRunConfig, getDepthBandRules } from './data/level-loader';
 import type { PlayerEntity, FishEntity, ChompParticle, BloodParticle, CameraState } from './canvas-state';
 import type { MultiEntityDashParticleManager } from '@/lib/rendering/multi-entity-dash-particles';
 import type { AnimationSprite } from '@/lib/rendering/animation-sprite';
@@ -47,6 +48,8 @@ export interface RenderOptions {
   score: number;
   fishCount: number;
   showBoundaryOverlay?: boolean;
+  showDepthBandOverlay?: boolean;
+  runId?: string;
   onEditFish?: (fishId: string) => void;
   setLastPlayerAnimAction: (action: string | null) => void;
 }
@@ -85,6 +88,8 @@ export function renderGame(options: RenderOptions): void {
     score,
     fishCount,
     showBoundaryOverlay = false,
+    showDepthBandOverlay = false,
+    runId = 'shallow_run',
     onEditFish,
     setLastPlayerAnimAction,
   } = options;
@@ -328,6 +333,125 @@ export function renderGame(options: RenderOptions): void {
       ctx.fillRect(b.minX - 50, b.minY - 100, OVERLAY_THICKNESS + 50, b.maxY - b.minY + 200);
     }
     ctx.restore();
+  }
+
+  // Draw depth band overlay in world space so bands mark actual depth and move with the camera.
+  // Map the current run's depth range (e.g. 0.2–1.2 m) to full world Y so bands span the playable area.
+  if (showDepthBandOverlay) {
+    const b = WORLD_BOUNDS;
+    const margin = 100;
+    const run = getRunConfig(runId);
+    const bandIds = run?.steps?.length ? run.steps : ['1-1', '1-2', '1-3'];
+    const bands = bandIds
+      .map((id, i) => ({ id, rules: getDepthBandRules(id, i + 1) }))
+      .filter(({ rules }) => typeof rules.min_meters === 'number' && typeof rules.max_meters === 'number');
+    if (bands.length > 0) {
+      const runMinMeters = Math.min(...bands.map(({ rules }) => rules.min_meters));
+      const runMaxMeters = Math.max(...bands.map(({ rules }) => rules.max_meters));
+      const runDepthSpan = Math.max(runMaxMeters - runMinMeters, 0.1);
+      const worldHeight = b.maxY - b.minY;
+      const metersToWorldY = (meters: number) =>
+        b.minY + ((meters - runMinMeters) / runDepthSpan) * worldHeight;
+
+      const bandAlphaById: Record<string, number> = { '1-1': 0.05, '1-2': 0.08, '1-3': 0.14 };
+      const bandAlphaByIndex = [0.05, 0.08, 0.14];
+      const getAlpha = (id: string, index: number) => bandAlphaById[id] ?? bandAlphaByIndex[Math.min(index, 2)] ?? 0.08;
+
+      ctx.save();
+      for (let i = 0; i < bands.length; i++) {
+        const { id, rules } = bands[i];
+        const yMin = metersToWorldY(rules.min_meters);
+        const yMax = metersToWorldY(rules.max_meters);
+        const bandHeight = yMax - yMin;
+        if (bandHeight <= 0) continue;
+        const gradient = ctx.createLinearGradient(b.minX - margin, yMin, b.minX - margin, yMax);
+        const alpha = getAlpha(id, i);
+        gradient.addColorStop(0, `rgba(0, 30, 60, 0)`);
+        gradient.addColorStop(0.15, `rgba(0, 30, 60, ${alpha * 0.6})`);
+        gradient.addColorStop(0.5, `rgba(0, 30, 60, ${alpha})`);
+        gradient.addColorStop(0.85, `rgba(0, 30, 60, ${alpha * 0.6})`);
+        gradient.addColorStop(1, `rgba(0, 30, 60, 0)`);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(b.minX - margin, yMin, b.maxX - b.minX + 2 * margin, bandHeight);
+      }
+      const boundaryYs = Array.from(
+        new Set(bands.flatMap(({ rules }) => [metersToWorldY(rules.min_meters), metersToWorldY(rules.max_meters)]))
+      ).sort((a, b) => a - b);
+      const eps = 1;
+      const deduped = boundaryYs.filter((y, i) => i === 0 || y - boundaryYs[i - 1] > eps);
+      const bandColors = [
+        'rgb(150, 220, 255)', // Band 1-1: light cyan
+        'rgb(100, 180, 255)', // Band 1-2: medium blue
+        'rgb(80, 140, 255)',  // Band 1-3: darker blue
+      ];
+      const getBandColor = (bandId: string, index: number) => {
+        const bandAlphaById: Record<string, number> = { '1-1': 0, '1-2': 1, '1-3': 2 };
+        const colorIndex = bandAlphaById[bandId] ?? Math.min(index, 2);
+        return bandColors[colorIndex] ?? 'rgb(200, 230, 255)';
+      };
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      for (const y of deduped) {
+        const yTolerance = 2;
+        const bandStartingHere = bands.find((band, idx) =>
+          Math.abs(metersToWorldY(band.rules.min_meters) - y) <= yTolerance
+        );
+        const bandEndingHere = bands.find((band, idx) =>
+          Math.abs(metersToWorldY(band.rules.max_meters) - y) <= yTolerance
+        );
+        const band = bandStartingHere ?? bandEndingHere;
+        const bandIndex = band ? bands.findIndex((b) => b.id === band.id) : 0;
+        const color = band ? getBandColor(band.id, bandIndex) : 'rgb(200, 230, 255)';
+        ctx.globalAlpha = 0.4;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(b.minX - margin, y);
+        ctx.lineTo(b.maxX + margin, y);
+        ctx.stroke();
+      }
+      const centerX = (b.minX + b.maxX) / 2;
+      const labelOffset = 15;
+      const lineHeight = 14;
+      const yTolerance = 2;
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let i = 0; i < deduped.length; i++) {
+        const y = deduped[i];
+        const bandStartingHere = bands.find((band) =>
+          Math.abs(metersToWorldY(band.rules.min_meters) - y) <= yTolerance
+        );
+        const bandEndingHere = bands.find((band) =>
+          Math.abs(metersToWorldY(band.rules.max_meters) - y) <= yTolerance
+        );
+        const band = bandStartingHere ?? bandEndingHere;
+        if (!band) continue;
+        const bandIndex = bands.findIndex((b) => b.id === band.id);
+        const color = getBandColor(band.id, bandIndex);
+        const slash = band.id.replace('-', '/');
+        const minM = band.rules.min_meters;
+        const maxM = band.rules.max_meters;
+        const depthStr = typeof minM === 'number' && typeof maxM === 'number'
+          ? `${minM}–${maxM} m`
+          : `Depth ${slash}`;
+        const levelLabel = bandStartingHere ? `Start ${slash}` : `End ${slash}`;
+        const depthLabel = depthStr;
+        const labelY = y - labelOffset;
+        ctx.fillStyle = color;
+        ctx.fillText(levelLabel, centerX, labelY - lineHeight / 2);
+        ctx.fillText(depthLabel, centerX, labelY + lineHeight / 2);
+      }
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = 'rgb(200, 230, 255)';
+      ctx.beginPath();
+      ctx.moveTo(b.minX, b.minY);
+      ctx.lineTo(b.minX, b.maxY);
+      ctx.moveTo(b.maxX, b.minY);
+      ctx.lineTo(b.maxX, b.maxY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
   }
 
   // Restore zoom transform (now in screen space)
@@ -643,7 +767,7 @@ function renderGameUI(
 
   let hungerColor;
   if (hungerPercent > 0.5) {
-    hungerColor = '#4ade80';
+    hungerColor = '#f59e0b';
   } else if (hungerPercent > 0.25) {
     hungerColor = '#fbbf24';
   } else {
@@ -675,7 +799,10 @@ function renderGameUI(
   // Stamina bar
   const staminaBarY = hungerBarY + hungerBarHeight + UI.STAMINA_BAR_SPACING;
   const staminaPercent = player.stamina / player.maxStamina;
-  const staminaColor = staminaPercent > UI.STAMINA_LOW_THRESHOLD ? '#4ade80' : '#ef4444';
+  const staminaColor = staminaPercent > UI.STAMINA_LOW_THRESHOLD ? '#22d3ee' : '#ef4444';
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.lineWidth = 2;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
   ctx.fillRect(hungerBarX, staminaBarY, hungerBarWidth, UI.STAMINA_BAR_HEIGHT);
   ctx.strokeRect(hungerBarX, staminaBarY, hungerBarWidth, UI.STAMINA_BAR_HEIGHT);
@@ -683,7 +810,11 @@ function renderGameUI(
   const staminaFillWidth = (hungerBarWidth - UI.HUNGER_BAR_PADDING * 2) * staminaPercent;
   ctx.fillRect(hungerBarX + UI.HUNGER_BAR_PADDING, staminaBarY + UI.HUNGER_BAR_PADDING, staminaFillWidth, UI.STAMINA_BAR_HEIGHT - UI.HUNGER_BAR_PADDING * 2);
   ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillText(`STAMINA: ${Math.ceil(player.stamina)}%`, hungerBarX + hungerBarWidth / 2, staminaBarY + UI.STAMINA_BAR_HEIGHT / 2);
+  ctx.restore();
 
   // Timer
   const timerY = staminaBarY + UI.STAMINA_BAR_HEIGHT + UI.TIMER_SPACING;

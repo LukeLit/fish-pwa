@@ -192,14 +192,51 @@ export const BIOME_CHUNKS: Record<string, string[]> = {
 
 /**
  * Ability visual chunks that can be added when a fish has a given upgrade.
+ * Keys match ability IDs in lib/game/data/abilities.ts.
  */
 export const ABILITY_CHUNKS: Record<string, string[]> = {
+  // Legacy / optional IDs (may not exist in abilities.ts)
   spiked_skin: ['armored, spiked scales'],
-  bioluminescence: ['glowing patterns or lures'],
   camouflage: ['shifting, mottled colors'],
   electric: ['crackling electric sparks', 'glowing electric lines'],
-  regeneration: ['visible healing scars', 'vibrant regenerating tissue'],
   toxic: ['oozing, greenish patches', 'high-contrast warning colors'],
+  // abilities.ts
+  essence_magnet: ['subtle magnetic field, essence drawn toward body'],
+  swift_current: ['streamlined fins', 'motion blur when darting'],
+  shield: ['tough scaled armor', 'protective sheen'],
+  bioluminescence: ['glowing patterns or lures'],
+  regeneration: ['visible healing scars', 'vibrant regenerating tissue'],
+  essence_range: ['subtle aura around fish', 'essence affinity'],
+  run_start_bonus: ['slightly larger, fit build'],
+  hunger_resistance: ['robust, well-fed look'],
+  speed_bonus: ['streamlined', 'powerful tail'],
+  extra_life: ['resilient scales', 'second-wind vigor'],
+  coral_armor: ['armored, coral-like scales'],
+  reef_dash: ['sleek reef-dweller build', 'quick-dart fins'],
+  kelp_heal: ['kelp-touched coloring', 'calm, restorative look'],
+  fin_slash: ['sharp leading fin edges', 'predatory fin shape'],
+  pressure_shell: ['thick, pressure-resistant scales', 'deep-dweller build'],
+  lure: ['glowing lure or barbel', 'bioluminescent lure'],
+  ink_cloud: ['ink-sac marking', 'cloudy discharge possible'],
+  abyssal_siphon: ['siphon-like mouth or markings', 'dark abyssal tones'],
+  bright_scales: ['bright, reflective scales', 'iridescent sheen'],
+  warm_current: ['warm-water coloring', 'tropical flow lines'],
+  reef_blend: ['reef-matching mottling', 'camouflage patterns'],
+  tropical_heal: ['sun-touched highlights', 'vibrant healthy coloring'],
+  sun_burst: ['bright dorsal stripe', 'surface-sun accent'],
+  current_rider: ['current-swept fins', 'flowing streamlined shape'],
+  toxin_resistance: ['thick slime coat', 'industrial-scale toughness'],
+  sludge_trail: ['slightly murky trailing edge', 'pollution-adapted scales'],
+  filter_feed: ['filter-feeder mouth', 'sturdy gill structure'],
+  corrosive_touch: ['acid-tinted markings', 'caustic gland hints'],
+  adaptive_scales: ['variable scale texture', 'adaptive coloring'],
+  murk_vision: ['large, clear eyes', 'murky-water adaptation'],
+  cross_essence: ['mixed essence glow', 'dual-tone accents'],
+  fused_traits: ['hybrid morphology', 'combined lineage cues'],
+  dual_resistance: ['reinforced scales', 'dual-environment build'],
+  hybrid_speed: ['hybrid streamlined form', 'efficient musculature'],
+  mixed_lure: ['combined lure and glow', 'multi-attract markings'],
+  evolution_burst: ['evolution-ready build', 'burst-capable musculature'],
 };
 
 /**

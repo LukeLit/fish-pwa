@@ -88,6 +88,10 @@ interface FishEditorCanvasProps {
   enableWaterDistortion?: boolean;
   deformationIntensity?: number;
   showBoundaryOverlay?: boolean;
+  showDepthBandOverlay?: boolean;
+  runId?: string;
+  /** Game mode: when set, canvas player size/sprite sync from this value (e.g. cheats) */
+  syncedPlayerSize?: number;
   // Game mode features
   gameMode?: boolean;
   levelDuration?: number; // in milliseconds
@@ -118,6 +122,9 @@ export default function FishEditorCanvas({
   enableWaterDistortion = false,
   deformationIntensity = 1,
   showBoundaryOverlay = false,
+  showDepthBandOverlay = false,
+  runId = 'shallow_run',
+  syncedPlayerSize,
   gameMode = false,
   levelDuration = 60000,
   onGameOver,
@@ -153,6 +160,8 @@ export default function FishEditorCanvas({
   const pausedRef = useRef<boolean>(paused);
   const showEditButtonsRef = useRef<boolean>(showEditButtons);
   const showBoundaryOverlayRef = useRef<boolean>(showBoundaryOverlay);
+  const showDepthBandOverlayRef = useRef<boolean>(showDepthBandOverlay);
+  const runIdRef = useRef<string>(runId);
   const editButtonPositionsRef = useRef<Map<string, { x: number; y: number; size: number }>>(new Map());
 
   // Initialize systems
@@ -184,6 +193,8 @@ export default function FishEditorCanvas({
   }, [paused])
   useEffect(() => { showEditButtonsRef.current = showEditButtons }, [showEditButtons])
   useEffect(() => { showBoundaryOverlayRef.current = showBoundaryOverlay }, [showBoundaryOverlay])
+  useEffect(() => { showDepthBandOverlayRef.current = showDepthBandOverlay }, [showDepthBandOverlay])
+  useEffect(() => { runIdRef.current = runId }, [runId])
 
   // Shared spawn logic for player and AI
   const spawnPlayerFish = (fish: FishData) => {
@@ -597,6 +608,26 @@ export default function FishEditorCanvas({
       gameStateRef.current.player.sprite = null;
     }
   }, [playerFishSprite, playerCreature, gameMode]);
+
+  // Game mode: when syncedPlayerSize changes (e.g. size cheat), apply to player and refresh sprite
+  useEffect(() => {
+    if (!gameMode || syncedPlayerSize == null || !playerCreature) return;
+    const size = syncedPlayerSize;
+    gameStateRef.current.player.size = size;
+    gameStateRef.current.player.baseSize = size;
+    if (playerFishSprite && playerCreature.growthSprites) {
+      const { sprite: growthSprite } = getGrowthStageSprite(playerCreature, size, 'player');
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
+      };
+      img.onerror = () => {
+        gameStateRef.current.player.sprite = null;
+      };
+      img.src = cacheBust(growthSprite);
+    }
+  }, [gameMode, syncedPlayerSize, playerCreature, playerFishSprite]);
 
   // Note: Fish sizes are updated via updateFishSize events from the size slider
   // We don't sync from fishData here to allow independent sizing of fish instances
@@ -1044,6 +1075,8 @@ export default function FishEditorCanvas({
         score: gameStateRef.current.gameMode.score,
         fishCount: gameStateRef.current.fish.length,
         showBoundaryOverlay: showBoundaryOverlayRef.current,
+        showDepthBandOverlay: showDepthBandOverlayRef.current,
+        runId: runIdRef.current,
         onEditFish,
         setLastPlayerAnimAction: (action) => { lastPlayerAnimActionRef.current = action; },
       });

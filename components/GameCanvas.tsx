@@ -23,6 +23,8 @@ import { DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { loadCreatureById } from '@/lib/game/data/creature-loader';
 import { createLevel } from '@/lib/game/create-level';
 import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
+import { ART } from '@/lib/game/canvas-constants';
+import type { CheatSizeStage } from './SettingsDrawer';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
@@ -46,6 +48,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
   const [showPauseMenu, setShowPauseMenu] = useState(false);
   const paused = settingsDrawerOpen || showPauseMenu;
+
+  const [showDepthBandOverlay, setShowDepthBandOverlay] = useState(true);
 
   const [playerStats, setPlayerStats] = useState<PlayerGameStats | null>(null);
   const [playerFishData, setPlayerFishData] = useState<FishData | null>(null);
@@ -300,6 +304,44 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     }
   }, []);
 
+  // Helper to parse level string (e.g. "1-1" -> levelNum 1)
+  const parseLevelString = useCallback((levelStr: string): number => {
+    const parts = levelStr.split('-');
+    if (parts.length !== 2) return 1;
+    return parseInt(parts[1], 10) || 1;
+  }, []);
+
+  // Cheat: skip to a depth band level
+  const handleCheatLevel = useCallback(async (depthBandId: string) => {
+    const rs = loadRunState();
+    if (!rs) return;
+    const updated = { ...rs, currentLevel: depthBandId };
+    saveRunState(updated);
+    setRunState(updated);
+    setCurrentLevel(depthBandId);
+    const levelNum = parseLevelString(depthBandId);
+    setLevelDuration(60000 + (levelNum - 1) * 15000);
+    const biomeId = 'shallow';
+    const result = await createLevel(biomeId, levelNum);
+    setSpawnedFish(result.spawnList);
+  }, [parseLevelString]);
+
+  // Cheat: set player size to a growth stage (juvenile / adult / elder)
+  const handleCheatSize = useCallback((stage: CheatSizeStage) => {
+    const sizes: Record<CheatSizeStage, number> = {
+      juvenile: 50,
+      adult: 150,
+      elder: 250,
+    };
+    const size = Math.max(ART.SIZE_MIN, Math.min(ART.SIZE_MAX, sizes[stage]));
+    const rs = loadRunState();
+    if (!rs) return;
+    const spriteUrl = playerCreature ? getSpriteUrlForSize(playerCreature, size) : rs.fishState.sprite;
+    const updated = updateFishState(rs, { size, sprite: spriteUrl });
+    saveRunState(updated);
+    setRunState(updated);
+  }, [playerCreature]);
+
   if (!isClient) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black" style={{ minHeight: '600px' }}>
@@ -349,6 +391,11 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
       <SettingsDrawer
         mode="game"
         onOpenChange={setSettingsDrawerOpen}
+        showDepthBandOverlay={showDepthBandOverlay}
+        onDepthBandOverlayChange={setShowDepthBandOverlay}
+        currentLevel={currentLevel}
+        onCheatLevel={handleCheatLevel}
+        onCheatSize={handleCheatSize}
       />
 
       <FishEditorCanvas
@@ -361,10 +408,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         zoom={1}
         enableWaterDistortion={false}
         deformationIntensity={1}
+        showDepthBandOverlay={showDepthBandOverlay}
+        runId="shallow_run"
         gameMode={true}
         levelDuration={levelDuration}
         paused={paused}
         dashFromControlsRef={dashFromControlsRef}
+        syncedPlayerSize={runState?.fishState.size}
         onStatsUpdate={handleStatsUpdate}
         onGameOver={(stats) => {
           clearRunState();

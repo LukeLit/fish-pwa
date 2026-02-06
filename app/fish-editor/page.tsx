@@ -54,6 +54,15 @@ export default function FishEditorPage() {
       return false;
     }
   });
+  const [showDepthBandOverlay, setShowDepthBandOverlay] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const stored = localStorage.getItem('fish_editor_show_depth_band_overlay');
+      return stored === null || stored === 'true';
+    } catch {
+      return true;
+    }
+  });
   const [editMode, setEditMode] = useState<boolean>(false);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
@@ -1009,6 +1018,8 @@ export default function FishEditorPage() {
             enableWaterDistortion={enableWaterDistortion}
             deformationIntensity={deformationIntensity}
             showBoundaryOverlay={showBoundaryOverlay}
+            showDepthBandOverlay={showDepthBandOverlay}
+            runId="shallow_run"
             editMode={editMode}
             selectedFishId={selectedFishId}
             onEditFish={handleEditFish}
@@ -1052,6 +1063,7 @@ export default function FishEditorPage() {
             enableWaterDistortion,
             deformationIntensity,
             showBoundaryOverlay,
+            showDepthBandOverlay,
             spawnedFishCount: spawnedFish.length,
           }}
           onZoomChange={setZoom}
@@ -1062,6 +1074,12 @@ export default function FishEditorPage() {
             setShowBoundaryOverlay(enabled);
             try {
               localStorage.setItem('fish_editor_show_boundary_overlay', String(enabled));
+            } catch { /* ignore */ }
+          }}
+          onDepthBandOverlayChange={(enabled: boolean) => {
+            setShowDepthBandOverlay(enabled);
+            try {
+              localStorage.setItem('fish_editor_show_depth_band_overlay', String(enabled));
             } catch { /* ignore */ }
           }}
           onClearFish={handleClearFish}

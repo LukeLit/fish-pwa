@@ -94,6 +94,9 @@ export const WORLD_BOUNDS = {
   maxY: 1200,
 } as const;
 
+// Depth band visual: global depth range in meters (shallow 0 → deep 6) for meters→world Y mapping
+export const DEPTH_METERS_MAX = 6;
+
 // Particle system configs
 export const PARTICLES = {
   PLAYER_DASH_FLOW_CAP: 200,

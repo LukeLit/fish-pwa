@@ -11,7 +11,7 @@ import { PLAYER_BASE_SIZE, PLAYER_MAX_SIZE } from './spawn-fish';
 import { HUNGER_MAX, HUNGER_DRAIN_RATE } from './hunger-constants';
 import { PARTICLES, WORLD_BOUNDS } from './canvas-constants';
 
-export type FishLifecycleState = 'spawning' | 'active' | 'knocked_out' | 'despawning' | 'removed';
+export type FishLifecycleState = 'spawning' | 'active' | 'exhausted' | 'knocked_out' | 'despawning' | 'removed';
 
 export interface FishEntity {
   id: string;
@@ -59,6 +59,7 @@ export interface PlayerEntity {
   stamina: number;
   maxStamina: number;
   isDashing: boolean;
+  isExhausted?: boolean;
   animations?: CreatureAnimations;
 }
 
@@ -153,6 +154,7 @@ export class CanvasGameState {
       stamina: 100,
       maxStamina: 100,
       isDashing: false,
+      isExhausted: false,
     };
 
     this.fish = [];
@@ -218,6 +220,7 @@ export class CanvasGameState {
     this.player.hunger = HUNGER_MAX;
     this.player.stamina = 100;
     this.player.isDashing = false;
+    this.player.isExhausted = false;
     this.dashHoldDurationMs = 0;
   }
 
@@ -239,6 +242,7 @@ export class CanvasGameState {
     this.player.hunger = HUNGER_MAX;
     this.player.stamina = 100;
     this.player.isDashing = false;
+    this.player.isExhausted = false;
   }
 
   /**

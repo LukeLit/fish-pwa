@@ -30,6 +30,7 @@ interface SceneSettings {
   enableWaterDistortion: boolean;
   deformationIntensity: number;
   showBoundaryOverlay?: boolean;
+  showDepthBandOverlay?: boolean;
   spawnedFishCount: number;
 }
 
@@ -76,6 +77,7 @@ interface PauseMenuProps {
   onWaterDistortionChange?: (enabled: boolean) => void;
   onDeformationIntensityChange?: (intensity: number) => void;
   onBoundaryOverlayChange?: (enabled: boolean) => void;
+  onDepthBandOverlayChange?: (enabled: boolean) => void;
   onClearFish?: () => void;
   onBackToMenu?: () => void;
   /** Called when pending changes state changes in the fish editor */
@@ -115,6 +117,7 @@ export default function PauseMenu({
   onWaterDistortionChange,
   onDeformationIntensityChange,
   onBoundaryOverlayChange,
+  onDepthBandOverlayChange,
   onClearFish,
   onBackToMenu,
   onExitFishEdit,
@@ -579,6 +582,20 @@ export default function PauseMenu({
                       <span className="text-sm font-bold text-white">Show Depth Boundary Overlay</span>
                     </label>
                     <p className="text-xs text-gray-400 mt-1">Low-opacity red when blocked at world edges</p>
+                  </div>
+
+                  {/* Depth Band Overlay */}
+                  <div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sceneSettings.showDepthBandOverlay ?? false}
+                        onChange={(e) => onDepthBandOverlayChange?.(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-bold text-white">Show Depth Bands</span>
+                    </label>
+                    <p className="text-xs text-gray-400 mt-1">Dotted lines and darker overlay for depth band sections</p>
                   </div>
 
                   {/* Clear fish */}

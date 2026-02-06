@@ -17,6 +17,9 @@ export const SWALLOW_SIZE_RATIO = 2.0;  // Can swallow if ≥2x target size
 export const ATTACK_SIZE_RATIO = 1.2;   // Can damage if ≥1.2x target size
 export const BATTLE_SIZE_THRESHOLD = 0.2; // Within 20% = stamina battle
 
+// Exhausted state (stamina drained from use; move at 75% until refill)
+export const EXHAUSTED_SPEED_MULTIPLIER = 0.75;
+
 // Knocked out state
 export const KO_STAMINA_REGEN_MULTIPLIER = 0.5; // 50% normal regen
 export const KO_WAKE_THRESHOLD = 0.4; // Wake at 40% stamina

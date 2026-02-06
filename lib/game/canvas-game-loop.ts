@@ -30,6 +30,7 @@ import {
   KO_DRIFT_SPEED,
   PREY_FLEE_STAMINA_MULTIPLIER,
   ATTACK_LARGER_STAMINA_MULTIPLIER,
+  EXHAUSTED_SPEED_MULTIPLIER,
 } from './dash-constants';
 import { ESSENCE_TYPES } from './data/essence-types';
 import {
@@ -139,12 +140,28 @@ export function tickGameState(params: GameTickParams): boolean {
       updateStamina(player, deltaTime);
     }
     if (player.stamina <= 0) player.isDashing = false;
+    player.isExhausted = player.stamina <= 0;
+    if (player.stamina >= player.maxStamina) player.isExhausted = false;
   } else {
     player.isDashing = false;
     state.dashHoldDurationMs = 0;
   }
 
-  const effectiveMaxSpeed = (gameMode && player.isDashing) ? MAX_SPEED * PHYSICS.DASH_SPEED_MULTIPLIER : MAX_SPEED;
+  let effectiveMaxSpeed = MAX_SPEED;
+  if (gameMode) {
+    if (player.isExhausted) {
+      effectiveMaxSpeed = MAX_SPEED * EXHAUSTED_SPEED_MULTIPLIER;
+    } else if (player.isDashing) {
+      effectiveMaxSpeed = MAX_SPEED * PHYSICS.DASH_SPEED_MULTIPLIER;
+    }
+  }
+  if (gameMode && player.isExhausted) {
+    const sp = Math.sqrt(player.vx ** 2 + player.vy ** 2);
+    if (sp > effectiveMaxSpeed && sp > 0) {
+      player.vx = (player.vx / sp) * effectiveMaxSpeed;
+      player.vy = (player.vy / sp) * effectiveMaxSpeed;
+    }
+  }
 
   if (!currentEditMode && !isPaused) {
     if (input.joystick.active) {
@@ -152,7 +169,7 @@ export function tickGameState(params: GameTickParams): boolean {
       player.vy = input.joystick.y * effectiveMaxSpeed;
     } else {
       const hasKey = (k: string) => input.keys.has(k.toLowerCase());
-      const accelMult = (gameMode && player.isDashing) ? 1.3 : 1;
+      const accelMult = (gameMode && player.isDashing && !player.isExhausted) ? 1.3 : 1;
       const accel = ACCELERATION * deltaTime * accelMult;
       const friction = Math.pow(FRICTION, deltaTime);
       if (hasKey('w') || hasKey('arrowup')) player.vy -= accel;
@@ -649,7 +666,19 @@ export function tickGameState(params: GameTickParams): boolean {
     }
 
     if (!currentEditMode && !isPaused) {
-      if (gameMode && fish.lifecycleState === 'knocked_out') {
+      if (gameMode && fish.lifecycleState === 'exhausted') {
+        fish.isDashing = false;
+        updateStamina(fish as StaminaEntity, deltaTime);
+        fish.vx = (fish.vx ?? 0) + (Math.random() - 0.5) * AI.WANDER_JITTER;
+        fish.vy = (fish.vy ?? 0) + (Math.random() - 0.5) * AI.WANDER_JITTER;
+        const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * (fish.type === 'prey' ? AI_PREY_FLEE_SPEED : AI_PREDATOR_CHASE_SPEED);
+        const sp = Math.sqrt((fish.vx ?? 0) ** 2 + (fish.vy ?? 0) ** 2);
+        if (sp > exhaustedMaxSpeed && sp > 0) {
+          fish.vx = (fish.vx! / sp) * exhaustedMaxSpeed;
+          fish.vy = (fish.vy! / sp) * exhaustedMaxSpeed;
+        }
+        if ((fish.stamina ?? 0) >= (fish.maxStamina ?? STAMINA.DEFAULT_MAX)) fish.lifecycleState = 'active';
+      } else if (gameMode && fish.lifecycleState === 'knocked_out') {
         fish.stamina = Math.min(fish.maxStamina ?? STAMINA.DEFAULT_MAX, (fish.stamina ?? 0) + STAMINA.AI_REGEN_RATE * KO_STAMINA_REGEN_MULTIPLIER * (deltaTime / 60));
         if ((fish.stamina ?? 0) >= (fish.maxStamina ?? STAMINA.DEFAULT_MAX) * KO_WAKE_THRESHOLD) fish.lifecycleState = 'active';
         fish.vx = (fish.vx ?? 0) * 0.98 + (Math.random() - 0.5) * KO_DRIFT_SPEED * 0.02;
@@ -661,7 +690,7 @@ export function tickGameState(params: GameTickParams): boolean {
         }
       } else if (gameMode && (fish.type === 'prey' || fish.type === 'predator' || fish.type === 'mutant') && fish.lifecycleState === 'active') {
         const others = state.fish.filter(
-          (f) => f.id !== fish.id && (f.lifecycleState === 'active' || f.lifecycleState === 'knocked_out') && (f.opacity ?? 1) >= 1
+          (f) => f.id !== fish.id && (f.lifecycleState === 'active' || f.lifecycleState === 'exhausted' || f.lifecycleState === 'knocked_out') && (f.opacity ?? 1) >= 1
         );
         const speedMult = (fish.isDashing && (fish.stamina ?? 0) > 0) ? PHYSICS.DASH_SPEED_MULTIPLIER : 1;
         const baseSpeed = AI_BASE_SPEED * speedMult;
@@ -720,7 +749,16 @@ export function tickGameState(params: GameTickParams): boolean {
             fish.isDashing = false;
           }
           updateStamina(fish as StaminaEntity, deltaTime);
-          if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
+          if ((fish.stamina ?? 0) <= 0) {
+            fish.isDashing = false;
+            fish.lifecycleState = 'exhausted';
+            const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREDATOR_CHASE_SPEED;
+            const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
+            if (sp > exhaustedMaxSpeed && sp > 0) {
+              fish.vx = (fish.vx / sp) * exhaustedMaxSpeed;
+              fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
+            }
+          }
         } else if (fish.type === 'prey') {
           let fleeX = 0;
           let fleeY = 0;
@@ -764,16 +802,27 @@ export function tickGameState(params: GameTickParams): boolean {
             fish.isDashing = false;
           }
           updateStamina(fish as StaminaEntity, deltaTime, { fleeMultiplier: fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1 });
-          if ((fish.stamina ?? 0) <= 0) fish.isDashing = false;
+          if ((fish.stamina ?? 0) <= 0) {
+            fish.isDashing = false;
+            fish.lifecycleState = 'exhausted';
+            const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREY_FLEE_SPEED;
+            const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
+            if (sp > exhaustedMaxSpeed && sp > 0) {
+              fish.vx = (fish.vx / sp) * exhaustedMaxSpeed;
+              fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
+            }
+          }
         }
 
-        const effectiveMax = (fish.type === 'predator' || fish.type === 'mutant')
-          ? baseSpeed * AI_PREDATOR_CHASE_SPEED
-          : baseSpeed * AI_PREY_FLEE_SPEED;
-        const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
-        if (sp > effectiveMax && sp > 0) {
-          fish.vx = (fish.vx / sp) * effectiveMax;
-          fish.vy = (fish.vy / sp) * effectiveMax;
+        if (fish.lifecycleState === 'active') {
+          const effectiveMax = (fish.type === 'predator' || fish.type === 'mutant')
+            ? baseSpeed * AI_PREDATOR_CHASE_SPEED
+            : baseSpeed * AI_PREY_FLEE_SPEED;
+          const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
+          if (sp > effectiveMax && sp > 0) {
+            fish.vx = (fish.vx / sp) * effectiveMax;
+            fish.vy = (fish.vy / sp) * effectiveMax;
+          }
         }
       } else if (!gameMode || (fish.type !== 'prey' && fish.type !== 'predator')) {
         if (Math.random() < AI.RANDOM_DIRECTION_CHANCE) {

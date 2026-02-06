@@ -5,14 +5,34 @@ import { useRouter } from 'next/navigation';
 import FeedbackButton from './FeedbackButton';
 import { Z_LAYERS } from '@/lib/ui/z-layers';
 
+/** All depth band ids for level skip cheat (matches level-config depth_bands) */
+const DEPTH_BAND_IDS = [
+  '1-1', '1-2', '1-3',
+  '2-1', '2-2', '2-3',
+  '3-1', '3-2', '3-3',
+  '4-1', '4-2', '4-3',
+] as const;
+
+export type CheatSizeStage = 'juvenile' | 'adult' | 'elder';
+
 interface SettingsDrawerProps {
   /** Whether this is in game mode (shows different options) */
   mode: 'game' | 'editor';
   /** Called when drawer opens or closes */
   onOpenChange?: (open: boolean) => void;
+  /** Game only: show depth band overlay on canvas */
+  showDepthBandOverlay?: boolean;
+  /** Game only: called when depth band overlay toggle changes */
+  onDepthBandOverlayChange?: (enabled: boolean) => void;
+  /** Game only: current level (e.g. "1-1") for cheat section */
+  currentLevel?: string;
+  /** Game only: skip to a depth band level */
+  onCheatLevel?: (depthBandId: string) => void;
+  /** Game only: set player size to a growth stage */
+  onCheatSize?: (stage: CheatSizeStage) => void;
 }
 
-export default function SettingsDrawer({ mode, onOpenChange }: SettingsDrawerProps) {
+export default function SettingsDrawer({ mode, onOpenChange, showDepthBandOverlay, onDepthBandOverlayChange, currentLevel, onCheatLevel, onCheatSize }: SettingsDrawerProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -166,6 +186,60 @@ export default function SettingsDrawer({ mode, onOpenChange }: SettingsDrawerPro
                 <FeedbackButton variant="full" />
               </div>
 
+              {/* Cheats Section (game only) */}
+              {mode === 'game' && (onCheatLevel != null || onCheatSize != null) && (
+                <div className="pt-4 border-t border-gray-700 space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Cheats</p>
+
+                  {onCheatLevel != null && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400 mb-1">Level</p>
+                      <div className="grid grid-cols-3 gap-1">
+                        {DEPTH_BAND_IDS.map((id) => (
+                          <button
+                            key={id}
+                            onClick={() => onCheatLevel(id)}
+                            className={`px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                              currentLevel === id
+                                ? 'bg-cyan-600 text-white'
+                                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                            }`}
+                          >
+                            {id}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {onCheatSize != null && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400 mb-1">Size</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => onCheatSize('juvenile')}
+                          className="flex-1 px-3 py-2 rounded text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors"
+                        >
+                          Juvenile
+                        </button>
+                        <button
+                          onClick={() => onCheatSize('adult')}
+                          className="flex-1 px-3 py-2 rounded text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors"
+                        >
+                          Adult
+                        </button>
+                        <button
+                          onClick={() => onCheatSize('elder')}
+                          className="flex-1 px-3 py-2 rounded text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors"
+                        >
+                          Elder
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Settings Section */}
               <div className="pt-4 border-t border-gray-700 space-y-1">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Settings</p>
@@ -189,6 +263,23 @@ export default function SettingsDrawer({ mode, onOpenChange }: SettingsDrawerPro
                   </div>
                   <span className="text-xs text-gray-500">Coming soon</span>
                 </div>
+
+                {mode === 'game' && showDepthBandOverlay !== undefined && onDepthBandOverlayChange && (
+                  <label className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-white bg-gray-800 cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                      </svg>
+                      <span className="text-sm">Depth bands</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showDepthBandOverlay}
+                      onChange={(e) => onDepthBandOverlayChange(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                    />
+                  </label>
+                )}
               </div>
             </div>
 
