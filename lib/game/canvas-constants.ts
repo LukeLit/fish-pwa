@@ -53,11 +53,20 @@ export const SPAWN = {
   STAGGER_DELAY_MIN: 100, // Minimum delay between spawns (ms)
   STAGGER_DELAY_MAX: 200, // Maximum delay between spawns (ms)
   DEFAULT_MAX_FISH: 45, // Base max fish count
+  /** Extra cap: up to this many additional fish allowed if they are small prey (per band). */
+  SMALL_PREY_EXTRA_CAP: 50,
   RESPAWN_INTERVAL_MS: 2000, // Default respawn interval
+  /** Faster respawn for small prey so the ecosystem keeps enough food for the player. */
+  SMALL_PREY_RESPAWN_INTERVAL_MS: 400,
   FISH_SIZE_MIN: 0.5, // Min size multiplier for spawned AI fish
   FISH_SIZE_MAX: 2, // Max size multiplier for spawned AI fish
   SMALL_PREY_SIZE_THRESHOLD: 50, // Respawn pool: size < this = small prey (extra copies)
   PREY_SIZE_THRESHOLD: 80, // Respawn pool: size < this = prey (extra copies)
+  /** Small prey of the same type spawn in schools of this size range (min inclusive, max inclusive). */
+  SCHOOL_SIZE_MIN: 2,
+  SCHOOL_SIZE_MAX: 5,
+  /** World-space radius for school clustering (fish spawn within this distance of anchor). */
+  SCHOOL_RADIUS: 100,
   DEFAULT_CREATURE_SIZE: 60, // Fallback when stats.size unknown
   PREY_DEFAULT_SIZE: 30,
   PREDATOR_DEFAULT_SIZE: 100,
@@ -80,10 +89,12 @@ export const UI = {
   STAMINA_LOW_THRESHOLD: 0.3, // 30% - color changes below this
 } as const;
 
-// Game mode (score, stats throttle)
+// Game mode (score, stats throttle, level timing)
 export const GAME = {
   SCORE_PER_SIZE_UNIT: 10, // score = (player.size - baseSize) * this
   STATS_UPDATE_CHANCE: 0.07, // Throttle onStatsUpdate to ~4fps (Math.random() < this)
+  /** Default level duration in ms when not set (60s). Used as fallback so timer and level-complete always work. */
+  DEFAULT_LEVEL_DURATION_MS: 60000,
 } as const;
 
 // World bounds
@@ -97,12 +108,16 @@ export const WORLD_BOUNDS = {
 // Depth band visual: global depth range in meters (shallow 0 → deep 6) for meters→world Y mapping
 export const DEPTH_METERS_MAX = 6;
 
-// Particle system configs
+// Particle system configs (dash: emission by distance/speed; no burst)
 export const PARTICLES = {
   PLAYER_DASH_FLOW_CAP: 200,
-  PLAYER_DASH_SPAWN_PER_FRAME: 1,
+  PLAYER_DASH_FLOW_DISTANCE_PER_PARTICLE: 8,
+  PLAYER_DASH_STREAK_DISTANCE_PER_PARTICLE: 24,
+  PLAYER_DASH_MAX_SPAWN_PER_FRAME: 12,
   MULTI_ENTITY_FLOW_CAP: 120,
-  MULTI_ENTITY_SPAWN_PER_FRAME: 1,
+  MULTI_ENTITY_FLOW_DISTANCE_PER_PARTICLE: 8,
+  MULTI_ENTITY_STREAK_DISTANCE_PER_PARTICLE: 24,
+  MULTI_ENTITY_MAX_SPAWN_PER_FRAME: 12,
   CHOMP_LIFE_DECAY: 0.01, // Per frame
   CHOMP_PUNCH_DECAY: 0.08, // Punch scale decay per frame
   BLOOD_LIFE_DECAY: 0.007, // Per frame
@@ -119,7 +134,7 @@ export const COLLISION = {
   HEAD_RADIUS_RATIO: 0.25, // Head hitbox radius (25% of size)
   IDLE_SPEED_THRESHOLD: 0.2, // Speed below this is considered idle
   STATIONARY_DRAIN_FRACTION: 0.1, // 10% of full hunger drain when not moving
-  NON_DASH_MOVEMENT_DRAIN_CAP: 0.5, // Max hunger drain from moving (non-dash); 1 = full drain at full speed
+  NON_DASH_MOVEMENT_DRAIN_CAP: 0.15, // Max hunger drain from moving (non-dash); 1 = full drain at full speed
   FACING_SPEED_THRESHOLD: 0.1, // Min horizontal speed to update facing direction
   // Eating / size gain (shared by game loop and collision)
   SIZE_GAIN_RATIO: 0.15, // Eater gains 15% of eaten size (before efficiency)

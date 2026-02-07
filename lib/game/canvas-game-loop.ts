@@ -112,8 +112,8 @@ export function tickGameState(params: GameTickParams): boolean {
 
   state.updatePauseTracking(isPaused);
 
-  const loading = options.loading === true;
-  if (gameMode && state.gameMode.startTime === 0 && !loading) {
+  // Start timer on first game-mode frame so it always counts down
+  if (gameMode && state.gameMode.startTime === 0) {
     state.gameMode.startTime = Date.now();
     state.gameMode.fishEaten = 0;
     state.gameMode.score = 0;
@@ -125,8 +125,12 @@ export function tickGameState(params: GameTickParams): boolean {
   }
 
   if (gameMode && !state.gameMode.levelCompleteFired && !state.gameMode.gameOverFired && !isPaused) {
+    const effectiveLevelDuration =
+      typeof levelDuration === 'number' && Number.isFinite(levelDuration) && levelDuration > 0
+        ? levelDuration
+        : GAME.DEFAULT_LEVEL_DURATION_MS;
     const elapsed = state.getElapsedGameTime();
-    if (elapsed >= levelDuration) {
+    if (elapsed >= effectiveLevelDuration) {
       state.gameMode.levelCompleteFired = true;
       callbacks.onLevelComplete?.(state.gameMode.score, {
         size: player.size,
@@ -622,45 +626,119 @@ export function tickGameState(params: GameTickParams): boolean {
     return b.life > 0;
   });
 
-  // Respawn (game mode)
+  // Respawn (game mode): allow extra cap and faster respawn for small prey so the player has enough food
   if (gameMode && state.spawnPool.length > 0) {
     const pool = state.spawnPool as Creature[];
+    const baseMax = helpers.getMaxFish();
+    const extraCap = SPAWN.SMALL_PREY_EXTRA_CAP;
+    const smallPreyPool = pool.filter((c) => {
+      const size = c.stats?.size ?? SPAWN.DEFAULT_CREATURE_SIZE;
+      return c.type === 'prey' && size < SPAWN.SMALL_PREY_SIZE_THRESHOLD;
+    });
+
+    let creature: Creature | null = null;
+    let useSmallPreyTimer = false;
+
     if (
+      smallPreyPool.length > 0 &&
+      state.fish.length < baseMax + extraCap &&
+      now - state.lastSmallPreyRespawnTime >= SPAWN.SMALL_PREY_RESPAWN_INTERVAL_MS
+    ) {
+      creature = smallPreyPool[Math.floor(Math.random() * smallPreyPool.length)];
+      useSmallPreyTimer = true;
+    } else if (
       now - state.lastRespawnTime >= helpers.getRespawnInterval() &&
-      state.fish.length < helpers.getMaxFish()
+      state.fish.length < baseMax
     ) {
       const weightedPool: Creature[] = [];
       pool.forEach((c) => {
         const size = c.stats?.size ?? SPAWN.DEFAULT_CREATURE_SIZE;
         const isSmallPrey = c.type === 'prey' && size < SPAWN.SMALL_PREY_SIZE_THRESHOLD;
         const isPrey = c.type === 'prey' && size < SPAWN.PREY_SIZE_THRESHOLD;
-        const copies = isSmallPrey ? 6 : isPrey ? 4 : 1;
+        const copies = isSmallPrey ? 14 : isPrey ? 4 : 1;
         for (let i = 0; i < copies; i++) weightedPool.push(c);
       });
-      const creature = weightedPool[Math.floor(Math.random() * weightedPool.length)];
-      const sizeMult = SPAWN.FISH_SIZE_MIN + Math.random() * (SPAWN.FISH_SIZE_MAX - SPAWN.FISH_SIZE_MIN);
-      const fishSize = (creature.stats?.size ?? SPAWN.DEFAULT_CREATURE_SIZE) * sizeMult;
-      const screenSize = fishSize * zoom;
-      const resolution = getResolutionKey(screenSize);
-      const cacheId = (creature as { creatureId?: string }).creatureId ?? creature.id;
-      const cacheKey = `${cacheId}:${resolution}`;
-      let sprite = state.spriteCache.get(cacheKey) || state.spriteCache.get(cacheId);
-      if (!sprite) {
-        const chromaTol = options.chromaTolerance;
-        const spriteUrl = getGrowthAwareSpriteUrl(creature, fishSize, screenSize, creature.id);
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          const processedSprite = removeBackground(img, chromaTol);
-          state.spriteCache.set(cacheKey, processedSprite);
-          spawnRespawnFish(state, creature, fishSize, processedSprite, player, now, options.runId, options.currentLevel);
+      creature = weightedPool[Math.floor(Math.random() * weightedPool.length)];
+    }
+
+    if (creature) {
+      const isSmallPrey =
+        creature.type === 'prey' &&
+        (creature.stats?.size ?? SPAWN.DEFAULT_CREATURE_SIZE) < SPAWN.SMALL_PREY_SIZE_THRESHOLD;
+      const cap = useSmallPreyTimer ? baseMax + extraCap : baseMax;
+      const rawSchoolSize = isSmallPrey
+        ? SPAWN.SCHOOL_SIZE_MIN +
+          Math.floor(Math.random() * (SPAWN.SCHOOL_SIZE_MAX - SPAWN.SCHOOL_SIZE_MIN + 1))
+        : 1;
+      const schoolSize = Math.min(rawSchoolSize, Math.max(0, cap - state.fish.length));
+
+      if (schoolSize > 0) {
+        const sizeMult = SPAWN.FISH_SIZE_MIN + Math.random() * (SPAWN.FISH_SIZE_MAX - SPAWN.FISH_SIZE_MIN);
+        const fishSize = (creature.stats?.size ?? SPAWN.DEFAULT_CREATURE_SIZE) * sizeMult;
+        const screenSize = fishSize * zoom;
+        const resolution = getResolutionKey(screenSize);
+        const cacheId = (creature as { creatureId?: string }).creatureId ?? creature.id;
+        const cacheKey = `${cacheId}:${resolution}`;
+        let sprite = state.spriteCache.get(cacheKey) || state.spriteCache.get(cacheId);
+
+        const schoolPositions: { x: number; y: number }[] = [];
+        if (schoolSize > 1 && options.runId != null && options.currentLevel != null) {
+          const anchor = getSpawnPositionInBand(
+            options.runId,
+            options.currentLevel,
+            { x: player.x, y: player.y },
+            SPAWN.MIN_DISTANCE
+          );
+          const r = SPAWN.SCHOOL_RADIUS;
+          for (let i = 0; i < schoolSize; i++) {
+            schoolPositions.push({
+              x: anchor.x + (Math.random() - 0.5) * 2 * r,
+              y: anchor.y + (Math.random() - 0.5) * 2 * r,
+            });
+          }
+        }
+
+        const doSpawn = (processedSprite: HTMLCanvasElement) => {
+          for (let i = 0; i < schoolSize; i++) {
+            const posOverride = schoolSize > 1 ? schoolPositions[i] : undefined;
+            const suffix = schoolSize > 1 ? `s${i}` : undefined;
+            spawnRespawnFish(
+              state,
+              creature,
+              fishSize,
+              processedSprite,
+              player,
+              now,
+              options.runId,
+              options.currentLevel,
+              posOverride,
+              suffix
+            );
+          }
         };
-        img.onerror = () => { };
-        img.src = cacheBust(spriteUrl);
-      } else {
-        spawnRespawnFish(state, creature, fishSize, sprite, player, now, options.runId, options.currentLevel);
+
+        if (!sprite) {
+          const chromaTol = options.chromaTolerance;
+          const spriteUrl = getGrowthAwareSpriteUrl(creature, fishSize, screenSize, creature.id);
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            const processedSprite = removeBackground(img, chromaTol);
+            state.spriteCache.set(cacheKey, processedSprite);
+            doSpawn(processedSprite);
+          };
+          img.onerror = () => { };
+          img.src = cacheBust(spriteUrl);
+        } else {
+          doSpawn(sprite);
+        }
+
+        if (useSmallPreyTimer) {
+          state.lastSmallPreyRespawnTime = now;
+        } else {
+          state.lastRespawnTime = now;
+        }
       }
-      state.lastRespawnTime = now;
     }
   }
 
@@ -794,7 +872,7 @@ export function tickGameState(params: GameTickParams): boolean {
             const len = Math.sqrt(dx * dx + dy * dy) || 1;
             fish.vx = (dx / len) * maxSpeed;
             fish.vy = (dy / len) * maxSpeed;
-            fish.isDashing = !fish.recoveringFromExhausted && distToTarget < fish.size * AI.DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
+            fish.isDashing = !fish.recoveringFromExhausted && canDash(fish) && distToTarget < fish.size * AI.DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
           } else {
             fish.chaseTargetId = undefined;
             fish.chaseStartTime = undefined;
@@ -803,10 +881,16 @@ export function tickGameState(params: GameTickParams): boolean {
             fish.isDashing = false;
           }
           updateStamina(fish, deltaTime, { drainRate: AI_DASH_STAMINA_DRAIN_RATE });
-          if ((fish.stamina ?? 0) <= 0) {
+          const stam = fish.stamina ?? 0;
+          if (stam <= 0) {
             fish.isDashing = false;
             fish.lifecycleState = 'exhausted';
             fish.recoveringFromExhausted = true;
+          } else if (stam <= AI.DASH_STAMINA_MIN) {
+            fish.isDashing = false;
+            fish.recoveringFromExhausted = true;
+          }
+          if (stam <= 0) {
             const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREDATOR_CHASE_SPEED;
             const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
             if (sp > exhaustedMaxSpeed && sp > 0) {
@@ -814,6 +898,7 @@ export function tickGameState(params: GameTickParams): boolean {
               fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
             }
           }
+          if (fish.recoveringFromExhausted && (fish.stamina ?? 0) >= (fish.maxStamina ?? 0)) fish.recoveringFromExhausted = false;
         } else if (fish.type === 'prey') {
           let fleeX = 0;
           let fleeY = 0;
@@ -850,7 +935,7 @@ export function tickGameState(params: GameTickParams): boolean {
             const mag = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
             fish.vx = (fleeX / mag) * maxSpeed;
             fish.vy = (fleeY / mag) * maxSpeed;
-            fish.isDashing = !fish.recoveringFromExhausted && nearestThreatDist < fish.size * AI.PREY_DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
+            fish.isDashing = !fish.recoveringFromExhausted && canDash(fish) && nearestThreatDist < fish.size * AI.PREY_DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
           } else {
             fish.vx += (Math.random() - 0.5) * AI.WANDER_JITTER;
             fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
@@ -860,10 +945,16 @@ export function tickGameState(params: GameTickParams): boolean {
             drainRate: AI_DASH_STAMINA_DRAIN_RATE,
             fleeMultiplier: fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1,
           });
-          if ((fish.stamina ?? 0) <= 0) {
+          const stam = fish.stamina ?? 0;
+          if (stam <= 0) {
             fish.isDashing = false;
             fish.lifecycleState = 'exhausted';
             fish.recoveringFromExhausted = true;
+          } else if (stam <= AI.DASH_STAMINA_MIN) {
+            fish.isDashing = false;
+            fish.recoveringFromExhausted = true;
+          }
+          if (stam <= 0) {
             const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREY_FLEE_SPEED;
             const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
             if (sp > exhaustedMaxSpeed && sp > 0) {
@@ -871,6 +962,7 @@ export function tickGameState(params: GameTickParams): boolean {
               fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
             }
           }
+          if (fish.recoveringFromExhausted && (fish.stamina ?? 0) >= (fish.maxStamina ?? 0)) fish.recoveringFromExhausted = false;
         }
 
         if (fish.lifecycleState === 'active') {
@@ -996,7 +1088,9 @@ function spawnRespawnFish(
   player: PlayerEntity,
   now: number,
   runId?: string,
-  currentLevel?: string
+  currentLevel?: string,
+  positionOverride?: { x: number; y: number },
+  idSuffix?: string
 ): void {
   const baseSpeed = creature.stats?.speed ?? 2;
   const speedScale = AI.SPEED_SCALE;
@@ -1005,7 +1099,10 @@ function spawnRespawnFish(
   const bounds = state.worldBounds;
   let spawnX: number;
   let spawnY: number;
-  if (runId != null && currentLevel != null) {
+  if (positionOverride) {
+    spawnX = Math.max(bounds.minX, Math.min(bounds.maxX, positionOverride.x));
+    spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, positionOverride.y));
+  } else if (runId != null && currentLevel != null) {
     const pos = getSpawnPositionInBand(runId, currentLevel, { x: player.x, y: player.y }, SPAWN.MIN_DISTANCE);
     spawnX = pos.x;
     spawnY = pos.y;
@@ -1018,7 +1115,7 @@ function spawnRespawnFish(
     spawnY = Math.max(bounds.minY, Math.min(bounds.maxY, spawnY));
   }
   const cacheId = (creature as { creatureId?: string }).creatureId ?? creature.id;
-  const newId = `${cacheId}-r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const newId = `${cacheId}-r-${Date.now()}-${idSuffix ?? Math.random().toString(36).slice(2, 9)}`;
   const anims = creature.animations;
   const animSprite = anims && hasUsableAnimations(anims) ? state.animationSpriteManager.getSprite(newId, anims) : undefined;
   const newFish: FishEntity = {

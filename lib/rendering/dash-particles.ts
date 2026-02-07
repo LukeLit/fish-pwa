@@ -24,23 +24,26 @@ interface DashParticle {
   vy: number;
   life: number;
   radius: number;
-  kind: 'burst' | 'flow' | 'streak';
+  kind: 'flow' | 'streak';
   angle?: number;
   length?: number;
 }
 
 export interface DashParticleConfig {
   flowCap?: number;
-  flowSpawnPerFrame?: number;
-  burstCooldownMs?: number;
-  burstCount?: number;
+  /** Pixels traveled per flow particle (emission by distance). */
+  flowDistancePerParticle?: number;
+  /** Pixels traveled per streak particle. */
+  streakDistancePerParticle?: number;
+  /** Max flow + streak particles to spawn in a single frame (safety cap). */
+  maxSpawnPerFrame?: number;
 }
 
 const DEFAULT_CONFIG: Required<DashParticleConfig> = {
   flowCap: 200,
-  flowSpawnPerFrame: 1,
-  burstCooldownMs: 800,
-  burstCount: 12,
+  flowDistancePerParticle: 8,
+  streakDistancePerParticle: 24,
+  maxSpawnPerFrame: 12,
 };
 
 /**
@@ -49,7 +52,8 @@ const DEFAULT_CONFIG: Required<DashParticleConfig> = {
 export class DashParticleSystem {
   private particles: DashParticle[] = [];
   private previousAction: AnimationAction = 'idle';
-  private lastBurstTime = 0;
+  /** Accumulated distance while dashing; used for distance-based emission. */
+  private distanceAccumulator = 0;
   private config: Required<DashParticleConfig>;
 
   constructor(config: DashParticleConfig = {}) {
@@ -58,7 +62,8 @@ export class DashParticleSystem {
 
   /**
    * Update particles. Call each frame with current entity state.
-   * Particles only emit when animationAction is 'dash' and entity is moving.
+   * Emission is by distance and speed: particles spawn per pixel traveled.
+   * When dash ends, emission stops but existing particles decay naturally.
    */
   update(state: DashParticleState, deltaTime: number): void {
     const { animationAction } = state;
@@ -67,39 +72,47 @@ export class DashParticleSystem {
     const isDashing = animationAction === 'dash' && speed > 0.2;
 
     if (isDashing) {
-      const now = performance.now();
+      const distanceThisFrame = speed * deltaTime;
+      this.distanceAccumulator += distanceThisFrame;
 
-      // One-time burst when entering dash state
-      const justEnteredDash = this.previousAction !== 'dash';
-      const cooldownElapsed = now - this.lastBurstTime > this.config.burstCooldownMs;
-      if (justEnteredDash && cooldownElapsed) {
-        this.lastBurstTime = now;
-        this.spawnBurst(state, moveAngle);
-      }
+      let flowCount = this.particles.filter((p) => p.kind === 'flow').length;
+      let streakCount = this.particles.filter((p) => p.kind === 'streak').length;
+      let spawnedThisFrame = 0;
 
-      // Persistent flow while in dash
-      const flowCount = this.particles.filter((p) => p.kind === 'flow').length;
-      const toSpawn = Math.min(this.config.flowSpawnPerFrame, this.config.flowCap - flowCount);
-      for (let i = 0; i < toSpawn; i++) {
+      // Flow: spawn one per flowDistancePerParticle pixels traveled
+      while (
+        this.distanceAccumulator >= this.config.flowDistancePerParticle &&
+        flowCount < this.config.flowCap &&
+        spawnedThisFrame < this.config.maxSpawnPerFrame
+      ) {
+        this.distanceAccumulator -= this.config.flowDistancePerParticle;
         this.spawnFlow(state, moveAngle);
+        flowCount++;
+        spawnedThisFrame++;
       }
 
-      // Sparse streaks
-      const streakCount = this.particles.filter((p) => p.kind === 'streak').length;
-      if (streakCount < 8 && Math.random() < 0.15) {
+      // Streaks: spawn one per streakDistancePerParticle pixels, cap count
+      while (
+        this.distanceAccumulator >= this.config.streakDistancePerParticle &&
+        streakCount < 8 &&
+        spawnedThisFrame < this.config.maxSpawnPerFrame
+      ) {
+        this.distanceAccumulator -= this.config.streakDistancePerParticle;
         this.spawnStreak(state, moveAngle);
+        streakCount++;
+        spawnedThisFrame++;
       }
-    } else if (this.previousAction === 'dash') {
-      // Stopped dashing (e.g. exhausted): clear particles so they don't linger
-      this.particles = [];
+    } else {
+      // Not dashing: stop emission; reset accumulator for next dash
+      this.distanceAccumulator = 0;
     }
 
     this.previousAction = animationAction;
 
-    // Update existing particles
+    // Update existing particles (move and decay; no clearing)
     this.particles = this.particles
       .map((p) => {
-        const decay = p.kind === 'burst' ? 0.06 : p.kind === 'flow' ? 0.03 : 0.025;
+        const decay = p.kind === 'flow' ? 0.03 : 0.025;
         return {
           ...p,
           x: p.x + p.vx * deltaTime,
@@ -108,26 +121,6 @@ export class DashParticleSystem {
         };
       })
       .filter((p) => p.life > 0);
-  }
-
-  private spawnBurst(state: DashParticleState, moveAngle: number): void {
-    const headOffset = state.size * 0.4;
-    const burstX = state.x + Math.cos(moveAngle) * headOffset;
-    const burstY = state.y + Math.sin(moveAngle) * headOffset;
-
-    for (let i = 0; i < this.config.burstCount; i++) {
-      const spread = (Math.random() - 0.5) * state.size * 0.5;
-      const perpAngle = moveAngle + Math.PI / 2;
-      this.particles.push({
-        x: burstX + Math.cos(perpAngle) * spread,
-        y: burstY + Math.sin(perpAngle) * spread,
-        vx: -state.vx * 0.15 + (Math.random() - 0.5) * 0.3,
-        vy: -state.vy * 0.15 - 0.15 - Math.random() * 0.2,
-        life: 1,
-        radius: 4 + Math.random() * 6,
-        kind: 'burst',
-      });
-    }
   }
 
   private spawnFlow(state: DashParticleState, moveAngle: number): void {
@@ -167,9 +160,9 @@ export class DashParticleSystem {
     this.drawParticles(ctx, this.particles.filter((p) => p.kind === 'flow' || p.kind === 'streak'));
   }
 
-  /** Draw particles in front of the fish (burst). Call after drawing the fish. */
-  drawInFront(ctx: CanvasRenderingContext2D): void {
-    this.drawParticles(ctx, this.particles.filter((p) => p.kind === 'burst'));
+  /** Draw particles in front of the fish. Call after drawing the fish. (No front layer with distance-based emission.) */
+  drawInFront(_ctx: CanvasRenderingContext2D): void {
+    // All particles are trail (flow/streak) drawn behind; front layer unused
   }
 
   private drawParticles(ctx: CanvasRenderingContext2D, particles: DashParticle[]): void {
@@ -220,5 +213,6 @@ export class DashParticleSystem {
   reset(): void {
     this.particles = [];
     this.previousAction = 'idle';
+    this.distanceAccumulator = 0;
   }
 }

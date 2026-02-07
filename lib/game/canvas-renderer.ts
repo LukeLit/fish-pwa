@@ -13,7 +13,7 @@ import {
 } from '@/lib/rendering/fish-renderer';
 import { HUNGER_LOW_THRESHOLD, HUNGER_WARNING_PULSE_FREQUENCY, HUNGER_WARNING_PULSE_BASE, HUNGER_WARNING_INTENSITY } from './hunger-constants';
 import { computeEffectiveMaxStamina } from './stamina-hunger';
-import { RENDERING, UI, WORLD_BOUNDS } from './canvas-constants';
+import { RENDERING, UI, WORLD_BOUNDS, GAME } from './canvas-constants';
 import { getRunConfig, getDepthBandRules } from './data/level-loader';
 import type { PlayerEntity, FishEntity, ChompParticle, BloodParticle, CameraState } from './canvas-state';
 import type { MultiEntityDashParticleManager } from '@/lib/rendering/multi-entity-dash-particles';
@@ -479,9 +479,16 @@ export function renderGame(options: RenderOptions): void {
 
   // Draw game mode UI
   if (gameMode) {
+    const effectiveLevelDuration =
+      typeof levelDuration === 'number' && Number.isFinite(levelDuration) && levelDuration > 0
+        ? levelDuration
+        : GAME.DEFAULT_LEVEL_DURATION_MS;
     const currentPausedTime = isPaused ? (Date.now() - pauseStartTime) : 0;
-    const elapsed = Date.now() - gameStartTime - totalPausedTime - currentPausedTime;
-    const timeLeft = Math.max(0, Math.ceil((levelDuration - elapsed) / 1000));
+    const elapsed =
+      gameStartTime > 0
+        ? Date.now() - gameStartTime - totalPausedTime - currentPausedTime
+        : 0;
+    const timeLeft = Math.max(0, Math.ceil((effectiveLevelDuration - elapsed) / 1000));
     renderGameUI(ctx, canvas.width, canvas.height, player, score, fishCount, timeLeft);
   }
 

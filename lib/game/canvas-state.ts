@@ -142,6 +142,7 @@ export class CanvasGameState {
   spriteVersions: Map<string, number>;
   spawnPool: Creature[];
   lastRespawnTime: number;
+  lastSmallPreyRespawnTime: number;
 
   constructor() {
     const spawnPos = getDefaultPlayerSpawnPosition();
@@ -182,11 +183,15 @@ export class CanvasGameState {
       blood: [],
       dashPlayer: new DashParticleSystem({
         flowCap: PARTICLES.PLAYER_DASH_FLOW_CAP,
-        flowSpawnPerFrame: PARTICLES.PLAYER_DASH_SPAWN_PER_FRAME,
+        flowDistancePerParticle: PARTICLES.PLAYER_DASH_FLOW_DISTANCE_PER_PARTICLE,
+        streakDistancePerParticle: PARTICLES.PLAYER_DASH_STREAK_DISTANCE_PER_PARTICLE,
+        maxSpawnPerFrame: PARTICLES.PLAYER_DASH_MAX_SPAWN_PER_FRAME,
       }),
       dashMultiEntity: new MultiEntityDashParticleManager({
         flowCap: PARTICLES.MULTI_ENTITY_FLOW_CAP,
-        flowSpawnPerFrame: PARTICLES.MULTI_ENTITY_SPAWN_PER_FRAME,
+        flowDistancePerParticle: PARTICLES.MULTI_ENTITY_FLOW_DISTANCE_PER_PARTICLE,
+        streakDistancePerParticle: PARTICLES.MULTI_ENTITY_STREAK_DISTANCE_PER_PARTICLE,
+        maxSpawnPerFrame: PARTICLES.MULTI_ENTITY_MAX_SPAWN_PER_FRAME,
       }),
     };
     this.gameMode = {
@@ -215,6 +220,7 @@ export class CanvasGameState {
     this.spriteVersions = new Map();
     this.spawnPool = [];
     this.lastRespawnTime = 0;
+    this.lastSmallPreyRespawnTime = 0;
   }
 
   /**

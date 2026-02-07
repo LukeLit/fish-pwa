@@ -43,13 +43,22 @@ export default function GamePage() {
   const essenceManager = new EssenceManager();
 
   const handleLevelComplete = () => {
-    // Load current run state
+    // Load current run state (may be null if cleared or not yet saved)
     const runState = loadRunState();
-    if (!runState) return;
+    const stateToShow = runState ?? {
+      runId: '',
+      currentLevel: '1-1',
+      selectedFishId: '',
+      fishState: { size: 48, speed: 5, health: 15, damage: 3, sprite: '' },
+      collectedEssence: {},
+      selectedUpgrades: [],
+      rerollsRemaining: 3,
+      evolutionLevel: 0,
+      hunger: 100,
+      stats: { fishEaten: 0, timeSurvived: 0, maxSize: 48 },
+    } as RunState;
 
-    setCurrentRunState(runState);
-
-    // Show digestion screen with collected essence
+    setCurrentRunState(stateToShow);
     setShowDigestionScreen(true);
   };
 
