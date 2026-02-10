@@ -55,7 +55,7 @@ import { InputManager } from '@/lib/game/canvas-input';
 import { SpriteManager } from '@/lib/game/canvas-sprite-manager';
 import { updatePlayerPhysics, constrainToBounds, getAnimationAction } from '@/lib/game/canvas-physics';
 import { updateAIFish } from '@/lib/game/canvas-ai';
-import { detectFishFishCollisions, detectPlayerFishCollision } from '@/lib/game/canvas-collision';
+// Old collision module functions replaced by inline combat in canvas-game-loop.ts
 import { CanvasGameState, type FishEntity, type PlayerEntity, type FishLifecycleState } from '@/lib/game/canvas-state';
 import { renderGame } from '@/lib/game/canvas-renderer';
 import { tickGameState } from '@/lib/game/canvas-game-loop';
@@ -184,6 +184,23 @@ export default function FishEditorCanvas({
 
   // Update refs when props change
   useEffect(() => { chromaToleranceRef.current = chromaTolerance }, [chromaTolerance])
+
+  // Listen for shared sprite refresh events (carcass/chunk sprite updates from Sprite Lab)
+  useEffect(() => {
+    const handleRefresh = async () => {
+      try {
+        const { clearCarcassSpriteCache, preloadCarcassSprite } = await import('@/lib/game/carcass');
+        const { clearChunkSpriteCache, preloadChunkSprites } = await import('@/lib/game/essence-chunks');
+        clearCarcassSpriteCache();
+        clearChunkSpriteCache();
+        await Promise.all([preloadCarcassSprite(), preloadChunkSprites()]);
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('refreshSharedSprites', handleRefresh);
+    // Preload on mount
+    handleRefresh();
+    return () => window.removeEventListener('refreshSharedSprites', handleRefresh);
+  }, [])
   useEffect(() => {
     zoomRef.current = zoom;
     inputManagerRef.current.setAnimatedZoom(zoom);
@@ -1136,6 +1153,8 @@ export default function FishEditorCanvas({
         editButtonPositions: editButtonPositionsRef.current,
         chompParticles: gameStateRef.current.particles.chomp,
         bloodParticles: gameStateRef.current.particles.blood,
+        carcasses: gameStateRef.current.carcasses,
+        chunks: gameStateRef.current.chunks,
         dashMultiEntity: gameStateRef.current.particles.dashMultiEntity,
         animationSpriteManager: gameStateRef.current.animationSpriteManager,
         lastPlayerAnimAction: lastPlayerAnimActionRef.current,

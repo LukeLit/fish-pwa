@@ -85,6 +85,44 @@ export function getHeadRadius(size: number): number {
 }
 
 /**
+ * Get body radius for physical separation (distinct from head hitbox).
+ */
+export function getBodyRadius(size: number): number {
+  return size * COLLISION.BODY_RADIUS_RATIO;
+}
+
+export interface BodyEntity {
+  x: number;
+  y: number;
+  size: number;
+}
+
+/**
+ * Push two bodies apart so they don't overlap.
+ * Each entity is moved by half the overlap distance along the axis between centers.
+ */
+export function resolveBodyOverlap(a: BodyEntity, b: BodyEntity): void {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const rA = getBodyRadius(a.size);
+  const rB = getBodyRadius(b.size);
+  const minDist = rA + rB;
+
+  if (dist >= minDist || dist < 0.01) return;
+
+  const overlap = minDist - dist;
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const half = overlap * 0.5;
+
+  a.x -= nx * half;
+  a.y -= ny * half;
+  b.x += nx * half;
+  b.y += ny * half;
+}
+
+/**
  * Detect and resolve fish-fish collisions
  */
 export function detectFishFishCollisions(

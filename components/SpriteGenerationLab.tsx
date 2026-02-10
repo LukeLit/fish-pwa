@@ -724,6 +724,7 @@ export default function SpriteGenerationLab({
       if (isIndexedDBAvailable()) {
         const blob = await dataUrlToBlob(dataUrl);
         await saveSharedSprite(key, blob);
+        window.dispatchEvent(new Event('refreshSharedSprites'));
       }
       clearCanvasStatus();
     } catch (err: any) {
@@ -748,6 +749,7 @@ export default function SpriteGenerationLab({
       if (isIndexedDBAvailable()) {
         const blob = await dataUrlToBlob(dataUrl);
         await saveSharedSprite(`essence_${essenceId}`, blob);
+        window.dispatchEvent(new Event('refreshSharedSprites'));
       }
       clearCanvasStatus();
     } catch (err: any) {

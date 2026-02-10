@@ -23,6 +23,7 @@ export type FishLifecycleState =
   | 'active'
   | 'exhausted'
   | 'knocked_out'
+  | 'dying'
   | 'despawning'
   | 'removed';
 

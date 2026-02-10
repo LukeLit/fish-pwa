@@ -13,11 +13,13 @@ import {
 } from '@/lib/rendering/fish-renderer';
 import { HUNGER_LOW_THRESHOLD, HUNGER_WARNING_PULSE_FREQUENCY, HUNGER_WARNING_PULSE_BASE, HUNGER_WARNING_INTENSITY } from './hunger-constants';
 import { computeEffectiveMaxStamina } from './stamina-hunger';
-import { RENDERING, UI, WORLD_BOUNDS, GAME } from './canvas-constants';
+import { RENDERING, UI, WORLD_BOUNDS, GAME, COMBAT, PLAYER_BASE_MAX_HEALTH } from './canvas-constants';
 import { getRunConfig, getDepthBandRules } from './data/level-loader';
-import type { PlayerEntity, FishEntity, ChompParticle, BloodParticle, CameraState } from './canvas-state';
+import type { PlayerEntity, FishEntity, ChompParticle, BloodParticle, CameraState, CarcassEntity, ChunkEntity } from './canvas-state';
 import type { MultiEntityDashParticleManager } from '@/lib/rendering/multi-entity-dash-particles';
 import type { AnimationSprite } from '@/lib/rendering/animation-sprite';
+import { drawCarcasses } from './carcass';
+import { drawChunks } from './essence-chunks';
 
 export interface RenderOptions {
   canvas: HTMLCanvasElement;
@@ -39,6 +41,8 @@ export interface RenderOptions {
   editButtonPositions: Map<string, { x: number; y: number; size: number }>;
   chompParticles: ChompParticle[];
   bloodParticles: BloodParticle[];
+  carcasses: CarcassEntity[];
+  chunks: ChunkEntity[];
   dashMultiEntity: MultiEntityDashParticleManager;
   animationSpriteManager: ReturnType<typeof import('@/lib/rendering/animation-sprite').getAnimationSpriteManager>;
   lastPlayerAnimAction: string | null;
@@ -79,6 +83,8 @@ export function renderGame(options: RenderOptions): void {
     editButtonPositions,
     chompParticles,
     bloodParticles,
+    carcasses,
+    chunks,
     dashMultiEntity,
     animationSpriteManager,
     lastPlayerAnimAction,
@@ -94,6 +100,8 @@ export function renderGame(options: RenderOptions): void {
     onEditFish,
     setLastPlayerAnimAction,
   } = options;
+
+  const wallNow = performance.now();
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -143,6 +151,16 @@ export function renderGame(options: RenderOptions): void {
     ctx.translate(scaledWidth / 2 - effectiveCamX, scaledHeight / 2 - effectiveCamY);
   } else {
     ctx.translate(scaledWidth / 2 - effectiveCamX, scaledHeight / 2 - effectiveCamY);
+  }
+
+  // Draw carcasses (behind everything else)
+  if (gameMode && carcasses.length > 0) {
+    drawCarcasses(ctx, carcasses);
+  }
+
+  // Draw essence chunks
+  if (gameMode && chunks.length > 0) {
+    drawChunks(ctx, chunks);
   }
 
   // Draw AI fish
@@ -221,6 +239,60 @@ export function renderGame(options: RenderOptions): void {
       ctx.fill();
     }
 
+    // --- Combat VFX: flash effects ---
+    // Hit flash (red tint via multiply)
+    if (fishEntity.hitFlashEndTime && wallNow < fishEntity.hitFlashEndTime) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = 'rgba(255, 60, 60, 0.7)';
+      ctx.fillRect(
+        fishEntity.x - fishEntity.size * 0.6,
+        fishEntity.y - fishEntity.size * 0.4,
+        fishEntity.size * 1.2,
+        fishEntity.size * 0.8
+      );
+      ctx.restore();
+    }
+    // Attack flash (white tint via screen)
+    if (fishEntity.attackFlashEndTime && wallNow < fishEntity.attackFlashEndTime) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillRect(
+        fishEntity.x - fishEntity.size * 0.6,
+        fishEntity.y - fishEntity.size * 0.4,
+        fishEntity.size * 1.2,
+        fishEntity.size * 0.8
+      );
+      ctx.restore();
+    }
+
+    // --- AI Fish Health Bars ---
+    if (gameMode && fishEntity.health !== undefined && fishEntity.maxHealth !== undefined &&
+        fishEntity.health < fishEntity.maxHealth && fishEntity.lastDamagedTime) {
+      const timeSinceDamage = wallNow - fishEntity.lastDamagedTime;
+      if (timeSinceDamage < COMBAT.HEALTH_BAR_SHOW_DURATION) {
+        const fadeStart = COMBAT.HEALTH_BAR_SHOW_DURATION * 0.5;
+        const fadeAlpha = timeSinceDamage < fadeStart
+          ? 1
+          : Math.max(0, 1 - (timeSinceDamage - fadeStart) / (COMBAT.HEALTH_BAR_SHOW_DURATION - fadeStart));
+        const healthPct = fishEntity.health / fishEntity.maxHealth;
+        const hBarWidth = fishEntity.size * 0.7;
+        const hBarHeight = 3;
+        const hBarX = fishEntity.x - hBarWidth / 2;
+        const hBarY = fishEntity.y - fishEntity.size * 0.4 - 8;
+        ctx.save();
+        ctx.globalAlpha = fadeAlpha;
+        // Red background
+        ctx.fillStyle = 'rgba(200, 0, 0, 0.8)';
+        ctx.fillRect(hBarX, hBarY, hBarWidth, hBarHeight);
+        // Green fill
+        ctx.fillStyle = 'rgba(0, 200, 0, 0.8)';
+        ctx.fillRect(hBarX, hBarY, hBarWidth * healthPct, hBarHeight);
+        ctx.restore();
+      }
+    }
+
     drawStateIcon(ctx, fishEntity, fishEntity.x, fishEntity.y, fishEntity.size, animatedZoom);
     ctx.restore();
     editButtonPositions.set(fishEntity.id, { x: fishEntity.x, y: fishEntity.y, size: fishEntity.size });
@@ -297,6 +369,34 @@ export function renderGame(options: RenderOptions): void {
     ctx.arc(player.x, player.y, player.size / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+  }
+
+  // --- Player Combat VFX ---
+  // Hit flash (red tint)
+  if (player.hitFlashEndTime && wallNow < player.hitFlashEndTime) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.7)';
+    ctx.fillRect(
+      player.x - player.size * 0.6,
+      player.y - player.size * 0.4,
+      player.size * 1.2,
+      player.size * 0.8
+    );
+    ctx.restore();
+  }
+  // Attack flash (white tint)
+  if (player.attackFlashEndTime && wallNow < player.attackFlashEndTime) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.fillRect(
+      player.x - player.size * 0.6,
+      player.y - player.size * 0.4,
+      player.size * 1.2,
+      player.size * 0.8
+    );
+    ctx.restore();
   }
 
   if (gameMode) {
@@ -613,7 +713,9 @@ function renderBloodParticles(ctx: CanvasRenderingContext2D, particles: BloodPar
 function renderChompParticles(ctx: CanvasRenderingContext2D, particles: ChompParticle[]): void {
   particles.forEach((p) => {
     ctx.save();
-    ctx.translate(p.x, p.y);
+    // Float-up effect for damage/essence numbers
+    const yOffset = p.floatUp ? -(1 - Math.max(0, p.life)) * 40 : 0;
+    ctx.translate(p.x, p.y + yOffset);
     ctx.globalAlpha = Math.max(0, p.life);
 
     const totalScale = p.scale * (p.punchScale || 1);
@@ -804,11 +906,51 @@ function renderGameUI(
   ctx.fillText(`Fish: ${fishCount}`, 20, statsY + 72);
   ctx.restore();
 
-  // Combined stamina bar (hunger = capacity, stamina = fill) - Monster Hunter style
+  // Player health bar (above stamina)
   const barWidth = Math.min(UI.HUNGER_BAR_WIDTH, width - UI.HUNGER_BAR_MIN_WIDTH);
+  const healthBarHeight = 10;
+  const healthBarX = (width - barWidth) / 2;
+  const healthBarY = UI.HUNGER_BAR_Y;
+  const playerHealth = player.health ?? PLAYER_BASE_MAX_HEALTH;
+  const playerMaxHealth = player.maxHealth ?? PLAYER_BASE_MAX_HEALTH;
+  const healthPct = Math.max(0, playerHealth / playerMaxHealth);
+
+  ctx.save();
+  // Background
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(healthBarX, healthBarY, barWidth, healthBarHeight);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(healthBarX, healthBarY, barWidth, healthBarHeight);
+
+  // Health fill (red to green gradient based on health %)
+  const hpInnerX = healthBarX + 2;
+  const hpInnerW = barWidth - 4;
+  const hpInnerH = healthBarHeight - 4;
+  const hpInnerY = healthBarY + 2;
+  const hpFillW = hpInnerW * healthPct;
+
+  // Color: green at full, yellow at half, red at low
+  let hpColor: string;
+  if (healthPct > 0.6) hpColor = '#22c55e';
+  else if (healthPct > 0.3) hpColor = '#eab308';
+  else hpColor = '#ef4444';
+
+  ctx.fillStyle = hpColor;
+  ctx.fillRect(hpInnerX, hpInnerY, hpFillW, hpInnerH);
+
+  // Label
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`HP ${Math.ceil(playerHealth)}/${Math.ceil(playerMaxHealth)}`, healthBarX + barWidth / 2, healthBarY + healthBarHeight / 2);
+  ctx.restore();
+
+  // Combined stamina bar (hunger = capacity, stamina = fill) - Monster Hunter style
   const barHeight = UI.STAMINA_BAR_HEIGHT;
   const barX = (width - barWidth) / 2;
-  const barY = UI.HUNGER_BAR_Y;
+  const barY = healthBarY + healthBarHeight + 4;
   const baseMax = player.baseMaxStamina ?? 100;
   const effectiveMax = Math.max(0.01, computeEffectiveMaxStamina(baseMax, player.hunger));
   const capacityPercent = player.hunger / 100;

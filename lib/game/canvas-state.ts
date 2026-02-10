@@ -9,7 +9,7 @@ import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering
 import type { CreatureAnimations, Creature } from '@/lib/game/types';
 import { PLAYER_BASE_SIZE, PLAYER_MAX_SIZE } from './spawn-fish';
 import { HUNGER_MAX, HUNGER_DRAIN_RATE } from './hunger-constants';
-import { PARTICLES, WORLD_BOUNDS, STAMINA } from './canvas-constants';
+import { PARTICLES, WORLD_BOUNDS, STAMINA, PLAYER_BASE_MAX_HEALTH } from './canvas-constants';
 import { computeEffectiveMaxStamina } from './stamina-hunger';
 import { getDefaultPlayerSpawnPosition } from './spawn-position';
 
@@ -46,6 +46,18 @@ export interface FishEntity {
   recoveringFromExhausted?: boolean;
   chaseTargetId?: string;
   chaseStartTime?: number;
+  // --- Combat / Health ---
+  health?: number;
+  maxHealth?: number;
+  hitFlashEndTime?: number;
+  hitPunchScaleEndTime?: number;
+  attackFlashEndTime?: number;
+  lungeStartTime?: number;
+  lungeVx?: number;
+  lungeVy?: number;
+  fleeFromId?: string;
+  fleeFromUntil?: number;
+  lastDamagedTime?: number;
 }
 
 export interface PlayerEntity {
@@ -70,6 +82,18 @@ export interface PlayerEntity {
   isDashing: boolean;
   isExhausted?: boolean;
   animations?: CreatureAnimations;
+  // --- Combat / Health ---
+  health?: number;
+  maxHealth?: number;
+  hitFlashEndTime?: number;
+  hitPunchScaleEndTime?: number;
+  attackFlashEndTime?: number;
+  lungeStartTime?: number;
+  lungeVx?: number;
+  lungeVy?: number;
+  lastBiteTime?: number;
+  chunkEatEndTime?: number;
+  lastChunkEatTime?: number;
 }
 
 export interface ChompParticle {
@@ -80,6 +104,30 @@ export interface ChompParticle {
   text: string;
   color?: string;
   punchScale?: number;
+  floatUp?: boolean;
+}
+
+export interface CarcassEntity {
+  carcassId: string;
+  x: number;
+  y: number;
+  size: number;
+  spawnTime: number;
+  opacity: number;
+  remainingChunks: number;
+}
+
+export interface ChunkEntity {
+  chunkId: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  essenceType: string;
+  essenceAmount: number;
+  carcassId?: string;
+  spawnTime: number;
+  size: number;
 }
 
 export interface BloodParticle {
@@ -143,6 +191,8 @@ export class CanvasGameState {
   spawnPool: Creature[];
   lastRespawnTime: number;
   lastSmallPreyRespawnTime: number;
+  carcasses: CarcassEntity[];
+  chunks: ChunkEntity[];
 
   constructor() {
     const spawnPos = getDefaultPlayerSpawnPosition();
@@ -167,6 +217,8 @@ export class CanvasGameState {
       maxStamina: computeEffectiveMaxStamina(STAMINA.BASE_MAX_START, HUNGER_MAX),
       isDashing: false,
       isExhausted: false,
+      health: PLAYER_BASE_MAX_HEALTH,
+      maxHealth: PLAYER_BASE_MAX_HEALTH,
     };
 
     this.fish = [];
@@ -221,6 +273,8 @@ export class CanvasGameState {
     this.spawnPool = [];
     this.lastRespawnTime = 0;
     this.lastSmallPreyRespawnTime = 0;
+    this.carcasses = [];
+    this.chunks = [];
   }
 
   /**
@@ -240,7 +294,11 @@ export class CanvasGameState {
     this.player.maxStamina = maxSta;
     this.player.isDashing = false;
     this.player.isExhausted = false;
+    this.player.health = PLAYER_BASE_MAX_HEALTH;
+    this.player.maxHealth = PLAYER_BASE_MAX_HEALTH;
     this.dashHoldDurationMs = 0;
+    this.carcasses = [];
+    this.chunks = [];
   }
 
   /**
@@ -265,6 +323,8 @@ export class CanvasGameState {
     this.player.maxStamina = maxSta;
     this.player.isDashing = false;
     this.player.isExhausted = false;
+    this.player.health = PLAYER_BASE_MAX_HEALTH;
+    this.player.maxHealth = PLAYER_BASE_MAX_HEALTH;
   }
 
   /**

@@ -9,15 +9,13 @@ import type { CanvasGameState } from './canvas-state';
 import type { PlayerEntity, FishEntity, FishLifecycleState } from './canvas-state';
 import type { Creature } from './types';
 import { getHeadPosition, getHeadRadius } from './canvas-collision';
-import { PHYSICS, AI, SPAWN, STAMINA, COLLISION, ANIMATION, PARTICLES, GAME } from './canvas-constants';
+import { PHYSICS, AI, SPAWN, STAMINA, COLLISION, ANIMATION, PARTICLES, GAME, COMBAT } from './canvas-constants';
 import {
   updateStamina,
   updateHunger,
   canDash,
   isStarved,
   restoreHunger,
-  applyAttackToTarget,
-  applyStaminaCost,
   initHungerStamina,
 } from './stamina-hunger';
 import { loadRunState, saveRunState, addEssenceToRun } from './run-state';
@@ -30,21 +28,20 @@ import {
 import {
   DASH_STAMINA_RAMP_PER_SECOND,
   DASH_STAMINA_RAMP_CAP,
-  DASH_ATTACK_STAMINA_COST,
-  SWALLOW_SIZE_RATIO,
-  ATTACK_SIZE_RATIO,
-  BATTLE_SIZE_THRESHOLD,
-  KO_STAMINA_REGEN_MULTIPLIER,
-  KO_WAKE_THRESHOLD,
-  KO_DRIFT_SPEED,
   PREY_FLEE_STAMINA_MULTIPLIER,
-  ATTACK_LARGER_STAMINA_MULTIPLIER,
   EXHAUSTED_SPEED_MULTIPLIER,
   FLEEING_RECOVERY_MULTIPLIER,
   EXHAUSTED_REGEN_MULTIPLIER,
   AI_DASH_STAMINA_DRAIN_RATE,
+  KO_STAMINA_REGEN_MULTIPLIER,
+  KO_WAKE_THRESHOLD,
+  KO_DRIFT_SPEED,
 } from './dash-constants';
 import { ESSENCE_TYPES } from './data/essence-types';
+import { resolveAttack } from './combat';
+import { spawnCarcass, updateCarcasses, decrementCarcassChunks } from './carcass';
+import { spawnChunksFromFish, updateChunks, checkChunkCollection } from './essence-chunks';
+import { resolveBodyOverlap } from './canvas-collision';
 import {
   getGrowthStage,
   getGrowthStageSprite,
@@ -257,18 +254,64 @@ export function tickGameState(params: GameTickParams): boolean {
     }
   }
 
-  // Fish-fish collisions (game mode only) - inline head-based logic
+  // --- Body separation pass (push entities apart before combat) ---
+  if (gameMode) {
+    // Player vs each fish
+    for (const fish of state.fish) {
+      if ((fish.opacity ?? 1) < 1 || fish.lifecycleState === 'removed' || fish.lifecycleState === 'dying') continue;
+      resolveBodyOverlap(player, fish);
+    }
+    // Fish vs fish
+    for (let i = 0; i < state.fish.length; i++) {
+      const a = state.fish[i];
+      if ((a.opacity ?? 1) < 1 || a.lifecycleState === 'removed' || a.lifecycleState === 'dying') continue;
+      for (let j = i + 1; j < state.fish.length; j++) {
+        const b = state.fish[j];
+        if ((b.opacity ?? 1) < 1 || b.lifecycleState === 'removed' || b.lifecycleState === 'dying') continue;
+        resolveBodyOverlap(a, b);
+      }
+    }
+  }
+
+  // --- Apply lunge velocity (from combat hits) ---
+  if (player.lungeVx !== undefined && player.lungeVy !== undefined && player.lungeStartTime) {
+    player.vx += player.lungeVx;
+    player.vy += player.lungeVy;
+    player.lungeVx *= COMBAT.LUNGE_DECAY;
+    player.lungeVy *= COMBAT.LUNGE_DECAY;
+    if (Math.abs(player.lungeVx) < 0.01 && Math.abs(player.lungeVy) < 0.01) {
+      player.lungeVx = 0;
+      player.lungeVy = 0;
+      player.lungeStartTime = 0;
+    }
+  }
+  for (const fish of state.fish) {
+    if (fish.lungeVx !== undefined && fish.lungeVy !== undefined && fish.lungeStartTime) {
+      fish.vx += fish.lungeVx;
+      fish.vy += fish.lungeVy;
+      fish.lungeVx *= COMBAT.LUNGE_DECAY;
+      fish.lungeVy *= COMBAT.LUNGE_DECAY;
+      if (Math.abs(fish.lungeVx) < 0.01 && Math.abs(fish.lungeVy) < 0.01) {
+        fish.lungeVx = 0;
+        fish.lungeVy = 0;
+        fish.lungeStartTime = 0;
+      }
+    }
+  }
+
+  // --- Fish-fish combat (health-based) ---
   if (gameMode) {
     const fishList = state.fish;
-    const eatenIds = new Set<string>();
     for (let i = 0; i < fishList.length; i++) {
       const fishA = fishList[i];
-      if (eatenIds.has(fishA.id) || (fishA.opacity ?? 1) < 1) continue;
+      if ((fishA.opacity ?? 1) < 1 || fishA.lifecycleState === 'dying' || fishA.lifecycleState === 'removed') continue;
+      if (!fishA.isDashing) continue; // attacker must be dashing
       const aHead = getHeadPosition(fishA);
       const aR = getHeadRadius(fishA.size);
-      for (let j = i + 1; j < fishList.length; j++) {
+      for (let j = 0; j < fishList.length; j++) {
+        if (i === j) continue;
         const fishB = fishList[j];
-        if (eatenIds.has(fishB.id) || (fishB.opacity ?? 1) < 1) continue;
+        if ((fishB.opacity ?? 1) < 1 || fishB.lifecycleState === 'dying' || fishB.lifecycleState === 'removed') continue;
         const bHead = getHeadPosition(fishB);
         const bR = getHeadRadius(fishB.size);
         const dx = bHead.x - aHead.x;
@@ -276,88 +319,71 @@ export function tickGameState(params: GameTickParams): boolean {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist >= aR + bR) continue;
 
-        const aIsPredator = fishA.type === 'predator' || fishA.type === 'mutant';
-        const bIsPredator = fishB.type === 'predator' || fishB.type === 'mutant';
-        const aIsPrey = fishA.type === 'prey';
-        const bIsPrey = fishB.type === 'prey';
-        const aKo = fishA.lifecycleState === 'knocked_out';
-        const bKo = fishB.lifecycleState === 'knocked_out';
+        // Cooldown: use attackFlashEndTime as implicit cooldown (already set by resolveAttack)
+        if (fishA.attackFlashEndTime && now < (fishA.attackFlashEndTime - COMBAT.ATTACK_FLASH_DURATION + COMBAT.ATTACK_COOLDOWN_MS)) continue;
 
-        if (aKo && bIsPredator && fishB.isDashing) {
-          eatenIds.add(fishA.id);
-          pushBloodAt(state, (fishA.x + fishB.x) * 0.5, (fishA.y + fishB.y) * 0.5, fishA.size * 1.2);
-          fishB.size = Math.min(PLAYER_MAX_SIZE, fishB.size + fishA.size * COLLISION.SIZE_GAIN_RATIO * effMult(fishB.size, fishA.size));
-          fishB.animationSprite?.hasAction?.('bite') && fishB.animationSprite.triggerAction('bite');
-          continue;
+        // Attack! resolveAttack handles damage + flash timers
+        const result = resolveAttack(fishA, fishB, {
+          attackerDamage: fishA.creatureData?.stats?.damage ?? 10,
+        });
+
+        // Bite-time lock-on: snap facing + lunge
+        fishA.facingRight = dx > 0;
+        const lungeLen = Math.sqrt(dx * dx + dy * dy) || 1;
+        fishA.lungeVx = (dx / lungeLen) * COMBAT.LUNGE_STRENGTH;
+        fishA.lungeVy = (dy / lungeLen) * COMBAT.LUNGE_STRENGTH;
+        fishA.lungeStartTime = now;
+        fishA.attackFlashEndTime = now + COMBAT.ATTACK_FLASH_DURATION;
+
+        // Damage number
+        state.particles.chomp.push({
+          x: fishB.x,
+          y: fishB.y - fishB.size * 0.3,
+          life: 1.2,
+          scale: 1.0,
+          text: `-${result.damage}`,
+          color: '#ff4444',
+          punchScale: 1.3,
+          floatUp: true,
+        });
+
+        pushBloodAt(state, (fishA.x + fishB.x) * 0.5, (fishA.y + fishB.y) * 0.5, fishB.size * 0.6);
+        fishA.animationSprite?.hasAction?.('bite') && fishA.animationSprite.triggerAction('bite');
+
+        if (result.died) {
+          // Death: spawn carcass + chunks, mark dying
+          fishB.lifecycleState = 'dying';
+          const carcass = spawnCarcass(fishB.x, fishB.y, fishB.size, 0);
+          const chunks = spawnChunksFromFish(
+            fishB.x, fishB.y, fishB.size,
+            fishB.creatureData?.essenceTypes,
+            carcass.carcassId
+          );
+          carcass.remainingChunks = chunks.length;
+          state.carcasses.push(carcass);
+          state.chunks.push(...chunks);
+
+          // Attacker gets hunger restore
+          restoreHunger(fishA, fishB.size * HUNGER_RESTORE_MULTIPLIER);
+        } else {
+          // Prey flee-on-hit
+          fishB.fleeFromId = fishA.id;
+          fishB.fleeFromUntil = now + AI.PREY_FLEE_AFTER_HIT_MS;
         }
-        if (bKo && aIsPredator && fishA.isDashing) {
-          eatenIds.add(fishB.id);
-          pushBloodAt(state, (fishA.x + fishB.x) * 0.5, (fishA.y + fishB.y) * 0.5, fishB.size * 1.2);
-          fishA.size = Math.min(PLAYER_MAX_SIZE, fishA.size + fishB.size * COLLISION.SIZE_GAIN_RATIO * effMult(fishA.size, fishB.size));
-          fishA.animationSprite?.hasAction?.('bite') && fishA.animationSprite.triggerAction('bite');
-          continue;
-        }
-
-        if (!((aIsPredator && bIsPrey) || (aIsPrey && bIsPredator))) continue;
-        const predator = aIsPredator ? fishA : fishB;
-        const prey = aIsPredator ? fishB : fishA;
-        const bothDashing = predator.isDashing && prey.isDashing;
-        if (!predator.isDashing && !prey.isDashing) continue;
-
-        const sizeRatio = predator.size / prey.size;
-        const evenlyMatchedFf = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;
-        const oneSidedFf = evenlyMatchedFf && (predator.isDashing !== prey.isDashing);
-
-        if (oneSidedFf) {
-          const attacker = predator.isDashing ? predator : prey;
-          const target = predator.isDashing ? prey : predator;
-          const targetSizeRatio = attacker.size / target.size;
-          applyAttackToTarget(attacker, target, DASH_ATTACK_STAMINA_COST, { targetSizeRatio });
-          if (target.lifecycleState === 'knocked_out') {
-            target.vx = (target.vx ?? 0) * COLLISION.KO_VELOCITY_DAMP;
-            target.vy = (target.vy ?? 0) * COLLISION.KO_VELOCITY_DAMP;
-          } else if ((target.stamina ?? 0) <= 0) {
-            target.lifecycleState = 'exhausted';
-          }
-        } else if (sizeRatio >= ATTACK_SIZE_RATIO) {
-          eatenIds.add(prey.id);
-          pushBloodAt(state, (predator.x + prey.x) * 0.5, (predator.y + prey.y) * 0.5, prey.size);
-          predator.size = Math.min(PLAYER_MAX_SIZE, predator.size + prey.size * COLLISION.SIZE_GAIN_RATIO * effMult(predator.size, prey.size));
-          restoreHunger(predator, prey.size * HUNGER_RESTORE_MULTIPLIER);
-          predator.animationSprite?.hasAction?.('bite') && predator.animationSprite.triggerAction('bite');
-        } else if (sizeRatio <= 1 / ATTACK_SIZE_RATIO) {
-          eatenIds.add(predator.id);
-          pushBloodAt(state, (predator.x + prey.x) * 0.5, (predator.y + prey.y) * 0.5, predator.size);
-          prey.size = Math.min(PLAYER_MAX_SIZE, prey.size + predator.size * COLLISION.SIZE_GAIN_RATIO * effMult(prey.size, predator.size));
-          restoreHunger(prey, predator.size * HUNGER_RESTORE_MULTIPLIER);
-          prey.animationSprite?.hasAction?.('bite') && prey.animationSprite.triggerAction('bite');
-        } else if (bothDashing) {
-          applyStaminaCost(predator, DASH_ATTACK_STAMINA_COST);
-          applyStaminaCost(prey, DASH_ATTACK_STAMINA_COST);
-          if ((predator.stamina ?? 0) <= 0) {
-            eatenIds.add(predator.id);
-            pushBloodAt(state, (predator.x + prey.x) * 0.5, (predator.y + prey.y) * 0.5, 20);
-            prey.size = Math.min(PLAYER_MAX_SIZE, prey.size + predator.size * COLLISION.STAMINA_BATTLE_SIZE_GAIN);
-            prey.animationSprite?.hasAction?.('bite') && prey.animationSprite.triggerAction('bite');
-          } else if ((prey.stamina ?? 0) <= 0) {
-            prey.lifecycleState = 'exhausted';
-          }
-        }
-        break;
+        break; // one attack per frame per fish
       }
     }
-    if (eatenIds.size > 0) {
-      state.fish = state.fish.filter((f) => !eatenIds.has(f.id));
-    }
+    // Remove dying fish
+    state.fish = state.fish.filter((f) => f.lifecycleState !== 'dying');
   }
 
-  // Player-fish collision
+  // --- Player-fish combat (health-based) ---
   const playerHead = getHeadPosition(player);
   const playerHeadR = getHeadRadius(player.size);
 
   for (let idx = state.fish.length - 1; idx >= 0; idx--) {
     const fish = state.fish[idx];
-    if ((fish.opacity ?? 1) < 1) continue;
+    if ((fish.opacity ?? 1) < 1 || fish.lifecycleState === 'dying' || fish.lifecycleState === 'removed') continue;
     const fishHead = getHeadPosition(fish);
     const fishHeadR = getHeadRadius(fish.size);
     const dx = fishHead.x - playerHead.x;
@@ -366,61 +392,112 @@ export function tickGameState(params: GameTickParams): boolean {
     if (dist >= playerHeadR + fishHeadR) continue;
 
     if (gameMode) {
-      if (fish.lifecycleState === 'knocked_out' && player.isDashing) {
-        state.gameMode.fishEaten += 1;
-        state.eatenIds.add(fish.id);
-        state.fish.splice(idx, 1);
-        player.size = Math.min(PLAYER_MAX_SIZE, player.size + fish.size * 0.15 * effMult(player.size, fish.size));
-        restoreHunger(player, fish.size * HUNGER_RESTORE_MULTIPLIER);
+      const playerAttacking = player.isDashing;
+      const fishAttacking = fish.isDashing && fish.size > player.size * 0.8;
+
+      // Cooldown check for player attack
+      const playerOnCooldown = player.lastBiteTime !== undefined && (now - player.lastBiteTime) < COMBAT.ATTACK_COOLDOWN_MS;
+
+      // Larger prey counterattack prevention: if fish is prey and player attacks, only player's attack applies
+      const fishIsPrey = fish.type === 'prey';
+      const playerAttackOnly = fishIsPrey && playerAttacking && fish.size > player.size;
+
+      if (playerAttacking && !playerOnCooldown) {
+        // Player attacks fish
+        const result = resolveAttack(player, fish, {
+          attackerDamage: playerCreature?.stats?.damage ?? 10,
+        });
+        player.lastBiteTime = now;
+
+        // Bite-time lock-on
+        player.facingRight = dx > 0;
+        player.lungeVx = (dx / (dist || 1)) * COMBAT.LUNGE_STRENGTH;
+        player.lungeVy = (dy / (dist || 1)) * COMBAT.LUNGE_STRENGTH;
+        player.lungeStartTime = now;
+        player.attackFlashEndTime = now + COMBAT.ATTACK_FLASH_DURATION;
+
+        // Chomp animation
         player.chompPhase = 1;
         player.chompEndTime = now + ANIMATION.CHOMP_DECAY_TIME;
-        const eatX = (fish.x + player.x) * 0.5;
-        const eatY = (fish.y + player.y) * 0.5;
-        state.animationSpriteManager.hasSprite('player') &&
+        if (state.animationSpriteManager.hasSprite('player')) {
           state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('bite');
-        pushBloodAt(state, eatX, eatY, 20);
-        fish.creatureData?.essenceTypes?.forEach((ec: { type: string; baseYield: number }, i: number) => {
-          const et = ESSENCE_TYPES[ec.type];
-          if (et)
-            state.particles.chomp.push({
-              x: eatX + (Math.random() - 0.5) * 24,
-              y: eatY - 20 - i * 18,
-              life: 1.5,
-              scale: 1.4,
-              text: `+${ec.baseYield} ${et.name}`,
-              color: et.color,
-              punchScale: 1.8,
-            });
+        }
+
+        // Damage number
+        state.particles.chomp.push({
+          x: fish.x,
+          y: fish.y - fish.size * 0.3,
+          life: 1.2,
+          scale: 1.2,
+          text: `-${result.damage}`,
+          color: '#ff4444',
+          punchScale: 1.5,
+          floatUp: true,
         });
-        continue;
+
+        pushBloodAt(state, (fish.x + player.x) * 0.5, (fish.y + player.y) * 0.5, fish.size * 0.8);
+
+        if (result.died) {
+          // Death: spawn carcass + chunks
+          state.gameMode.fishEaten += 1;
+          state.eatenIds.add(fish.id);
+
+          const carcass = spawnCarcass(fish.x, fish.y, fish.size, 0);
+          const chunks = spawnChunksFromFish(
+            fish.x, fish.y, fish.size,
+            fish.creatureData?.essenceTypes,
+            carcass.carcassId
+          );
+          carcass.remainingChunks = chunks.length;
+          state.carcasses.push(carcass);
+          state.chunks.push(...chunks);
+
+          // Persist essence to run state
+          let runState = loadRunState();
+          if (runState && fish.creatureData?.essenceTypes?.length) {
+            fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }) => {
+              runState = addEssenceToRun(runState!, ec.type, ec.baseYield);
+            });
+            saveRunState(runState);
+          }
+
+          // Hunger restore
+          restoreHunger(player, fish.size * HUNGER_RESTORE_MULTIPLIER);
+
+          state.fish.splice(idx, 1);
+          continue;
+        } else {
+          // Prey flee-on-hit
+          fish.fleeFromId = 'player';
+          fish.fleeFromUntil = now + AI.PREY_FLEE_AFTER_HIT_MS;
+        }
       }
 
-      const canSwallow = player.size >= fish.size * SWALLOW_SIZE_RATIO;
-      const canAttack = player.size > fish.size * ATTACK_SIZE_RATIO;
-      const playerAttacking = player.isDashing && (canAttack || canSwallow);
-      const fishAttacking = fish.isDashing && fish.size > player.size * ATTACK_SIZE_RATIO;
-      const sizeRatio = player.size / fish.size;
-      const evenlyMatched = sizeRatio >= 1 - BATTLE_SIZE_THRESHOLD && sizeRatio <= 1 + BATTLE_SIZE_THRESHOLD;
-      const bothDashing = player.isDashing && fish.isDashing;
-      const oneSidedAttack = evenlyMatched && (player.isDashing !== fish.isDashing);
+      // Fish attacks player (skip if larger-prey counterattack prevention applies)
+      if (fishAttacking && !playerAttackOnly) {
+        const fishCooldown = fish.attackFlashEndTime && now < (fish.attackFlashEndTime - COMBAT.ATTACK_FLASH_DURATION + COMBAT.ATTACK_COOLDOWN_MS);
+        if (!fishCooldown) {
+          const result = resolveAttack(fish, player, {
+            attackerDamage: fish.creatureData?.stats?.damage ?? 10,
+          });
+          fish.attackFlashEndTime = now + COMBAT.ATTACK_FLASH_DURATION;
 
-      if (!playerAttacking && !fishAttacking && !(evenlyMatched && bothDashing) && !oneSidedAttack) continue;
+          // Damage number on player
+          state.particles.chomp.push({
+            x: player.x,
+            y: player.y - player.size * 0.3,
+            life: 1.2,
+            scale: 1.2,
+            text: `-${result.damage}`,
+            color: '#ff6666',
+            punchScale: 1.5,
+            floatUp: true,
+          });
 
-      if (oneSidedAttack) {
-        const attacker = player.isDashing ? player : fish;
-        const target = player.isDashing ? fish : player;
-        const targetSizeRatio = (attacker as PlayerEntity).size / (target as FishEntity).size;
-        if (target === fish) {
-          applyAttackToTarget(attacker, fish, DASH_ATTACK_STAMINA_COST, { targetSizeRatio });
-          if (fish.lifecycleState === 'knocked_out') {
-            fish.vx = (fish.vx ?? 0) * COLLISION.KO_VELOCITY_DAMP;
-            fish.vy = (fish.vy ?? 0) * COLLISION.KO_VELOCITY_DAMP;
-          } else if ((fish.stamina ?? 0) <= 0) {
-            fish.lifecycleState = 'exhausted';
-          }
-        } else {
-          applyStaminaCost(player, DASH_ATTACK_STAMINA_COST, { targetSizeRatio: 1 / targetSizeRatio });
-          if (player.stamina <= 0) {
+          pushBloodAt(state, (fish.x + player.x) * 0.5, (fish.y + player.y) * 0.5, player.size * 0.5);
+
+          if (result.died) {
+            // Player died
             state.animationSpriteManager.hasSprite('player') &&
               state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('death');
             if (!state.gameMode.gameOverFired) {
@@ -437,120 +514,9 @@ export function tickGameState(params: GameTickParams): boolean {
             return false;
           }
         }
-      } else if (evenlyMatched && bothDashing) {
-        applyStaminaCost(player, DASH_ATTACK_STAMINA_COST);
-        applyStaminaCost(fish, DASH_ATTACK_STAMINA_COST);
-        if ((fish.stamina ?? 0) <= 0) {
-          fish.lifecycleState = 'exhausted';
-        } else if (player.stamina <= 0) {
-          state.animationSpriteManager.hasSprite('player') &&
-            state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('death');
-          if (!state.gameMode.gameOverFired) {
-            state.gameMode.gameOverFired = true;
-            callbacks.onGameOver?.({
-              score: state.gameMode.score,
-              cause: 'eaten',
-              size: player.size,
-              fishEaten: state.gameMode.fishEaten,
-              essenceCollected: state.gameMode.essenceCollected,
-              timeSurvived: Math.floor((now - state.gameMode.startTime - state.gameMode.totalPausedTime) / 1000),
-            });
-          }
-          return false;
-        }
-      } else if (fishAttacking) {
-        state.animationSpriteManager.hasSprite('player') &&
-          state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('death');
-        if (!state.gameMode.gameOverFired) {
-          state.gameMode.gameOverFired = true;
-          callbacks.onGameOver?.({
-            score: state.gameMode.score,
-            cause: 'eaten',
-            size: player.size,
-            fishEaten: state.gameMode.fishEaten,
-            essenceCollected: state.gameMode.essenceCollected,
-            timeSurvived: Math.floor((now - state.gameMode.startTime - state.gameMode.totalPausedTime) / 1000),
-          });
-        }
-        return false;
-      } else if (playerAttacking) {
-        state.gameMode.fishEaten += 1;
-        state.eatenIds.add(fish.id);
-        state.fish.splice(idx, 1);
-        const sizeRatio = player.size / fish.size;
-        const efficiencyMult = Math.max(COLLISION.MIN_EFFICIENCY, 1 / (1 + sizeRatio * COLLISION.EFFICIENCY_RATIO));
-        const sizeGain = fish.size * COLLISION.SIZE_GAIN_RATIO * efficiencyMult;
-        const oldPlayerSize = player.size;
-        player.size = Math.min(PLAYER_MAX_SIZE, player.size + sizeGain);
-        if (playerCreature?.growthSprites) {
-          const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
-          const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
-          if (oldStage !== newStage) {
-            const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
-            callbacks.onReloadPlayerSprite?.(spriteUrl, (canvas) => {
-              player.sprite = canvas;
-            });
-            if (state.animationSpriteManager.hasSprite('player')) {
-              const animSprite = state.animationSpriteManager.getSprite('player', player.animations || {});
-              animSprite.setGrowthStage(newStage);
-            }
-          }
-        }
-        const hungerRestore = Math.min(fish.size * HUNGER_RESTORE_MULTIPLIER, HUNGER_MAX - player.hunger);
-        restoreHunger(player, fish.size * HUNGER_RESTORE_MULTIPLIER);
-        player.chompPhase = 1;
-        player.chompEndTime = now + ANIMATION.CHOMP_DECAY_TIME;
-        const eatX = (fish.x + player.x) * 0.5;
-        const eatY = (fish.y + player.y) * 0.5;
-        if (state.animationSpriteManager.hasSprite('player')) {
-          state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('bite');
-        }
-        for (let k = 0; k < 5; k++) {
-          state.particles.chomp.push({
-            x: eatX + (Math.random() - 0.5) * 16,
-            y: eatY + (Math.random() - 0.5) * 16,
-            life: 1,
-            scale: 1 + Math.random() * 0.5,
-            text: k === 0 ? 'CHOMP' : ['!', '•', '*', '★'][k % 4],
-            punchScale: 1.5,
-          });
-        }
-        fish.creatureData?.essenceTypes?.forEach((essenceConfig: { type: string; baseYield: number }, idx: number) => {
-          const essenceType = ESSENCE_TYPES[essenceConfig.type];
-          if (essenceType) {
-            state.particles.chomp.push({
-              x: eatX + (Math.random() - 0.5) * 24,
-              y: eatY - 20 - idx * 18,
-              life: 1.5,
-              scale: 1.4,
-              text: `+${essenceConfig.baseYield} ${essenceType.name}`,
-              color: essenceType.color,
-              punchScale: 1.8,
-            });
-          }
-        });
-        // Persist essence to run state for digestion screen
-        let runState = loadRunState();
-        if (runState && fish.creatureData?.essenceTypes?.length) {
-          fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }) => {
-            runState = addEssenceToRun(runState!, ec.type, ec.baseYield);
-          });
-          saveRunState(runState);
-        }
-        if (hungerRestore > 0) {
-          state.particles.chomp.push({
-            x: player.x,
-            y: player.y - player.size * 0.6,
-            life: 1.5,
-            scale: 1.2,
-            text: `+${Math.ceil(hungerRestore)}`,
-            color: '#4ade80',
-            punchScale: 1.6,
-          });
-        }
-        pushBloodAt(state, eatX, eatY, fish.size * 1.2);
       }
     } else {
+      // Editor mode: simple eating of prey
       if (fish.type !== 'prey') continue;
       state.eatenIds.add(fish.id);
       state.fish.splice(idx, 1);
@@ -590,29 +556,83 @@ export function tickGameState(params: GameTickParams): boolean {
           punchScale: 1.5,
         });
       }
-      fish.creatureData?.essenceTypes?.forEach((ec: { type: string; baseYield: number }, i: number) => {
-        const et = ESSENCE_TYPES[ec.type];
-        if (et) {
-          state.particles.chomp.push({
-            x: eatX + (Math.random() - 0.5) * 24,
-            y: eatY - 20 - i * 18,
-            life: 1.5,
-            scale: 1.4,
-            text: `+${ec.baseYield} ${et.name}`,
-            color: et.color,
-            punchScale: 1.8,
+      pushBloodAt(state, eatX, eatY, fish.size * 1.2);
+    }
+  }
+
+  // --- Update carcasses and chunks ---
+  if (gameMode) {
+    state.carcasses = updateCarcasses(state.carcasses);
+    state.chunks = updateChunks(state.chunks, deltaTime);
+
+    // Check chunk collection by player
+    const collected = checkChunkCollection(state.chunks, player);
+    for (const chunk of collected) {
+      // Cooldown check
+      if (player.lastChunkEatTime && (now - player.lastChunkEatTime) < COMBAT.CHUNK_EAT_COOLDOWN_MS) continue;
+      player.lastChunkEatTime = now;
+      player.chunkEatEndTime = now + COMBAT.CHUNK_EAT_DURATION_MS;
+
+      // Player growth from chunks
+      const growthAmount = chunk.essenceAmount * COLLISION.SIZE_GAIN_RATIO * 0.5;
+      const oldPlayerSize = player.size;
+      player.size = Math.min(PLAYER_MAX_SIZE, player.size + growthAmount);
+
+      // Check growth stage change
+      if (playerCreature?.growthSprites) {
+        const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
+        const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
+        if (oldStage !== newStage) {
+          const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
+          callbacks.onReloadPlayerSprite?.(spriteUrl, (canvas) => {
+            player.sprite = canvas;
           });
+          if (state.animationSpriteManager.hasSprite('player')) {
+            const animSprite = state.animationSpriteManager.getSprite('player', player.animations || {});
+            animSprite.setGrowthStage(newStage);
+          }
         }
-      });
-      // Persist essence to run state for digestion screen
+      }
+
+      // Restore hunger
+      restoreHunger(player, growthAmount * HUNGER_RESTORE_MULTIPLIER);
+
+      // Persist essence
       let runState = loadRunState();
-      if (runState && fish.creatureData?.essenceTypes?.length) {
-        fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }) => {
-          runState = addEssenceToRun(runState!, ec.type, ec.baseYield);
-        });
+      if (runState) {
+        runState = addEssenceToRun(runState, chunk.essenceType, chunk.essenceAmount);
         saveRunState(runState);
       }
-      pushBloodAt(state, eatX, eatY, fish.size * 1.2);
+
+      // Essence floating number
+      const essenceType = ESSENCE_TYPES[chunk.essenceType];
+      state.particles.chomp.push({
+        x: chunk.x,
+        y: chunk.y - 10,
+        life: 1.5,
+        scale: 1.0,
+        text: `+${chunk.essenceAmount} ${essenceType?.name ?? 'Essence'}`,
+        color: essenceType?.color ?? '#ccaa44',
+        punchScale: 1.4,
+        floatUp: true,
+      });
+
+      // Lunge toward chunk
+      const cdx = chunk.x - player.x;
+      const cdy = chunk.y - player.y;
+      const cdist = Math.sqrt(cdx * cdx + cdy * cdy) || 1;
+      player.lungeVx = (cdx / cdist) * COMBAT.CHUNK_LUNGE_STRENGTH;
+      player.lungeVy = (cdy / cdist) * COMBAT.CHUNK_LUNGE_STRENGTH;
+      player.lungeStartTime = now;
+
+      // Decrement carcass
+      if (chunk.carcassId) {
+        decrementCarcassChunks(state.carcasses, chunk.carcassId);
+      }
+
+      // Chomp animation
+      player.chompPhase = 1;
+      player.chompEndTime = now + ANIMATION.CHOMP_DECAY_TIME;
     }
   }
 
@@ -668,7 +688,7 @@ export function tickGameState(params: GameTickParams): boolean {
       const cap = useSmallPreyTimer ? baseMax + extraCap : baseMax;
       const rawSchoolSize = isSmallPrey
         ? SPAWN.SCHOOL_SIZE_MIN +
-          Math.floor(Math.random() * (SPAWN.SCHOOL_SIZE_MAX - SPAWN.SCHOOL_SIZE_MIN + 1))
+        Math.floor(Math.random() * (SPAWN.SCHOOL_SIZE_MAX - SPAWN.SCHOOL_SIZE_MIN + 1))
         : 1;
       const schoolSize = Math.min(rawSchoolSize, Math.max(0, cap - state.fish.length));
 
@@ -903,8 +923,16 @@ export function tickGameState(params: GameTickParams): boolean {
           let fleeX = 0;
           let fleeY = 0;
           let nearestThreatDist = Infinity;
+          // Clear expired flee state
+          if (fish.fleeFromUntil && now > fish.fleeFromUntil) {
+            fish.fleeFromId = undefined;
+            fish.fleeFromUntil = undefined;
+          }
           for (const other of others) {
-            if (other.size > fish.size * 1.2 && (other.type === 'predator' || other.type === 'mutant')) {
+            // Flee from larger predators OR from any attacker that hit us (fleeFromId)
+            const isLargerPredator = other.size > fish.size * 1.2 && (other.type === 'predator' || other.type === 'mutant');
+            const isFleeTarget = fish.fleeFromId === other.id && fish.fleeFromUntil && now < fish.fleeFromUntil;
+            if (isLargerPredator || isFleeTarget) {
               const dx = fish.x - other.x;
               const dy = fish.y - other.y;
               const d = Math.sqrt(dx * dx + dy * dy);
@@ -917,7 +945,10 @@ export function tickGameState(params: GameTickParams): boolean {
               }
             }
           }
-          if (player.size > fish.size * 1.2) {
+          // Flee from player: larger OR was attacked by player
+          const fleeFromPlayer = player.size > fish.size * 1.2 ||
+            (fish.fleeFromId === 'player' && fish.fleeFromUntil && now < fish.fleeFromUntil);
+          if (fleeFromPlayer) {
             const pdx = fish.x - player.x;
             const pdy = fish.y - player.y;
             const pd = Math.sqrt(pdx * pdx + pdy * pdy);
@@ -1118,6 +1149,7 @@ function spawnRespawnFish(
   const newId = `${cacheId}-r-${Date.now()}-${idSuffix ?? Math.random().toString(36).slice(2, 9)}`;
   const anims = creature.animations;
   const animSprite = anims && hasUsableAnimations(anims) ? state.animationSpriteManager.getSprite(newId, anims) : undefined;
+  const baseHealth = creature.stats?.health ?? 20;
   const newFish: FishEntity = {
     id: newId,
     x: spawnX,
@@ -1138,6 +1170,8 @@ function spawnRespawnFish(
     isDashing: false,
     animations: anims,
     animationSprite: animSprite,
+    health: baseHealth,
+    maxHealth: baseHealth,
   };
   initHungerStamina(newFish, { hungerDrainRate: HUNGER_DRAIN_RATE });
   state.fish.push(newFish);

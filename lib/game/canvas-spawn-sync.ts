@@ -220,6 +220,7 @@ export function useCanvasSpawnSync(
             animationSprite = gameStateRef.current.animationSpriteManager.getSprite(fishItem.id, animations);
           }
 
+          const baseHealth = creatureForSprite?.stats?.health ?? 20;
           const newFish = {
             id: fishItem.id,
             x: spawnX,
@@ -241,6 +242,8 @@ export function useCanvasSpawnSync(
             animations,
             animationSprite,
             isDashing: false,
+            health: baseHealth,
+            maxHealth: baseHealth,
           };
           initHungerStamina(newFish, { hungerDrainRate: 2.5 });
           gameStateRef.current.fish.push(newFish);
