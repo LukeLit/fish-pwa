@@ -9,9 +9,13 @@ import { hasActiveRun } from '@/lib/game/run-state';
 import FeedbackButton from './FeedbackButton';
 import { UIButton, UIPanel } from './ui';
 
+/** Static fallback backgrounds from public assets */
+const STATIC_BACKGROUNDS = ['/backgrounds/shallow.svg'];
+
 export default function MetaHub() {
   const [hasRun, setHasRun] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -20,17 +24,17 @@ export default function MetaHub() {
       const runExists = hasActiveRun();
       setHasRun(runExists);
     };
-    
+
     fetchData();
 
     // Detect if device is mobile/touch-enabled
     const checkMobile = () => {
-      const hasTouchScreen = 'ontouchstart' in window || 
-                             navigator.maxTouchPoints > 0;
+      const hasTouchScreen = 'ontouchstart' in window ||
+        navigator.maxTouchPoints > 0;
       const isMobileViewport = window.innerWidth < 768;
       setIsMobile(hasTouchScreen || isMobileViewport);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
@@ -38,12 +42,39 @@ export default function MetaHub() {
     const handleFocus = () => {
       fetchData();
     };
-    
+
     window.addEventListener('focus', handleFocus);
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('resize', checkMobile);
     };
+  }, []);
+
+  // Load random background from library (blob storage or static fallback)
+  useEffect(() => {
+    let cancelled = false;
+    const loadBackground = async () => {
+      try {
+        const res = await fetch('/api/list-assets?type=background&includeMetadata=true');
+        const data = await res.json();
+        const list = data.backgrounds ?? data.assets ?? [];
+        const images = list.filter((a: { url?: string; filename?: string; type?: string }) => {
+          if (a.type === 'video') return false;
+          const fn = String(a.filename ?? '');
+          return !fn.endsWith('.json') && !fn.endsWith('.mp4') && !fn.endsWith('.webm');
+        });
+        const sources = images.length > 0
+          ? images.map((a: { url: string }) => a.url)
+          : STATIC_BACKGROUNDS;
+        if (cancelled || sources.length === 0) return;
+        const random = sources[Math.floor(Math.random() * sources.length)];
+        setBackgroundUrl(random);
+      } catch {
+        if (!cancelled) setBackgroundUrl(STATIC_BACKGROUNDS[0]);
+      }
+    };
+    loadBackground();
+    return () => { cancelled = true; };
   }, []);
 
   const handleContinue = (e: React.MouseEvent) => {
@@ -54,33 +85,25 @@ export default function MetaHub() {
   };
 
   return (
-    <div className="min-h-screen dv-bg-cosmic flex items-center justify-center p-4 sm:p-8 relative overflow-hidden">
-      {/* Cosmic background effects with animation */}
-      <div className="absolute inset-0 opacity-30">
-        <div className="absolute top-20 left-20 w-64 h-64 bg-cyan-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-        <div className="absolute top-1/2 left-1/2 w-80 h-80 bg-blue-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
-      </div>
-
-      {/* Twinkling stars */}
-      <div 
-        className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage: `
-            radial-gradient(2px 2px at 20% 30%, white, transparent),
-            radial-gradient(2px 2px at 60% 70%, white, transparent),
-            radial-gradient(1px 1px at 50% 50%, white, transparent),
-            radial-gradient(1px 1px at 80% 10%, white, transparent)
-          `,
-          backgroundSize: '200px 200px, 300px 300px, 250px 250px, 150px 150px',
-          animation: 'twinkle 4s ease-in-out infinite',
-        }}
-      />
+    <div
+      className="min-h-screen flex items-center justify-center p-4 sm:p-8 relative overflow-hidden bg-gray-900"
+      style={
+        backgroundUrl
+          ? {
+            backgroundImage: `url(${backgroundUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }
+          : undefined
+      }
+    >
+      {/* Dark overlay for text readability */}
+      <div className="absolute inset-0 bg-black/50" />
 
       <div className="max-w-2xl w-full space-y-6 sm:space-y-8 relative z-10">
         {/* Title */}
         <div className="text-center space-y-2 sm:space-y-4 mb-8 sm:mb-12 animate-scale-in">
-          <h1 className="text-5xl sm:text-7xl dv-title mb-2 sm:mb-4 animate-glow-pulse">
+          <h1 className="text-5xl sm:text-7xl dv-title mb-2 sm:mb-4">
             FISH ODYSSEY
           </h1>
           <p className="text-lg sm:text-xl dv-subtitle">
@@ -124,9 +147,9 @@ export default function MetaHub() {
           </UIButton>
 
           {/* Fish Editor Button */}
-          <UIButton 
-            variant="secondary" 
-            size="xl" 
+          <UIButton
+            variant="secondary"
+            size="xl"
             fullWidth
             href="/fish-editor"
             className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 border-cyan-400/50"
@@ -154,10 +177,6 @@ export default function MetaHub() {
             <li className="flex items-start gap-2">
               <span className="text-cyan-400 flex-shrink-0">▸</span>
               <span>Collect mutations to gain powerful abilities</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-cyan-400 flex-shrink-0">▸</span>
-              <span>Reach space phase for greater rewards</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-cyan-400 flex-shrink-0">▸</span>

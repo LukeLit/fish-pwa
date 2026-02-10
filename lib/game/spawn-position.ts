@@ -117,3 +117,38 @@ export function getSpawnPositionInBand(
     y: Math.max(b.minY, Math.min(b.maxY, y)),
   };
 }
+
+/**
+ * Returns world Y range { min, max } for the given depth bands (for player clamping).
+ */
+export function getWorldYRangeForBands(
+  runId: string | undefined,
+  bandIds: string[]
+): { min: number; max: number } {
+  const run = getRunConfig(runId ?? 'shallow_run');
+  const b = WORLD_BOUNDS;
+  const worldHeight = b.maxY - b.minY;
+
+  if (!run?.steps?.length || bandIds.length === 0) {
+    return { min: b.minY, max: b.maxY };
+  }
+
+  const bands = run.steps.map((id, i) => getDepthBandRules(id, i + 1));
+  const runMinMeters = Math.min(...bands.map((r) => r.min_meters));
+  const runMaxMeters = Math.max(...bands.map((r) => r.max_meters));
+  const runDepthSpan = Math.max(runMaxMeters - runMinMeters, 0.1);
+  const metersToWorldY = (meters: number) =>
+    b.minY + ((meters - runMinMeters) / runDepthSpan) * worldHeight;
+
+  let yMin: number = b.maxY;
+  let yMax: number = b.minY;
+  for (const bandId of bandIds) {
+    const band = getDepthBandRules(bandId, 1);
+    const byMin = metersToWorldY(band.min_meters);
+    const byMax = metersToWorldY(band.max_meters);
+    yMin = Math.min(yMin, byMin);
+    yMax = Math.max(yMax, byMax);
+  }
+
+  return { min: Math.max(b.minY, yMin), max: Math.min(b.maxY, yMax) };
+}

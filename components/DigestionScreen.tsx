@@ -22,7 +22,7 @@ interface LevelUpInfo {
   remaining: number;
 }
 
-const LEVEL_UP_THRESHOLD = 15;
+const LEVEL_UP_THRESHOLD = 30; // Restored from DIGESTION_UPGRADE_IMPLEMENTATION.md
 
 export default function DigestionScreen({
   collectedEssence,
@@ -36,7 +36,7 @@ export default function DigestionScreen({
   useEffect(() => {
     // Calculate level-ups for each essence type
     const calculatedLevelUps: LevelUpInfo[] = [];
-    
+
     Object.entries(collectedEssence).forEach(([type, amount]) => {
       if (amount >= LEVEL_UP_THRESHOLD) {
         const levelUpCount = Math.floor(amount / LEVEL_UP_THRESHOLD);
@@ -50,7 +50,7 @@ export default function DigestionScreen({
     });
 
     setLevelUps(calculatedLevelUps);
-    
+
     // If no level-ups, show continue immediately
     if (calculatedLevelUps.length === 0 || calculatedLevelUps.every(lu => lu.count === 0)) {
       setShowContinue(true);
@@ -138,7 +138,7 @@ export default function DigestionScreen({
               Level-Ups Available:
             </h2>
             {levelUps.map((levelUp, index) => (
-              <UICard 
+              <UICard
                 key={levelUp.essenceType}
                 variant="yellow"
                 className="animate-slide-in p-4 sm:p-6"
@@ -146,7 +146,7 @@ export default function DigestionScreen({
               >
                 <div className="mb-4">
                   <p className="text-white text-sm sm:text-base font-semibold">
-                    {collectedEssence[levelUp.essenceType]} {getEssenceName(levelUp.essenceType)} ÷ {LEVEL_UP_THRESHOLD} = 
+                    {collectedEssence[levelUp.essenceType]} {getEssenceName(levelUp.essenceType)} ÷ {LEVEL_UP_THRESHOLD} =
                     <span className="text-yellow-300 font-bold ml-2 text-lg sm:text-xl">
                       {levelUp.count} Level-Up{levelUp.count !== 1 ? 's' : ''}
                     </span>

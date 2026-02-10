@@ -24,6 +24,7 @@ const CHUNK_MAX_SIZE = 26;
 const CHUNK_SIZE_FISH_RATIO = 0.45; // chunk size = fishSize * this (clamped to min/max)
 const CHUNK_SPAWN_OFFSET = 0.15; // position variance (fishSize * this) — reduced spread
 const MEAT_CHUNK_COUNT = 3; // fixed count so fish always drop same amount
+const MEAT_CHUNK_GROWTH_MULTIPLIER = 0.6; // Reduce vs pre-combat; tune to target ~45–55 size after 1-1
 
 // --- Sprite cache ---
 const chunkSprites = new Map<string, HTMLCanvasElement>();
@@ -98,7 +99,7 @@ export async function preloadChunkSprites(
   }
 }
 
-function samplePointInSilhouette(bodyEllipse?: Ellipse, headEllipse?: Ellipse, fallback: { x: number; y: number }): { x: number; y: number } {
+function samplePointInSilhouette(bodyEllipse?: Ellipse, headEllipse?: Ellipse, fallback: { x: number; y: number } = { x: 0, y: 0 }): { x: number; y: number } {
   if (!bodyEllipse && !headEllipse) return fallback;
   if (bodyEllipse && !headEllipse) return samplePointInsideEllipse(bodyEllipse);
   if (!bodyEllipse && headEllipse) return samplePointInsideEllipse(headEllipse);
@@ -130,7 +131,7 @@ export function spawnMeatChunksFromFish(
     COLLISION.MIN_EFFICIENCY,
     1 / (1 + sizeRatio * COLLISION.EFFICIENCY_RATIO)
   );
-  const totalGrowth = fishSize * COLLISION.SIZE_GAIN_RATIO * efficiencyMult;
+  const totalGrowth = fishSize * COLLISION.SIZE_GAIN_RATIO * efficiencyMult * MEAT_CHUNK_GROWTH_MULTIPLIER;
   const count = MEAT_CHUNK_COUNT;
   const growthPerChunk = Math.max(0.1, totalGrowth / count);
 

@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import type { RunState } from '@/lib/game/types';
+import { getNextStep } from '@/lib/game/data/level-loader';
 import { UIButton, UIPanel, UICard } from './ui';
 
 interface EvolutionScreenProps {
@@ -23,16 +24,10 @@ export default function EvolutionScreen({
 }: EvolutionScreenProps) {
   const [animationPhase, setAnimationPhase] = useState<'transform' | 'complete'>('transform');
 
-  // Calculate next level
-  const getNextLevel = (currentLevel: string): string => {
-    const parts = currentLevel.split('-');
-    if (parts.length !== 2) return '1-2';
-    const biome = parts[0];
-    const levelNum = parseInt(parts[1], 10) || 1;
-    return `${biome}-${levelNum + 1}`;
-  };
-
-  const nextLevel = getNextLevel(runState.currentLevel);
+  // Calculate next level from run steps
+  const runConfigId = runState.runConfigId ?? 'shallow_run';
+  const nextInfo = getNextStep(runConfigId, runState.currentLevel);
+  const nextLevel = nextInfo?.nextLevel ?? '1-2';
 
   useEffect(() => {
     // Auto-advance to complete phase after transformation animation
@@ -54,7 +49,7 @@ export default function EvolutionScreen({
   return (
     <div className="fixed inset-0 dv-bg-cosmic-alt flex items-center justify-center z-50 p-4">
       {/* Animated starfield background */}
-      <div 
+      <div
         className="absolute inset-0 opacity-20"
         style={{
           backgroundImage: `
@@ -87,11 +82,10 @@ export default function EvolutionScreen({
           <div className="relative">
             {/* Fish sprite with transformation animation */}
             <div
-              className={`relative transition-all duration-500 ${
-                animationPhase === 'transform'
+              className={`relative transition-all duration-500 ${animationPhase === 'transform'
                   ? 'scale-110 animate-pulse'
                   : 'scale-100'
-              }`}
+                }`}
               style={{
                 filter: animationPhase === 'transform'
                   ? 'drop-shadow(0 0 40px rgba(34, 211, 238, 0.8)) drop-shadow(0 0 80px rgba(168, 85, 247, 0.6))'
@@ -125,9 +119,8 @@ export default function EvolutionScreen({
 
             {/* Glow ring */}
             <div
-              className={`absolute inset-0 rounded-full transition-all duration-500 ${
-                animationPhase === 'transform' ? 'opacity-100' : 'opacity-0'
-              }`}
+              className={`absolute inset-0 rounded-full transition-all duration-500 ${animationPhase === 'transform' ? 'opacity-100' : 'opacity-0'
+                }`}
               style={{
                 background: 'radial-gradient(circle, rgba(34, 211, 238, 0.3) 0%, transparent 70%)',
                 transform: 'scale(1.5)',
@@ -182,9 +175,8 @@ export default function EvolutionScreen({
           size="xl"
           fullWidth
           onClick={onContinue}
-          className={`transition-all duration-300 ${
-            animationPhase === 'complete' ? 'scale-100 opacity-100 animate-glow-pulse' : 'scale-95 opacity-70'
-          }`}
+          className={`transition-all duration-300 ${animationPhase === 'complete' ? 'scale-100 opacity-100 animate-glow-pulse' : 'scale-95 opacity-70'
+            }`}
         >
           <span className="tracking-wider">ENTER LEVEL {nextLevel}</span>
         </UIButton>

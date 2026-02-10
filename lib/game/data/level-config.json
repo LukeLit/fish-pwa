@@ -9,7 +9,7 @@
       "min_meters": 0.2,
       "max_meters": 0.6,
       "fish_count": 34,
-      "apex_count": 3,
+      "apex_count": 5,
       "sub_depths": [
         "upper"
       ]
@@ -19,7 +19,7 @@
       "min_meters": 0.4,
       "max_meters": 0.8,
       "fish_count": 54,
-      "apex_count": 5,
+      "apex_count": 8,
       "sub_depths": [
         "upper",
         "mid"
@@ -30,7 +30,8 @@
       "min_meters": 0.5,
       "max_meters": 1.2,
       "fish_count": 84,
-      "apex_count": 8,
+      "apex_count": 12,
+      "main_apex": true,
       "sub_depths": [
         "upper",
         "mid",

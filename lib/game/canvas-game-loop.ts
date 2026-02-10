@@ -58,7 +58,7 @@ import {
   hasUsableAnimations,
 } from '@/lib/rendering/fish-renderer';
 import { cacheBust } from '@/lib/utils/cache-bust';
-import { getSpawnPositionInBand } from './spawn-position';
+import { getSpawnPositionInBand, getWorldYRangeForBands } from './spawn-position';
 
 export interface GameTickCallbacks {
   onLevelComplete?: (score: number, stats?: { size: number; fishEaten: number; timeSurvived: number }) => void;
@@ -94,6 +94,7 @@ export interface GameTickParams {
     selectedFishId: string | null;
     runId?: string;
     currentLevel?: string;
+    unlockedDepthBands?: string[];
     loading?: boolean;
   };
   playerCreature: Creature | undefined;
@@ -598,7 +599,10 @@ export function tickGameState(params: GameTickParams): boolean {
 
   // --- Update carcasses and chunks ---
   if (gameMode) {
-    state.carcasses = updateCarcasses(state.carcasses);
+    // Only update carcasses when not paused (prevents drift while world is frozen)
+    if (!isPaused) {
+      state.carcasses = updateCarcasses(state.carcasses, deltaTime);
+    }
     state.chunks = updateChunks(state.chunks, deltaTime);
 
     // Check chunk collection by player (cooldown prevents spam; all overlapping chunks granted in one batch)
@@ -820,7 +824,13 @@ export function tickGameState(params: GameTickParams): boolean {
 
   const bounds = state.worldBounds;
   player.x = Math.max(bounds.minX, Math.min(bounds.maxX, player.x));
-  player.y = Math.max(bounds.minY, Math.min(bounds.maxY, player.y));
+  const { unlockedDepthBands, runId } = options;
+  if (unlockedDepthBands?.length && runId) {
+    const bandRange = getWorldYRangeForBands(runId, unlockedDepthBands);
+    player.y = Math.max(bandRange.min, Math.min(bandRange.max, player.y));
+  } else {
+    player.y = Math.max(bounds.minY, Math.min(bounds.maxY, player.y));
+  }
 
   if (gameMode) {
     state.gameMode.score = Math.floor((player.size - player.baseSize) * GAME.SCORE_PER_SIZE_UNIT);

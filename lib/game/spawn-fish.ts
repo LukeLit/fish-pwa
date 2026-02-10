@@ -255,11 +255,14 @@ export function computeEncounterSize(options: {
   levelNumber?: number;
   playerSize?: number; // Kept for API compatibility, but not used
   forceSmall?: boolean;
+  /** Override tier for main apex (e.g. boss-tier target in 1-3). */
+  forceTier?: SizeTier;
 }): number {
-  const { creature, levelNumber = 1, forceSmall = false } = options;
+  const { creature, levelNumber = 1, forceSmall = false, forceTier } = options;
 
-  // Determine tier from explicit sizeTier, creature type, or infer from stats
-  const tier: SizeTier = (creature.sizeTier as SizeTier)
+  // Determine tier from forceTier, explicit sizeTier, creature type, or infer from stats
+  const tier: SizeTier = forceTier
+    ?? (creature.sizeTier as SizeTier)
     ?? inferTierFromType(creature.type)
     ?? inferSizeTierFromStats(creature);
 
@@ -270,6 +273,9 @@ export function computeEncounterSize(options: {
   if (forceSmall) {
     // Use minimum of range for "easy targets"
     size = range.min;
+  } else if (forceTier === 'boss') {
+    // Main apex: use top of boss range for maximum visibility
+    size = range.min + (range.max - range.min) * 0.85;
   } else {
     // Random variance within tier range
     size = range.min + Math.random() * (range.max - range.min);

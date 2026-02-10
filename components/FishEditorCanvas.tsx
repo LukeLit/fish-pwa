@@ -96,6 +96,8 @@ interface FishEditorCanvasProps {
   runId?: string;
   /** Current depth band (e.g. '1-1') – used for band-based fish spawn in game mode */
   currentLevel?: string;
+  /** Unlocked depth bands for continuous progression (clamps player Y to these bands) */
+  unlockedDepthBands?: string[];
   /** Game mode: when set, canvas player size/sprite sync from this value (e.g. cheats) */
   syncedPlayerSize?: number;
   // Game mode features
@@ -136,6 +138,7 @@ export default function FishEditorCanvas({
   showHitboxDebug = false,
   runId = 'shallow_run',
   currentLevel = '1-1',
+  unlockedDepthBands,
   syncedPlayerSize,
   gameMode = false,
   levelDuration = 60000,
@@ -234,6 +237,8 @@ export default function FishEditorCanvas({
   useEffect(() => { runIdRef.current = runId }, [runId])
   const currentLevelRef = useRef<string>(currentLevel);
   useEffect(() => { currentLevelRef.current = currentLevel }, [currentLevel])
+  const unlockedDepthBandsRef = useRef<string[] | undefined>(unlockedDepthBands);
+  useEffect(() => { unlockedDepthBandsRef.current = unlockedDepthBands }, [unlockedDepthBands])
 
   // Loading readiness for game mode: wait for player sprite + all fish sprites before starting
   const playerSpriteLoadedRef = useRef(false);
@@ -1047,6 +1052,14 @@ export default function FishEditorCanvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // When level transitions (e.g. continuous progression 1-1 -> 1-2), reset game mode
+    // so the timer restarts and the loop resumes (it stops when level complete fires)
+    if (gameMode) {
+      gameStateRef.current.gameMode.levelCompleteFired = false;
+      gameStateRef.current.gameMode.startTime = 0;
+      gameStateRef.current.gameMode.levelEnding = false;
+    }
+
     // Set canvas to fill available space
     const updateCanvasSize = () => {
       const container = containerRef.current;
@@ -1129,6 +1142,7 @@ export default function FishEditorCanvas({
           selectedFishId: selectedFishIdRef.current,
           runId: runIdRef.current,
           currentLevel: currentLevelRef.current,
+          unlockedDepthBands: unlockedDepthBandsRef.current,
           loading,
         },
         playerCreature: playerCreature,
@@ -1222,7 +1236,7 @@ export default function FishEditorCanvas({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isClient]);
+  }, [isClient, gameMode, currentLevel]);
 
   if (!isClient) {
     return (

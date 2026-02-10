@@ -9,10 +9,37 @@ import { getLevelConfig } from './data/level-loader';
 import { loadCreaturesByBiome, loadCreaturesByBiomes } from './data/creature-loader';
 import { computeEncounterSize } from './spawn-fish';
 
-export type SpawnedCreatureForLevel = Creature & { id: string; creatureId?: string };
+export type SpawnedCreatureForLevel = Creature & { id: string; creatureId?: string; depthBandId?: string };
 
 export interface CreateLevelResult {
   spawnList: SpawnedCreatureForLevel[];
+}
+
+/**
+ * Creates a combined spawn list for all bands in a run (for continuous progression).
+ * Each fish has depthBandId so spawn sync can place them in the correct band.
+ */
+export async function createLevelForRun(
+  biomeId: string,
+  runConfigId: string,
+  bandIds: string[]
+): Promise<CreateLevelResult> {
+  const spawnList: SpawnedCreatureForLevel[] = [];
+  let spawnIndex = 0;
+
+  for (const depthBandId of bandIds) {
+    const levelId = (await import('./data/level-loader')).getLevelIdFromDepthBandId(depthBandId);
+    const result = await createLevel(biomeId, levelId);
+    for (const fish of result.spawnList) {
+      spawnList.push({
+        ...fish,
+        id: `${fish.id}_${depthBandId}`,
+        depthBandId,
+      });
+    }
+  }
+
+  return { spawnList };
 }
 
 /**
@@ -51,12 +78,16 @@ export async function createLevel(biomeId: string, levelId: number): Promise<Cre
   let spawnIndex = 0;
 
   const apexCount = Math.min(rules.apex_count, apexPool.length);
+  const mainApexFirst = rules.main_apex && apexPool.length > 0;
+
   for (let i = 0; i < apexCount; i++) {
     const creature = apexPool[i % apexPool.length];
+    const isMainApex = mainApexFirst && i === 0;
     const encounterSize = computeEncounterSize({
       creature,
       biomeId: creature.biomeId,
       levelNumber: levelId,
+      forceTier: isMainApex ? 'boss' : undefined,
     });
     spawnList.push({
       ...creature,

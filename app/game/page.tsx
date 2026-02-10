@@ -23,7 +23,8 @@ import {
   saveRunState,
   useReroll,
   applyUpgrade,
-  progressToNextLevel
+  progressToNextLevel,
+  isAreaTransition,
 } from '@/lib/game/run-state';
 import type { RunState } from '@/lib/game/types';
 
@@ -131,18 +132,23 @@ export default function GamePage() {
     let runState = loadRunState();
     if (!runState) return;
 
-    runState = progressToNextLevel(runState);
-    saveRunState(runState);
+    const nextState = progressToNextLevel(runState);
+    saveRunState(nextState);
 
-    // Reset screens and reload game with new level
+    // Reset screens
     setShowDigestionScreen(false);
     setShowUpgradeScreen(false);
     setShowEvolutionScreen(false);
     setPendingLevelUps([]);
+    setCurrentRunState(nextState);
 
-    // Reload page to start next level (GameCanvas will read updated runState)
-    setCurrentRunState(runState);
-    window.location.reload();
+    // Full reload only when transitioning to new area (e.g. 1-3 -> 2-1)
+    if (isAreaTransition(runState.currentLevel, nextState.currentLevel)) {
+      window.location.reload();
+    } else {
+      // Continuous progression: notify GameCanvas to add new band's fish
+      window.dispatchEvent(new CustomEvent('runStateUpdated'));
+    }
   };
 
   const handleGameEnd = (score: number, essence: number) => {

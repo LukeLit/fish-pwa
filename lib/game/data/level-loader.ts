@@ -22,6 +22,8 @@ export interface LevelRules {
   sub_depths: string[];
   /** Optional sub-tags (biome IDs) for fish pool; when set, pool = union of creatures from these tags. */
   level_tags?: string[];
+  /** When true, first apex spawn uses boss-tier size as the level target. */
+  main_apex?: boolean;
 }
 
 /** Stored depth band entry (no level_id; id is the band key e.g. "1-1"). */
@@ -31,6 +33,7 @@ interface DepthBandEntry {
   max_meters?: number;
   fish_count?: number;
   apex_count?: number;
+  main_apex?: boolean;
   sub_depths?: string[];
 }
 
@@ -94,6 +97,7 @@ function parseDepthBandEntry(bandId: string, entry: DepthBandEntry, levelId: num
     max_meters: typeof entry.max_meters === 'number' ? entry.max_meters : DEFAULT_LEVEL_RULES.max_meters,
     fish_count: typeof entry.fish_count === 'number' ? entry.fish_count : DEFAULT_LEVEL_RULES.fish_count,
     apex_count: typeof entry.apex_count === 'number' ? entry.apex_count : DEFAULT_LEVEL_RULES.apex_count,
+    main_apex: 'main_apex' in entry && typeof entry.main_apex === 'boolean' ? entry.main_apex : false,
     sub_depths: Array.isArray(entry.sub_depths) ? entry.sub_depths.filter((s) => typeof s === 'string') : [],
     level_tags: levelTags,
   };
@@ -162,6 +166,58 @@ export function getBiomeConfig(biomeId: string): BiomeConfig | null {
     depth_range_meters: biome.depth_range_meters,
     levels: biome.levels ?? [],
   };
+}
+
+/** Run order when advancing past last step of a run. */
+export const RUN_ORDER: string[] = ['shallow_run', 'level_2_run', 'deep_run', 'apex_run'];
+
+/**
+ * Infer run config id from depth band (e.g. "2-1" -> "level_2_run").
+ */
+export function inferRunConfigIdFromDepthBand(depthBandId: string): string {
+  const parts = depthBandId.split('-');
+  if (parts.length !== 2) return RUN_ORDER[0];
+  const area = parseInt(parts[0], 10) || 1;
+  const idx = Math.min(area - 1, RUN_ORDER.length - 1);
+  return RUN_ORDER[idx];
+}
+
+/**
+ * Converts depth band id (e.g. "2-1") to levelId for getLevelConfig.
+ * levelId 1–3→1-x, 4–6→2-x, 7–9→3-x, 10–12→4-x.
+ */
+export function getLevelIdFromDepthBandId(depthBandId: string): number {
+  const parts = depthBandId.split('-');
+  if (parts.length !== 2) return 1;
+  const area = parseInt(parts[0], 10) || 1;
+  const phase = parseInt(parts[1], 10) || 1;
+  return (area - 1) * 3 + phase;
+}
+
+/**
+ * Returns next step and run config id. Uses run steps; when last step of run, advances to next run.
+ */
+export function getNextStep(
+  runConfigId: string,
+  currentLevel: string
+): { nextLevel: string; runConfigId: string } | null {
+  const run = getRunConfig(runConfigId);
+  if (!run?.steps?.length) return null;
+
+  const idx = run.steps.indexOf(currentLevel);
+  if (idx >= 0 && idx < run.steps.length - 1) {
+    return { nextLevel: run.steps[idx + 1], runConfigId };
+  }
+  if (idx === run.steps.length - 1) {
+    const nextRunIdx = RUN_ORDER.indexOf(runConfigId) + 1;
+    if (nextRunIdx < RUN_ORDER.length) {
+      const nextRun = getRunConfig(RUN_ORDER[nextRunIdx]);
+      if (nextRun?.steps?.length) {
+        return { nextLevel: nextRun.steps[0], runConfigId: nextRun.id };
+      }
+    }
+  }
+  return null;
 }
 
 /**

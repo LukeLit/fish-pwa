@@ -356,7 +356,10 @@ export interface BackgroundAsset {
  */
 export interface RunState {
   runId: string; // Unique run identifier
+  runConfigId?: string; // Run config id (e.g. 'shallow_run') for step progression
   currentLevel: string; // "1-1", "1-2", etc.
+  /** Depth bands the player can access (continuous progression within level). */
+  unlockedDepthBands?: string[];
   selectedFishId: string; // Creature ID selected for this run
   fishState: {
     size: number; // Current size (can grow)

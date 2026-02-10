@@ -94,24 +94,26 @@ export function decrementCarcassChunks(
 /**
  * Update all carcasses: handle decay, fade, removal.
  * Returns the filtered array (removes fully decayed carcasses).
+ * Uses deltaTime for frame-rate independent drift and bob (prevents rubberbanding).
  */
-export function updateCarcasses(carcasses: CarcassEntity[]): CarcassEntity[] {
+export function updateCarcasses(carcasses: CarcassEntity[], deltaTime: number): CarcassEntity[] {
   const now = performance.now();
+  const driftScale = deltaTime / 16.67; // normalize to 60fps
   return carcasses.filter((c) => {
     const age = now - c.spawnTime;
 
-    // Apply drift (slow sink)
-    c.x += c.vx;
-    c.y += c.vy;
+    // Apply drift (slow sink) - delta-scaled for frame-rate independence
+    c.x += c.vx * driftScale;
+    c.y += c.vy * driftScale;
 
-    // Sine-based underwater bob (slow, gentle)
+    // Sine-based underwater bob (slow, gentle) - delta-scaled
     const phase = (c.bobPhase ?? 0) + (now / 3200) * Math.PI * 2;
-    c.x += Math.sin(phase * 0.6) * 0.4;
-    c.y += Math.sin(phase) * 0.5;
+    c.x += Math.sin(phase * 0.6) * 0.4 * driftScale;
+    c.y += Math.sin(phase) * 0.5 * driftScale;
 
-    // If all chunks collected, start immediate fade
+    // If all chunks collected, start immediate fade (delta-scaled)
     if (c.remainingChunks <= 0) {
-      c.opacity -= 0.02; // ~1 second at 60fps
+      c.opacity -= 0.02 * driftScale; // ~1 second at 60fps
       return c.opacity > 0;
     }
 

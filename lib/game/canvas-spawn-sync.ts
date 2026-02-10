@@ -195,10 +195,11 @@ export function useCanvasSpawnSync(
           const bounds = gameStateRef.current.worldBounds;
           let spawnX: number;
           let spawnY: number;
-          if (runId != null && currentLevel != null) {
+          const bandForFish = (fishItem as { depthBandId?: string }).depthBandId ?? currentLevel;
+          if (runId != null && bandForFish != null) {
             const pos = getSpawnPositionInBand(
               runId,
-              currentLevel,
+              bandForFish,
               playerPos,
               SPAWN.MIN_DISTANCE
             );

@@ -22,6 +22,7 @@ import {
 import { DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { loadCreatureById } from '@/lib/game/data/creature-loader';
 import { createLevel } from '@/lib/game/create-level';
+import { getLevelIdFromDepthBandId, inferRunConfigIdFromDepthBand } from '@/lib/game/data/level-loader';
 import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
 import { ART } from '@/lib/game/canvas-constants';
 import type { CheatSizeStage } from './SettingsDrawer';
@@ -227,10 +228,19 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
         setPlayerFishSprite(playerSprite);
 
-        // Spawn fish via shared createLevel (rules from level-config; creatures from blob)
+        // Spawn fish: continuous flow uses all unlocked bands; otherwise single band
         const biomeId = 'shallow'; // TODO: from run state when we support multiple biomes
-        const result = await createLevel(biomeId, level.levelNum);
-        setSpawnedFish(result.spawnList);
+        const bands = currentRunState.unlockedDepthBands ?? [currentRunState.currentLevel];
+        const spawnList: Array<Creature & { id: string; creatureId?: string; depthBandId?: string }> = [];
+        for (const bandId of bands) {
+          const levelId = getLevelIdFromDepthBandId(bandId);
+          const result = await createLevel(biomeId, levelId);
+          for (const fish of result.spawnList) {
+            spawnList.push({ ...fish, id: `${fish.id}_${bandId}`, depthBandId: bandId });
+          }
+        }
+        setSpawnedFish(spawnList);
+        bands.forEach((b) => loadedBandsRef.current.add(b));
       } catch (error) {
         console.error('Failed to load game assets:', error);
       }
@@ -252,6 +262,39 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     if (currentRunState) {
       loadGameAssets(currentRunState);
     }
+  }, []);
+
+  const loadedBandsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const handleRunStateUpdated = async () => {
+      const rs = loadRunState();
+      if (!rs) return;
+
+      setRunState(rs);
+      setCurrentLevel(rs.currentLevel);
+      const level = rs.currentLevel.split('-');
+      const levelNum = parseInt(level[1], 10) || 1;
+      setLevelDuration(60000 + (levelNum - 1) * 15000);
+
+      const bands = rs.unlockedDepthBands ?? [rs.currentLevel];
+      const newBands = bands.filter((b) => !loadedBandsRef.current.has(b));
+      if (newBands.length === 0) return;
+
+      const biomeId = 'shallow';
+      const newFish: Array<Creature & { id: string; creatureId?: string; depthBandId?: string }> = [];
+      for (const bandId of newBands) {
+        const levelId = getLevelIdFromDepthBandId(bandId);
+        const result = await createLevel(biomeId, levelId);
+        for (const fish of result.spawnList) {
+          newFish.push({ ...fish, id: `${fish.id}_${bandId}`, depthBandId: bandId });
+        }
+        loadedBandsRef.current.add(bandId);
+      }
+      setSpawnedFish((prev) => [...prev, ...newFish]);
+    };
+
+    window.addEventListener('runStateUpdated', handleRunStateUpdated);
+    return () => window.removeEventListener('runStateUpdated', handleRunStateUpdated);
   }, []);
 
   // Handlers for pause menu - must be before early return to maintain hook order
@@ -319,15 +362,25 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const handleCheatLevel = useCallback(async (depthBandId: string) => {
     const rs = loadRunState();
     if (!rs) return;
-    const updated = { ...rs, currentLevel: depthBandId };
+    const runConfigId = inferRunConfigIdFromDepthBand(depthBandId);
+    const updated = {
+      ...rs,
+      runConfigId,
+      currentLevel: depthBandId,
+      unlockedDepthBands: [depthBandId],
+    };
     saveRunState(updated);
     setRunState(updated);
     setCurrentLevel(depthBandId);
     const levelNum = parseLevelString(depthBandId);
     setLevelDuration(60000 + (levelNum - 1) * 15000);
     const biomeId = 'shallow';
-    const result = await createLevel(biomeId, levelNum);
-    setSpawnedFish(result.spawnList);
+    const levelId = getLevelIdFromDepthBandId(depthBandId);
+    const result = await createLevel(biomeId, levelId);
+    const spawnList = result.spawnList.map((f) => ({ ...f, id: `${f.id}_${depthBandId}`, depthBandId }));
+    setSpawnedFish(spawnList);
+    loadedBandsRef.current.clear();
+    loadedBandsRef.current.add(depthBandId);
   }, [parseLevelString]);
 
   // Cheat: set player size to a growth stage (juvenile / adult / elder)
@@ -432,8 +485,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         deformationIntensity={1}
         showDepthBandOverlay={showDepthBandOverlay}
         showHitboxDebug={showHitboxDebug}
-        runId="shallow_run"
+        runId={runState?.runConfigId ?? 'shallow_run'}
         currentLevel={runState?.currentLevel ?? '1-1'}
+        unlockedDepthBands={runState?.unlockedDepthBands}
         gameMode={true}
         loading={loading}
         onReadyToPlay={() => setLoading(false)}

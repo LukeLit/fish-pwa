@@ -12,6 +12,7 @@
  */
 import type { RunState } from './types';
 import { getCreature } from './data';
+import { getNextStep } from './data/level-loader';
 import { PLAYER_BASE_SIZE } from './spawn-fish';
 
 /**
@@ -46,7 +47,9 @@ export function createNewRunState(fishId: string): RunState | null {
 
   return {
     runId: `run_${Date.now()}_${crypto.randomUUID ? crypto.randomUUID().slice(0, 9) : Math.random().toString(36).substr(2, 9)}`,
+    runConfigId: 'shallow_run',
     currentLevel: '1-1',
+    unlockedDepthBands: ['1-1'],
     selectedFishId: fishId,
     fishState: {
       size: startSize,
@@ -382,37 +385,39 @@ export function incrementEvolution(runState: RunState): RunState {
  * ```
  */
 export function progressToNextLevel(runState: RunState): RunState {
-  // Parse current level format (e.g., "1-1" -> biome: "1", level: 1)
-  const parts = runState.currentLevel.split('-');
-  if (parts.length !== 2) {
-    console.warn(`Invalid level format: ${runState.currentLevel}, using default progression`);
+  const runConfigId = runState.runConfigId ?? 'shallow_run';
+  const next = getNextStep(runConfigId, runState.currentLevel);
+
+  if (next) {
+    const currentUnlocked = runState.unlockedDepthBands ?? [runState.currentLevel];
+    const nextUnlocked = currentUnlocked.includes(next.nextLevel)
+      ? currentUnlocked
+      : [...currentUnlocked, next.nextLevel];
+
     return {
       ...runState,
-      currentLevel: '1-2',
+      runConfigId: next.runConfigId,
+      currentLevel: next.nextLevel,
+      unlockedDepthBands: nextUnlocked,
       collectedEssence: {},
       hunger: 100,
     };
   }
 
-  const [biome, levelNum] = parts;
-  const nextLevel = parseInt(levelNum, 10) + 1;
-
-  if (isNaN(nextLevel)) {
-    console.warn(`Invalid level number in: ${runState.currentLevel}`);
-    return {
-      ...runState,
-      currentLevel: '1-2',
-      collectedEssence: {},
-      hunger: 100,
-    };
-  }
-
+  // Fallback: invalid or unknown step
+  console.warn(`No next step for ${runConfigId}/${runState.currentLevel}, staying at current level`);
   return {
     ...runState,
-    currentLevel: `${biome}-${nextLevel}`,
-    collectedEssence: {}, // Reset essence for next level
-    hunger: 100, // Restore hunger for next level
+    collectedEssence: {},
+    hunger: 100,
   };
+}
+
+/** True when next level is in a different area (e.g. 1-3 -> 2-1); requires full reload. */
+export function isAreaTransition(currentLevel: string, nextLevel: string): boolean {
+  const [a] = currentLevel.split('-').map((n) => parseInt(n, 10) || 1);
+  const [b] = nextLevel.split('-').map((n) => parseInt(n, 10) || 1);
+  return a !== b;
 }
 
 /**
