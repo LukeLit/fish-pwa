@@ -35,6 +35,24 @@ export function pointInEllipse(
 }
 
 /**
+ * Sample a random point uniformly inside an ellipse.
+ * Uses sqrt(random) for uniform area distribution.
+ */
+export function samplePointInsideEllipse(ellipse: Ellipse): { x: number; y: number } {
+  const { cx, cy, rx, ry, rotation } = ellipse;
+  const angle = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(Math.random()); // sqrt for uniform distribution
+  const lx = r * rx * Math.cos(angle);
+  const ly = r * ry * Math.sin(angle);
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  return {
+    x: cx + lx * cos - ly * sin,
+    y: cy + lx * sin + ly * cos,
+  };
+}
+
+/**
  * Sample points on the boundary of an ellipse (for overlap testing).
  */
 function sampleEllipseBoundary(ellipse: Ellipse, numPoints: number): { x: number; y: number }[] {

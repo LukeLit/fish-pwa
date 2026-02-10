@@ -122,19 +122,29 @@ export interface CarcassEntity {
   spawnTime: number;
   opacity: number;
   remainingChunks: number;
+  /** Phase offset for bobbing/rotation (0..2π) */
+  bobPhase?: number;
 }
 
 export interface ChunkEntity {
   chunkId: string;
+  chunkKind: 'meat' | 'essence';
   x: number;
   y: number;
   vx: number;
   vy: number;
-  essenceType: string;
-  essenceAmount: number;
+  /** Only for meat chunks: size growth on collect */
+  growthAmount?: number;
+  /** Only for meat chunks: hunger restored on collect (split from fish.size * HUNGER_RESTORE_MULTIPLIER) */
+  hungerRestore?: number;
+  /** Only for essence chunks */
+  essenceType?: string;
+  essenceAmount?: number;
   carcassId?: string;
   spawnTime: number;
   size: number;
+  /** Phase offset for bobbing/rotation (0..2π) */
+  bobPhase?: number;
 }
 
 export interface BloodParticle {

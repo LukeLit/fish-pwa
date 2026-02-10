@@ -137,8 +137,9 @@ export const COLLISION = {
   FACING_SPEED_THRESHOLD: 0.1, // Min horizontal speed to update facing direction
   // Eating / size gain (shared by game loop and collision)
   SIZE_GAIN_RATIO: 0.15, // Eater gains 15% of eaten size (before efficiency)
-  EFFICIENCY_RATIO: 0.4, // Diminishing returns: 1 / (1 + sizeRatio * this)
-  MIN_EFFICIENCY: 0.05, // Minimum size gain multiplier
+  EFFICIENCY_RATIO: 0.22, // Diminishing returns: 1 / (1 + sizeRatio * this) — gentler ramp
+  MIN_EFFICIENCY: 0.12, // Minimum size gain multiplier (eating tiny fish still gives ~12%)
+  HUNGER_MIN_EFFICIENCY: 0.35, // Gentler floor for hunger (eating tiny fish still fills you)
   STAMINA_BATTLE_SIZE_GAIN: 0.08, // Winner gains 8% of loser size in stamina battle
   KO_VELOCITY_DAMP: 0.3, // Velocity multiplier when knocked out (drift)
 } as const;

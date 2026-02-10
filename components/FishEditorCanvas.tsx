@@ -198,7 +198,11 @@ export default function FishEditorCanvas({
         const { clearChunkSpriteCache, preloadChunkSprites } = await import('@/lib/game/essence-chunks');
         clearCarcassSpriteCache();
         clearChunkSpriteCache();
-        await Promise.all([preloadCarcassSprite(), preloadChunkSprites()]);
+        const chromaTol = chromaToleranceRef.current;
+        await Promise.all([
+          preloadCarcassSprite(),
+          preloadChunkSprites(chromaTol),
+        ]);
       } catch { /* ignore */ }
     };
     window.addEventListener('refreshSharedSprites', handleRefresh);
@@ -618,13 +622,18 @@ export default function FishEditorCanvas({
       // Update player ID from creature data
       gameStateRef.current.player.id = playerCreature.id;
 
-      // In game mode, use run state size (persisted from previous level) or PLAYER_BASE_SIZE (20)
-      // In editor mode, use creature's actual size or base size
-      const playerSize = gameMode
-        ? (loadRunState()?.fishState.size ?? PLAYER_BASE_SIZE)
-        : (playerCreature.stats?.size ?? PLAYER_BASE_SIZE);
-      gameStateRef.current.player.size = playerSize;
-      gameStateRef.current.player.baseSize = playerSize;
+      // Only set size on initial load. Once game has started (startTime > 0), game loop owns size
+      // — overwriting from run state would revert chunk growth (run state lags due to throttled saves)
+      const gameHasStarted = gameMode && gameStateRef.current.gameMode.startTime > 0;
+      const playerSize = gameHasStarted
+        ? gameStateRef.current.player.size
+        : gameMode
+          ? (loadRunState()?.fishState.size ?? PLAYER_BASE_SIZE)
+          : (playerCreature.stats?.size ?? PLAYER_BASE_SIZE);
+      if (!gameHasStarted) {
+        gameStateRef.current.player.size = playerSize;
+        gameStateRef.current.player.baseSize = playerSize;
+      }
 
       // Set player animations from creature data
       gameStateRef.current.player.animations = playerCreature.animations;

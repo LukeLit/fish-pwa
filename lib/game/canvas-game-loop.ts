@@ -41,7 +41,12 @@ import {
 import { ESSENCE_TYPES } from './data/essence-types';
 import { resolveAttack } from './combat';
 import { spawnCarcass, updateCarcasses, decrementCarcassChunks } from './carcass';
-import { spawnChunksFromFish, updateChunks, checkChunkCollection } from './essence-chunks';
+import {
+  spawnMeatChunksFromFish,
+  spawnEssenceChunksFromFish,
+  updateChunks,
+  checkChunkCollection,
+} from './essence-chunks';
 import { resolveBodyOverlap } from './canvas-collision';
 import { computeSpriteHitbox } from './sprite-hitbox';
 import {
@@ -314,6 +319,7 @@ export function tickGameState(params: GameTickParams): boolean {
         const fishB = fishList[j];
         if ((fishB.opacity ?? 1) < 1 || fishB.lifecycleState === 'dying' || fishB.lifecycleState === 'removed') continue;
         const bBodyEllipse = getBodyEllipseResolved(fishB);
+        const bHeadEllipse = getHeadEllipseResolved(fishB);
         if (!ellipseOverlapsEllipse(aHeadEllipse, bBodyEllipse)) continue;
 
         const dx = bBodyEllipse.cx - aHeadEllipse.cx;
@@ -359,20 +365,24 @@ export function tickGameState(params: GameTickParams): boolean {
         state.particles.dashMultiEntity.spawnBurstAt(impactX, impactY, 14, Math.max(0.8, fishA.size * 0.02));
 
         if (result.died) {
-          // Death: spawn carcass + chunks, mark dying
+          // Death: predator consumes the kill directly — no chunks for player to steal
           fishB.lifecycleState = 'dying';
           const carcass = spawnCarcass(fishB.x, fishB.y, fishB.size, 0);
-          const chunks = spawnChunksFromFish(
-            fishB.x, fishB.y, fishB.size,
-            fishB.creatureData?.essenceTypes,
-            carcass.carcassId
-          );
-          carcass.remainingChunks = chunks.length;
           state.carcasses.push(carcass);
-          state.chunks.push(...chunks);
 
-          // Attacker gets hunger restore
-          restoreHunger(fishA, fishB.size * HUNGER_RESTORE_MULTIPLIER);
+          // Predator gets growth + hunger (same as chunks would have); cap growth
+          const sizeRatio = fishA.size / fishB.size;
+          const efficiencyMult = Math.max(
+            COLLISION.MIN_EFFICIENCY,
+            1 / (1 + sizeRatio * COLLISION.EFFICIENCY_RATIO)
+          );
+          const hungerEfficiencyMult = Math.max(
+            COLLISION.HUNGER_MIN_EFFICIENCY,
+            1 / (1 + sizeRatio * COLLISION.EFFICIENCY_RATIO)
+          );
+          const growthGain = fishB.size * COLLISION.SIZE_GAIN_RATIO * efficiencyMult;
+          fishA.size = Math.min(PLAYER_MAX_SIZE, fishA.size + growthGain);
+          restoreHunger(fishA, fishB.size * HUNGER_RESTORE_MULTIPLIER * hungerEfficiencyMult);
         } else {
           // Prey flee-on-hit
           fishB.fleeFromId = fishA.id;
@@ -457,31 +467,32 @@ export function tickGameState(params: GameTickParams): boolean {
         state.particles.dashMultiEntity.spawnBurstAt(impactXPlayerFish, impactYPlayerFish, 16, Math.max(0.8, player.size * 0.02));
 
         if (result.died) {
-          // Death: spawn carcass + chunks
+          // Death: spawn carcass + meat + essence chunks
           state.gameMode.fishEaten += 1;
           state.eatenIds.add(fish.id);
 
           const carcass = spawnCarcass(fish.x, fish.y, fish.size, 0);
-          const chunks = spawnChunksFromFish(
-            fish.x, fish.y, fish.size,
-            fish.creatureData?.essenceTypes,
-            carcass.carcassId
+          const meatChunks = spawnMeatChunksFromFish(
+            fish.x,
+            fish.y,
+            fish.size,
+            player.size,
+            carcass.carcassId,
+            fishBodyEllipse,
+            fishHeadEllipse
           );
-          carcass.remainingChunks = chunks.length;
+          const essenceChunks = spawnEssenceChunksFromFish(
+            fish.x,
+            fish.y,
+            fish.size,
+            fish.creatureData?.essenceTypes,
+            carcass.carcassId,
+            fishBodyEllipse,
+            fishHeadEllipse
+          );
+          carcass.remainingChunks = meatChunks.length + essenceChunks.length;
           state.carcasses.push(carcass);
-          state.chunks.push(...chunks);
-
-          // Persist essence to run state
-          let runState = loadRunState();
-          if (runState && fish.creatureData?.essenceTypes?.length) {
-            fish.creatureData.essenceTypes.forEach((ec: { type: string; baseYield: number }) => {
-              runState = addEssenceToRun(runState!, ec.type, ec.baseYield);
-            });
-            saveRunState(runState);
-          }
-
-          // Hunger restore
-          restoreHunger(player, fish.size * HUNGER_RESTORE_MULTIPLIER);
+          state.chunks.push(...meatChunks, ...essenceChunks);
 
           state.fish.splice(idx, 1);
           continue;
@@ -590,20 +601,55 @@ export function tickGameState(params: GameTickParams): boolean {
     state.carcasses = updateCarcasses(state.carcasses);
     state.chunks = updateChunks(state.chunks, deltaTime);
 
-    // Check chunk collection by player
-    const collected = checkChunkCollection(state.chunks, player);
-    for (const chunk of collected) {
-      // Cooldown check
-      if (player.lastChunkEatTime && (now - player.lastChunkEatTime) < COMBAT.CHUNK_EAT_COOLDOWN_MS) continue;
+    // Check chunk collection by player (cooldown prevents spam; all overlapping chunks granted in one batch)
+    const canCollect = !player.lastChunkEatTime || (now - player.lastChunkEatTime) >= COMBAT.CHUNK_EAT_COOLDOWN_MS;
+    const collected = canCollect ? checkChunkCollection(state.chunks, player) : [];
+    if (collected.length > 0) {
       player.lastChunkEatTime = now;
       player.chunkEatEndTime = now + COMBAT.CHUNK_EAT_DURATION_MS;
+    }
 
-      // Player growth from chunks
-      const growthAmount = chunk.essenceAmount * COLLISION.SIZE_GAIN_RATIO * 0.5;
+    let totalGrowth = 0;
+    let totalHunger = 0;
+    let lastChunkX = 0;
+    let lastChunkY = 0;
+
+    for (const chunk of collected) {
+      if (chunk.chunkKind === 'meat') {
+        totalGrowth += chunk.growthAmount ?? 0;
+        totalHunger += chunk.hungerRestore ?? 0;
+      } else {
+        // Essence: persist essence only, no growth
+        let runState = loadRunState();
+        if (runState && chunk.essenceType != null && chunk.essenceAmount != null) {
+          runState = addEssenceToRun(runState, chunk.essenceType, chunk.essenceAmount);
+          saveRunState(runState);
+        }
+
+        const essenceType = ESSENCE_TYPES[chunk.essenceType ?? ''];
+        state.particles.chomp.push({
+          x: chunk.x,
+          y: chunk.y - 10,
+          life: 1.5,
+          scale: 1.0,
+          text: `+${chunk.essenceAmount ?? 0} ${essenceType?.name ?? 'Essence'}`,
+          color: essenceType?.color ?? '#ccaa44',
+          punchScale: 1.4,
+          floatUp: true,
+        });
+      }
+      lastChunkX = chunk.x;
+      lastChunkY = chunk.y;
+
+      if (chunk.carcassId) {
+        decrementCarcassChunks(state.carcasses, chunk.carcassId);
+      }
+    }
+
+    if (totalGrowth > 0 || totalHunger > 0) {
       const oldPlayerSize = player.size;
-      player.size = Math.min(PLAYER_MAX_SIZE, player.size + growthAmount);
+      player.size = Math.min(PLAYER_MAX_SIZE, player.size + totalGrowth);
 
-      // Check growth stage change
       if (playerCreature?.growthSprites) {
         const oldStage = getGrowthStage(oldPlayerSize, playerCreature.growthSprites);
         const newStage = getGrowthStage(player.size, playerCreature.growthSprites);
@@ -620,43 +666,27 @@ export function tickGameState(params: GameTickParams): boolean {
         }
       }
 
-      // Restore hunger
-      restoreHunger(player, growthAmount * HUNGER_RESTORE_MULTIPLIER);
+      restoreHunger(player, totalHunger);
 
-      // Persist essence
-      let runState = loadRunState();
-      if (runState) {
-        runState = addEssenceToRun(runState, chunk.essenceType, chunk.essenceAmount);
-        saveRunState(runState);
-      }
-
-      // Essence floating number
-      const essenceType = ESSENCE_TYPES[chunk.essenceType];
       state.particles.chomp.push({
-        x: chunk.x,
-        y: chunk.y - 10,
+        x: lastChunkX,
+        y: lastChunkY - 10,
         life: 1.5,
         scale: 1.0,
-        text: `+${chunk.essenceAmount} ${essenceType?.name ?? 'Essence'}`,
-        color: essenceType?.color ?? '#ccaa44',
+        text: `+${totalGrowth.toFixed(1)} size`,
+        color: '#e06050',
         punchScale: 1.4,
         floatUp: true,
       });
+    }
 
-      // Lunge toward chunk
-      const cdx = chunk.x - player.x;
-      const cdy = chunk.y - player.y;
+    if (collected.length > 0) {
+      const cdx = lastChunkX - player.x;
+      const cdy = lastChunkY - player.y;
       const cdist = Math.sqrt(cdx * cdx + cdy * cdy) || 1;
       player.lungeVx = (cdx / cdist) * COMBAT.CHUNK_LUNGE_STRENGTH;
       player.lungeVy = (cdy / cdist) * COMBAT.CHUNK_LUNGE_STRENGTH;
       player.lungeStartTime = now;
-
-      // Decrement carcass
-      if (chunk.carcassId) {
-        decrementCarcassChunks(state.carcasses, chunk.carcassId);
-      }
-
-      // Chomp animation
       player.chompPhase = 1;
       player.chompEndTime = now + ANIMATION.CHOMP_DECAY_TIME;
     }

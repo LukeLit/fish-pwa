@@ -889,7 +889,7 @@ function renderGameUI(
   ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
   ctx.font = 'bold 13px monospace';
   ctx.fillText(`Score: ${score}`, 20, statsY + 18);
-  ctx.fillText(`Size: ${Math.floor(player.size)}`, 20, statsY + 36);
+  ctx.fillText(`Size: ${Number.isInteger(player.size) ? player.size : player.size.toFixed(1)}`, 20, statsY + 36);
   ctx.fillText(`Time: ${timeLeft}s`, 20, statsY + 54);
   ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';
   ctx.fillText(`Fish: ${fishCount}`, 20, statsY + 72);

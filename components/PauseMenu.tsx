@@ -400,7 +400,11 @@ export default function PauseMenu({
               {playerStats && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <div className="text-2xl font-bold text-cyan-400">{Math.floor(playerStats.size)}</div>
+                    <div className="text-2xl font-bold text-cyan-400">
+                      {Number.isInteger(playerStats.size)
+                        ? playerStats.size
+                        : playerStats.size.toFixed(1)}
+                    </div>
                     <div className="text-sm text-gray-400">Current Size</div>
                   </div>
                   <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">

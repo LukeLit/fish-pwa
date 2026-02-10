@@ -11,7 +11,7 @@ import { removeBackground, DEFAULT_CHROMA_TOLERANCE } from '@/lib/rendering/fish
 // --- Constants ---
 const CARCASS_DECAY_TIME = 45_000; // 45 seconds total lifespan
 const CARCASS_FADE_DURATION = 2_000; // fade over final 2 seconds
-const CARCASS_DRIFT_SPEED = 0.035; // slow upward float
+const CARCASS_DRIFT_SPEED = 0.035; // slow downward float (sinks)
 const CARCASS_TINT_COLOR = 'rgba(80, 60, 60, 0.4)';
 
 // --- Sprite cache ---
@@ -63,9 +63,9 @@ export function spawnCarcass(
   size: number,
   chunkCount: number
 ): CarcassEntity {
-  // Slow drift: upward bias, slight random horizontal
+  // Slow drift: downward sink, slight random horizontal
   const vx = (Math.random() - 0.5) * CARCASS_DRIFT_SPEED * 0.8;
-  const vy = -CARCASS_DRIFT_SPEED * (0.8 + Math.random() * 0.4);
+  const vy = CARCASS_DRIFT_SPEED * (0.8 + Math.random() * 0.4);
   return {
     carcassId: `carcass-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     x,
@@ -76,6 +76,7 @@ export function spawnCarcass(
     spawnTime: performance.now(),
     opacity: 1,
     remainingChunks: chunkCount,
+    bobPhase: Math.random() * Math.PI * 2,
   };
 }
 
@@ -99,9 +100,14 @@ export function updateCarcasses(carcasses: CarcassEntity[]): CarcassEntity[] {
   return carcasses.filter((c) => {
     const age = now - c.spawnTime;
 
-    // Apply drift (slow float)
+    // Apply drift (slow sink)
     c.x += c.vx;
     c.y += c.vy;
+
+    // Sine-based underwater bob (slow, gentle)
+    const phase = (c.bobPhase ?? 0) + (now / 3200) * Math.PI * 2;
+    c.x += Math.sin(phase * 0.6) * 0.4;
+    c.y += Math.sin(phase) * 0.5;
 
     // If all chunks collected, start immediate fade
     if (c.remainingChunks <= 0) {
@@ -114,10 +120,10 @@ export function updateCarcasses(carcasses: CarcassEntity[]): CarcassEntity[] {
       return false; // expired
     }
 
-    // Fade in last CARCASS_FADE_DURATION ms
-    const fadeStart = CARCASS_DECAY_TIME - CARCASS_FADE_DURATION;
+    // Gradual fade over lifetime: start fading after spawn, reach 0 at decay
+    const fadeStart = 3_000; // stay visible for 3s, then fade
     if (age > fadeStart) {
-      c.opacity = Math.max(0, 1 - (age - fadeStart) / CARCASS_FADE_DURATION);
+      c.opacity = Math.max(0, 1 - (age - fadeStart) / (CARCASS_DECAY_TIME - fadeStart));
     }
 
     return c.opacity > 0;
@@ -131,32 +137,36 @@ export function drawCarcasses(
   ctx: CanvasRenderingContext2D,
   carcasses: CarcassEntity[]
 ): void {
+  const now = performance.now();
   for (const c of carcasses) {
+    const phase = (c.bobPhase ?? 0) + (now / 4200) * Math.PI * 2;
+    const rotation = Math.sin(phase * 0.4) * 0.12;
+    const bobY = Math.sin(phase * 1.1) * 4;
+
     ctx.save();
     ctx.globalAlpha = c.opacity * 0.8; // carcasses are slightly translucent
+    ctx.translate(c.x, c.y + bobY);
+    ctx.rotate(rotation);
 
     if (carcassSprite) {
-      // Draw the cached sprite - preserve natural aspect ratio (like fish rendering)
       const aspect = carcassSprite.height / carcassSprite.width;
       const w = c.size;
       const h = c.size * aspect;
-      ctx.drawImage(carcassSprite, c.x - w / 2, c.y - h / 2, w, h);
+      ctx.drawImage(carcassSprite, -w / 2, -h / 2, w, h);
     } else {
-      // Placeholder: dark oval
       ctx.fillStyle = CARCASS_TINT_COLOR;
       ctx.beginPath();
-      ctx.ellipse(c.x, c.y, c.size * 0.5, c.size * 0.3, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, c.size * 0.5, c.size * 0.3, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // X mark
       ctx.strokeStyle = 'rgba(200, 50, 50, 0.6)';
       ctx.lineWidth = 2;
       const s = c.size * 0.15;
       ctx.beginPath();
-      ctx.moveTo(c.x - s, c.y - s);
-      ctx.lineTo(c.x + s, c.y + s);
-      ctx.moveTo(c.x + s, c.y - s);
-      ctx.lineTo(c.x - s, c.y + s);
+      ctx.moveTo(-s, -s);
+      ctx.lineTo(s, s);
+      ctx.moveTo(s, -s);
+      ctx.lineTo(-s, s);
       ctx.stroke();
     }
 
