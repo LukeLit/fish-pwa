@@ -25,9 +25,12 @@ export interface EntityDashState {
 export class MultiEntityDashParticleManager {
   private systems = new Map<string, DashParticleSystem>();
   private config: DashParticleConfig;
+  /** Shared system for combat burst bubbles (not tied to any entity). */
+  private combatBursts: DashParticleSystem;
 
   constructor(config: DashParticleConfig = {}) {
     this.config = config;
+    this.combatBursts = new DashParticleSystem(config);
   }
 
   /**
@@ -63,6 +66,21 @@ export class MultiEntityDashParticleManager {
         this.systems.delete(id);
       }
     }
+
+    // Decay combat burst particles (no emission, just decay)
+    this.combatBursts.update(
+      { x: 0, y: 0, vx: 0, vy: 0, size: 0, animationAction: 'idle' },
+      deltaTime
+    );
+  }
+
+  /**
+   * Spawn a burst of bubbles at a world position (combat impact / rough water).
+   * @param count Number of bubble particles (default 12)
+   * @param sizeScale Scale factor for bubble radius (default 1)
+   */
+  spawnBurstAt(x: number, y: number, count: number = 12, sizeScale: number = 1): void {
+    this.combatBursts.spawnBurst(x, y, count, sizeScale);
   }
 
   /**
@@ -75,6 +93,8 @@ export class MultiEntityDashParticleManager {
         system.drawBehind(ctx);
       }
     }
+    // Draw combat burst bubbles
+    this.combatBursts.drawBehind(ctx);
   }
 
   /**
@@ -92,5 +112,6 @@ export class MultiEntityDashParticleManager {
   /** Reset all systems (e.g. when changing levels) */
   reset(): void {
     this.systems.clear();
+    this.combatBursts.reset();
   }
 }

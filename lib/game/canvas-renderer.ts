@@ -20,6 +20,44 @@ import type { MultiEntityDashParticleManager } from '@/lib/rendering/multi-entit
 import type { AnimationSprite } from '@/lib/rendering/animation-sprite';
 import { drawCarcasses } from './carcass';
 import { drawChunks } from './essence-chunks';
+import { getHeadEllipseResolved, getBodyEllipseResolved } from './canvas-collision';
+
+type EntityWithHitbox = { x: number; y: number; size: number; facingRight: boolean; hitFlashEndTime?: number; attackFlashEndTime?: number; lifecycleState?: string; hitbox?: { head: { cx: number; cy: number; rx: number; ry: number }; body: { cx: number; cy: number; rx: number; ry: number } } };
+
+function drawHitboxDebug(
+  ctx: CanvasRenderingContext2D,
+  player: EntityWithHitbox,
+  fish: EntityWithHitbox[],
+  wallNow: number
+): void {
+  const drawEntityHitbox = (e: EntityWithHitbox) => {
+    const body = getBodyEllipseResolved(e);
+    const head = getHeadEllipseResolved(e);
+
+    // Body ellipse (gray)
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(body.cx, body.cy, body.rx, body.ry, body.rotation, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Head ellipse: red when hit, yellow when attacking, white when inactive
+    let headColor = '#fff';
+    if (e.hitFlashEndTime && wallNow < e.hitFlashEndTime) headColor = '#f00';
+    else if (e.attackFlashEndTime && wallNow < e.attackFlashEndTime) headColor = '#ff0';
+    ctx.strokeStyle = headColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(head.cx, head.cy, head.rx, head.ry, head.rotation, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+
+  drawEntityHitbox(player);
+  for (const f of fish) {
+    if (f.lifecycleState === 'removed') continue;
+    drawEntityHitbox(f);
+  }
+}
 
 export interface RenderOptions {
   canvas: HTMLCanvasElement;
@@ -54,6 +92,7 @@ export interface RenderOptions {
   fishCount: number;
   showBoundaryOverlay?: boolean;
   showDepthBandOverlay?: boolean;
+  showHitboxDebug?: boolean;
   runId?: string;
   onEditFish?: (fishId: string) => void;
   setLastPlayerAnimAction: (action: string | null) => void;
@@ -96,6 +135,7 @@ export function renderGame(options: RenderOptions): void {
     fishCount,
     showBoundaryOverlay = false,
     showDepthBandOverlay = false,
+    showHitboxDebug = false,
     runId = 'shallow_run',
     onEditFish,
     setLastPlayerAnimAction,
@@ -239,34 +279,6 @@ export function renderGame(options: RenderOptions): void {
       ctx.fill();
     }
 
-    // --- Combat VFX: flash effects ---
-    // Hit flash (red tint via multiply)
-    if (fishEntity.hitFlashEndTime && wallNow < fishEntity.hitFlashEndTime) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = 'rgba(255, 60, 60, 0.7)';
-      ctx.fillRect(
-        fishEntity.x - fishEntity.size * 0.6,
-        fishEntity.y - fishEntity.size * 0.4,
-        fishEntity.size * 1.2,
-        fishEntity.size * 0.8
-      );
-      ctx.restore();
-    }
-    // Attack flash (white tint via screen)
-    if (fishEntity.attackFlashEndTime && wallNow < fishEntity.attackFlashEndTime) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.fillRect(
-        fishEntity.x - fishEntity.size * 0.6,
-        fishEntity.y - fishEntity.size * 0.4,
-        fishEntity.size * 1.2,
-        fishEntity.size * 0.8
-      );
-      ctx.restore();
-    }
-
     // --- AI Fish Health Bars ---
     if (gameMode && fishEntity.health !== undefined && fishEntity.maxHealth !== undefined &&
         fishEntity.health < fishEntity.maxHealth && fishEntity.lastDamagedTime) {
@@ -371,34 +383,6 @@ export function renderGame(options: RenderOptions): void {
     ctx.stroke();
   }
 
-  // --- Player Combat VFX ---
-  // Hit flash (red tint)
-  if (player.hitFlashEndTime && wallNow < player.hitFlashEndTime) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(255, 60, 60, 0.7)';
-    ctx.fillRect(
-      player.x - player.size * 0.6,
-      player.y - player.size * 0.4,
-      player.size * 1.2,
-      player.size * 0.8
-    );
-    ctx.restore();
-  }
-  // Attack flash (white tint)
-  if (player.attackFlashEndTime && wallNow < player.attackFlashEndTime) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.fillRect(
-      player.x - player.size * 0.6,
-      player.y - player.size * 0.4,
-      player.size * 1.2,
-      player.size * 0.8
-    );
-    ctx.restore();
-  }
-
   if (gameMode) {
     drawStateIcon(ctx, player, player.x, player.y, player.size, animatedZoom);
   }
@@ -416,6 +400,11 @@ export function renderGame(options: RenderOptions): void {
   // Draw particles
   renderBloodParticles(ctx, bloodParticles);
   renderChompParticles(ctx, chompParticles);
+
+  // Draw hitbox debug overlay (only when enabled - no perf cost when off)
+  if (gameMode && showHitboxDebug) {
+    drawHitboxDebug(ctx, player, fish, wallNow);
+  }
 
   // Draw boundary overlay when player is near world edges (before restore - still in world coords)
   if (showBoundaryOverlay) {

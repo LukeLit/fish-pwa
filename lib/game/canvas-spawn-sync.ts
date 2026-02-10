@@ -19,6 +19,7 @@ import {
   removeBackground,
   hasUsableAnimations,
 } from '@/lib/rendering/fish-renderer';
+import { computeSpriteHitbox } from './sprite-hitbox';
 import { cacheBust } from '@/lib/utils/cache-bust';
 import type { SpriteResolutions } from './types';
 import type { AnimationSprite } from '@/lib/rendering/animation-sprite';
@@ -175,6 +176,7 @@ export function useCanvasSpawnSync(
         spriteVersionRef.current.set(fishItem.id, newVersion);
         loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
           existingFish.sprite = processedSprite;
+          existingFish.hitbox = computeSpriteHitbox(processedSprite);
           gameStateRef.current.spriteCache.set(cacheKey, processedSprite);
         }, { spriteResolutions, fishSize: fishSizeForResolution });
       } else if (!existingFish) {
@@ -229,6 +231,7 @@ export function useCanvasSpawnSync(
             vy,
             size: fishSize,
             sprite: processedSprite,
+            hitbox: computeSpriteHitbox(processedSprite),
             type: fishType,
             facingRight: vx >= 0,
             verticalTilt: 0,

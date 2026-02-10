@@ -42,6 +42,7 @@ import {
   drawFishWithDeformation,
   PLAYER_SEGMENT_MULTIPLIER,
 } from '@/lib/rendering/fish-renderer';
+import { computeSpriteHitbox } from '@/lib/game/sprite-hitbox';
 import type { SpriteResolutions } from '@/lib/game/types';
 import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering/animation-sprite';
 import type { CreatureAnimations } from '@/lib/game/types';
@@ -90,6 +91,8 @@ interface FishEditorCanvasProps {
   deformationIntensity?: number;
   showBoundaryOverlay?: boolean;
   showDepthBandOverlay?: boolean;
+  /** Game only: show hitbox debug overlay */
+  showHitboxDebug?: boolean;
   runId?: string;
   /** Current depth band (e.g. '1-1') – used for band-based fish spawn in game mode */
   currentLevel?: string;
@@ -130,6 +133,7 @@ export default function FishEditorCanvas({
   deformationIntensity = 1,
   showBoundaryOverlay = false,
   showDepthBandOverlay = false,
+  showHitboxDebug = false,
   runId = 'shallow_run',
   currentLevel = '1-1',
   syncedPlayerSize,
@@ -171,6 +175,7 @@ export default function FishEditorCanvas({
   const showEditButtonsRef = useRef<boolean>(showEditButtons);
   const showBoundaryOverlayRef = useRef<boolean>(showBoundaryOverlay);
   const showDepthBandOverlayRef = useRef<boolean>(showDepthBandOverlay);
+  const showHitboxDebugRef = useRef<boolean>(showHitboxDebug);
   const runIdRef = useRef<string>(runId);
   const editButtonPositionsRef = useRef<Map<string, { x: number; y: number; size: number }>>(new Map());
 
@@ -221,6 +226,7 @@ export default function FishEditorCanvas({
   useEffect(() => { showEditButtonsRef.current = showEditButtons }, [showEditButtons])
   useEffect(() => { showBoundaryOverlayRef.current = showBoundaryOverlay }, [showBoundaryOverlay])
   useEffect(() => { showDepthBandOverlayRef.current = showDepthBandOverlay }, [showDepthBandOverlay])
+  useEffect(() => { showHitboxDebugRef.current = showHitboxDebug }, [showHitboxDebug])
   useEffect(() => { runIdRef.current = runId }, [runId])
   const currentLevelRef = useRef<string>(currentLevel);
   useEffect(() => { currentLevelRef.current = currentLevel }, [currentLevel])
@@ -651,7 +657,9 @@ export default function FishEditorCanvas({
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
-          gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
+          const processed = removeBackground(img, chromaToleranceRef.current);
+          gameStateRef.current.player.sprite = processed;
+          gameStateRef.current.player.hitbox = computeSpriteHitbox(processed);
           playerSpriteLoadedRef.current = true;
           checkReady();
         };
@@ -670,7 +678,9 @@ export default function FishEditorCanvas({
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
+        const processed = removeBackground(img, chromaToleranceRef.current);
+        gameStateRef.current.player.sprite = processed;
+        gameStateRef.current.player.hitbox = computeSpriteHitbox(processed);
         playerSpriteLoadedRef.current = true;
         checkReady();
       };
@@ -698,7 +708,9 @@ export default function FishEditorCanvas({
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
+        const processed = removeBackground(img, chromaToleranceRef.current);
+        gameStateRef.current.player.sprite = processed;
+        gameStateRef.current.player.hitbox = computeSpriteHitbox(processed);
       };
       img.onerror = () => {
         gameStateRef.current.player.sprite = null;
@@ -817,6 +829,7 @@ export default function FishEditorCanvas({
         reloadPromises.push(
           reloadSprite(fish.id, spriteUrl, (processedSprite) => {
             fish.sprite = processedSprite;
+            fish.hitbox = computeSpriteHitbox(processedSprite);
             gameStateRef.current.spriteCache.set(fish.id, processedSprite);
             fishSpriteUrlsRef.current.set(fish.id, spriteUrl!);
           })
@@ -834,6 +847,7 @@ export default function FishEditorCanvas({
       reloadPromises.push(
         reloadSprite('player', playerSpriteUrl, (processedSprite) => {
           gameStateRef.current.player.sprite = processedSprite;
+          gameStateRef.current.player.hitbox = computeSpriteHitbox(processedSprite);
         })
       );
     }
@@ -928,7 +942,9 @@ export default function FishEditorCanvas({
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
-              gameStateRef.current.player.sprite = removeBackground(img, chromaToleranceRef.current);
+              const processed = removeBackground(img, chromaToleranceRef.current);
+              gameStateRef.current.player.sprite = processed;
+              gameStateRef.current.player.hitbox = computeSpriteHitbox(processed);
             };
             img.src = cacheBust(spriteUrl);
           }
@@ -976,7 +992,9 @@ export default function FishEditorCanvas({
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
-              fish.sprite = removeBackground(img, chromaToleranceRef.current);
+              const processed = removeBackground(img, chromaToleranceRef.current);
+              fish.sprite = processed;
+              fish.hitbox = computeSpriteHitbox(processed);
             };
             img.src = cacheBust(spriteUrl);
           }
@@ -1166,6 +1184,7 @@ export default function FishEditorCanvas({
         fishCount: gameStateRef.current.fish.length,
         showBoundaryOverlay: showBoundaryOverlayRef.current,
         showDepthBandOverlay: showDepthBandOverlayRef.current,
+        showHitboxDebug: showHitboxDebugRef.current,
         runId: runIdRef.current,
         onEditFish,
         setLastPlayerAnimAction: (action) => { lastPlayerAnimActionRef.current = action; },

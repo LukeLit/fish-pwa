@@ -4,8 +4,9 @@
  */
 
 import { ATTACK_SIZE_RATIO, SWALLOW_SIZE_RATIO, BATTLE_SIZE_THRESHOLD, DASH_ATTACK_STAMINA_COST, ATTACK_LARGER_STAMINA_MULTIPLIER } from './dash-constants';
-import { COLLISION } from './canvas-constants';
 import { PLAYER_MAX_SIZE } from './spawn-fish';
+import { getFallbackHitbox } from './sprite-hitbox';
+import { ellipseOverlapsEllipse, type Ellipse } from './ellipse-collision';
 import { HUNGER_MAX, HUNGER_RESTORE_MULTIPLIER } from './hunger-constants';
 import { ESSENCE_TYPES } from './data/essence-types';
 import type { AnimationSprite } from '@/lib/rendering/animation-sprite';
@@ -66,54 +67,70 @@ export interface CollisionResult {
   gameOver?: boolean;
 }
 
-/**
- * Get head position for collision detection
- */
-export function getHeadPosition(entity: { x: number; y: number; size: number; facingRight: boolean }): { x: number; y: number } {
-  const headOffset = entity.size * COLLISION.HEAD_OFFSET_RATIO;
+type EntityWithHitbox = { x: number; y: number; size: number; facingRight: boolean; hitbox?: { head: { cx: number; cy: number; rx: number; ry: number; rotation?: number }; body: { cx: number; cy: number; rx: number; ry: number; rotation?: number } } };
+
+function getBakedEllipse(entity: EntityWithHitbox, part: 'head' | 'body') {
+  const hitbox = entity.hitbox ?? getFallbackHitbox();
+  return part === 'head' ? hitbox.head : hitbox.body;
+}
+
+function toWorldEllipse(entity: EntityWithHitbox, baked: { cx: number; cy: number; rx: number; ry: number; rotation?: number }): Ellipse {
+  const dx = (baked.cx - 0.5) * entity.size * (entity.facingRight ? 1 : -1);
+  const dy = (baked.cy - 0.5) * entity.size;
+  const rotation = (baked.rotation ?? 0) + (entity.facingRight ? 0 : Math.PI);
   return {
-    x: entity.x + (entity.facingRight ? headOffset : -headOffset),
-    y: entity.y,
+    cx: entity.x + dx,
+    cy: entity.y + dy,
+    rx: baked.rx * entity.size,
+    ry: baked.ry * entity.size,
+    rotation,
   };
 }
 
 /**
- * Get head radius for collision detection
+ * Get head position - uses baked hitbox when available, else fallback.
  */
-export function getHeadRadius(size: number): number {
-  return size * COLLISION.HEAD_RADIUS_RATIO;
+export function getHeadPositionResolved(entity: EntityWithHitbox): { x: number; y: number } {
+  const h = getBakedEllipse(entity, 'head');
+  const dx = (h.cx - 0.5) * entity.size * (entity.facingRight ? 1 : -1);
+  const dy = (h.cy - 0.5) * entity.size;
+  return { x: entity.x + dx, y: entity.y + dy };
 }
 
 /**
- * Get body radius for physical separation (distinct from head hitbox).
+ * Get head ellipse in world coordinates.
  */
-export function getBodyRadius(size: number): number {
-  return size * COLLISION.BODY_RADIUS_RATIO;
+export function getHeadEllipseResolved(entity: EntityWithHitbox): Ellipse {
+  return toWorldEllipse(entity, getBakedEllipse(entity, 'head'));
 }
 
-export interface BodyEntity {
-  x: number;
-  y: number;
-  size: number;
+/**
+ * Get body ellipse in world coordinates.
+ */
+export function getBodyEllipseResolved(entity: EntityWithHitbox): Ellipse {
+  return toWorldEllipse(entity, getBakedEllipse(entity, 'body'));
 }
 
 /**
  * Push two bodies apart so they don't overlap.
- * Each entity is moved by half the overlap distance along the axis between centers.
+ * Uses body ellipses; entities must have hitbox or use fallback.
  */
-export function resolveBodyOverlap(a: BodyEntity, b: BodyEntity): void {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
+export function resolveBodyOverlap(a: EntityWithHitbox, b: EntityWithHitbox): void {
+  const bodyA = getBodyEllipseResolved(a);
+  const bodyB = getBodyEllipseResolved(b);
+  if (!ellipseOverlapsEllipse(bodyA, bodyB)) return;
+
+  const dx = bodyB.cx - bodyA.cx;
+  const dy = bodyB.cy - bodyA.cy;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  const rA = getBodyRadius(a.size);
-  const rB = getBodyRadius(b.size);
-  const minDist = rA + rB;
+  if (dist < 0.01) return;
 
-  if (dist >= minDist || dist < 0.01) return;
-
-  const overlap = minDist - dist;
   const nx = dx / dist;
   const ny = dy / dist;
+  const effA = (bodyA.rx + bodyA.ry) * 0.5;
+  const effB = (bodyB.rx + bodyB.ry) * 0.5;
+  const minDist = effA + effB;
+  const overlap = Math.max(0, minDist - dist);
   const half = overlap * 0.5;
 
   a.x -= nx * half;
@@ -143,19 +160,14 @@ export function detectFishFishCollisions(
     const fishA = fishList[i];
     if (eatenIds.has(fishA.id) || (fishA.opacity ?? 1) < 1) continue;
 
-    const aHead = getHeadPosition(fishA);
-    const aR = getHeadRadius(fishA.size);
+    const aHead = getHeadEllipseResolved(fishA as EntityWithHitbox);
 
     for (let j = i + 1; j < fishList.length; j++) {
       const fishB = fishList[j];
       if (eatenIds.has(fishB.id) || (fishB.opacity ?? 1) < 1) continue;
 
-      const bHead = getHeadPosition(fishB);
-      const bR = getHeadRadius(fishB.size);
-      const dx = bHead.x - aHead.x;
-      const dy = bHead.y - aHead.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist >= aR + bR) continue;
+      const bHead = getHeadEllipseResolved(fishB as EntityWithHitbox);
+      if (!ellipseOverlapsEllipse(aHead, bHead)) continue;
 
       const aIsPredator = fishA.type === 'predator' || fishA.type === 'mutant';
       const bIsPredator = fishB.type === 'predator' || fishB.type === 'mutant';
@@ -336,16 +348,9 @@ export function detectPlayerFishCollision(
   essenceCollected?: number,
   triggerAnimationAction?: (action: string) => void
 ): CollisionResult | null {
-  const playerHead = getHeadPosition(player);
-  const playerHeadR = getHeadRadius(player.size);
-  const fishHead = getHeadPosition(fish);
-  const fishHeadR = getHeadRadius(fish.size);
-
-  const dx = fishHead.x - playerHead.x;
-  const dy = fishHead.y - playerHead.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-
-  if (dist >= playerHeadR + fishHeadR) return null;
+  const playerHead = getHeadEllipseResolved(player);
+  const fishHead = getHeadEllipseResolved(fish);
+  if (!ellipseOverlapsEllipse(playerHead, fishHead)) return null;
 
   const bloodParticles: Array<{ x: number; y: number; life: number; radius: number }> = [];
   const chompParticles: Array<{

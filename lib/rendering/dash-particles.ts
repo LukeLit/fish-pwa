@@ -155,6 +155,28 @@ export class DashParticleSystem {
     });
   }
 
+  /**
+   * Spawn an instant burst of bubbles at a world position (e.g. combat impact).
+   * These use the same bubble look as dash flow particles but radiate outward
+   * from the impact point to simulate rough water / turbulence.
+   */
+  spawnBurst(x: number, y: number, count: number = 10, sizeScale: number = 1): void {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.3 + Math.random() * 0.6;
+      const spread = sizeScale * (5 + Math.random() * 8);
+      this.particles.push({
+        x: x + Math.cos(angle) * spread,
+        y: y + Math.sin(angle) * spread,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 0.15, // slight upward drift
+        life: 0.7 + Math.random() * 0.3,
+        radius: (1.5 + Math.random() * 3) * sizeScale,
+        kind: 'flow',
+      });
+    }
+  }
+
   /** Draw particles behind the fish (flow, streak). Call before drawing the fish. */
   drawBehind(ctx: CanvasRenderingContext2D): void {
     this.drawParticles(ctx, this.particles.filter((p) => p.kind === 'flow' || p.kind === 'streak'));

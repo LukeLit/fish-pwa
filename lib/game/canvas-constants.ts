@@ -131,10 +131,6 @@ export const PARTICLES = {
 
 // Collision constants
 export const COLLISION = {
-  HEAD_OFFSET_RATIO: 0.45, // Head position offset from center (35% of size)
-  HEAD_RADIUS_RATIO: 0.45, // Head hitbox radius (25% of size)
-  /** Body collider: circle at center; used for separation so entities don't overlap. Head remains for combat. */
-  BODY_RADIUS_RATIO: 0.45, // Body radius (40% of size) for physical separation
   IDLE_SPEED_THRESHOLD: 0.2, // Speed below this is considered idle
   STATIONARY_DRAIN_FRACTION: 0.1, // 10% of full hunger drain when not moving
   NON_DASH_MOVEMENT_DRAIN_CAP: 0.15, // Max hunger drain from moving (non-dash); 1 = full drain at full speed
@@ -187,8 +183,8 @@ export const COMBAT = {
   HIT_PUNCH_DURATION: 150, // ms
   ATTACK_FLASH_DURATION: 150, // ms
   ATTACK_COOLDOWN_MS: 400,
-  LUNGE_STRENGTH: 0.8,
-  LUNGE_DECAY: 0.85,
+  LUNGE_STRENGTH: 1.6,
+  LUNGE_DECAY: 0.9,
   LUNGE_STRETCH_DURATION_MS: 120,
   LUNGE_STRETCH_SCALE_X: 1.2,
   LUNGE_STRETCH_SCALE_Y: 0.85,
@@ -196,7 +192,7 @@ export const COMBAT = {
   LUNGE_SQUASH_SCALE_Y: 1.1,
   AUTO_AIM_CLOSE_RANGE_MULT: 1.5,
   CHUNK_EAT_DURATION_MS: 300,
-  CHUNK_LUNGE_STRENGTH: 0.3,
+  CHUNK_LUNGE_STRENGTH: 0.5,
   CHUNK_EAT_COOLDOWN_MS: 400,
   HEALTH_BAR_SHOW_DURATION: 4000, // ms to show health bar after damage
 } as const;

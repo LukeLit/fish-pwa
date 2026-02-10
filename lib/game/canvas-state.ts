@@ -9,11 +9,12 @@ import { getAnimationSpriteManager, type AnimationSprite } from '@/lib/rendering
 import type { CreatureAnimations, Creature } from '@/lib/game/types';
 import { PLAYER_BASE_SIZE, PLAYER_MAX_SIZE } from './spawn-fish';
 import { HUNGER_MAX, HUNGER_DRAIN_RATE } from './hunger-constants';
-import { PARTICLES, WORLD_BOUNDS, STAMINA, PLAYER_BASE_MAX_HEALTH } from './canvas-constants';
+import { WORLD_BOUNDS, STAMINA, PLAYER_BASE_MAX_HEALTH, PARTICLES } from './canvas-constants';
 import { computeEffectiveMaxStamina } from './stamina-hunger';
 import { getDefaultPlayerSpawnPosition } from './spawn-position';
 
 import type { FishLifecycleState } from './combat-states';
+import type { BakedHitbox } from './sprite-hitbox';
 export type { FishLifecycleState };
 
 export interface FishEntity {
@@ -58,6 +59,8 @@ export interface FishEntity {
   fleeFromId?: string;
   fleeFromUntil?: number;
   lastDamagedTime?: number;
+  /** Sprite-derived hitbox (baked at load); when absent, fallback to size-ratio ellipses */
+  hitbox?: BakedHitbox;
 }
 
 export interface PlayerEntity {
@@ -94,6 +97,8 @@ export interface PlayerEntity {
   lastBiteTime?: number;
   chunkEatEndTime?: number;
   lastChunkEatTime?: number;
+  /** Sprite-derived hitbox (baked at load); when absent, fallback to size-ratio ellipses */
+  hitbox?: BakedHitbox;
 }
 
 export interface ChompParticle {
@@ -111,6 +116,8 @@ export interface CarcassEntity {
   carcassId: string;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   size: number;
   spawnTime: number;
   opacity: number;

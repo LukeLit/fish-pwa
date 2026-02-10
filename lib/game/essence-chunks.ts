@@ -5,8 +5,7 @@
  */
 
 import type { ChunkEntity, PlayerEntity } from './canvas-state';
-import { getHeadPosition, getHeadRadius } from './canvas-collision';
-import { COLLISION } from './canvas-constants';
+import { getHeadEllipseResolved } from './canvas-collision';
 
 // --- Constants ---
 const CHUNK_SCATTER_SPEED = 2.5; // initial scatter velocity
@@ -142,13 +141,13 @@ export function checkChunkCollection(
   player: PlayerEntity
 ): ChunkEntity[] {
   const collected: ChunkEntity[] = [];
-  const playerHead = getHeadPosition(player);
-  const playerR = getHeadRadius(player.size) * CHUNK_COLLECTION_RADIUS_MULT;
+  const playerHead = getHeadEllipseResolved(player);
+  const playerR = Math.max(playerHead.rx, playerHead.ry) * CHUNK_COLLECTION_RADIUS_MULT;
 
   for (let i = chunks.length - 1; i >= 0; i--) {
     const chunk = chunks[i];
-    const dx = chunk.x - playerHead.x;
-    const dy = chunk.y - playerHead.y;
+    const dx = chunk.x - playerHead.cx;
+    const dy = chunk.y - playerHead.cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < playerR + chunk.size * 0.5) {

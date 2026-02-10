@@ -50,6 +50,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const paused = settingsDrawerOpen || showPauseMenu;
 
   const [showDepthBandOverlay, setShowDepthBandOverlay] = useState(true);
+  const [showHitboxDebug, setShowHitboxDebug] = useState(false);
 
   /** True until player + fish sprites are loaded; then canvas calls onReadyToPlay. */
   const [loading, setLoading] = useState(true);
@@ -412,6 +413,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         onOpenChange={setSettingsDrawerOpen}
         showDepthBandOverlay={showDepthBandOverlay}
         onDepthBandOverlayChange={setShowDepthBandOverlay}
+        showHitboxDebug={showHitboxDebug}
+        onShowHitboxDebugChange={setShowHitboxDebug}
         currentLevel={currentLevel}
         onCheatLevel={handleCheatLevel}
         onCheatSize={handleCheatSize}
@@ -428,6 +431,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         enableWaterDistortion={false}
         deformationIntensity={1}
         showDepthBandOverlay={showDepthBandOverlay}
+        showHitboxDebug={showHitboxDebug}
         runId="shallow_run"
         currentLevel={runState?.currentLevel ?? '1-1'}
         gameMode={true}

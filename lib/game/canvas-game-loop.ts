@@ -8,7 +8,8 @@ import type { InputState } from './canvas-input';
 import type { CanvasGameState } from './canvas-state';
 import type { PlayerEntity, FishEntity, FishLifecycleState } from './canvas-state';
 import type { Creature } from './types';
-import { getHeadPosition, getHeadRadius } from './canvas-collision';
+import { getHeadPositionResolved, getHeadEllipseResolved, getBodyEllipseResolved } from './canvas-collision';
+import { ellipseOverlapsEllipse } from './ellipse-collision';
 import { PHYSICS, AI, SPAWN, STAMINA, COLLISION, ANIMATION, PARTICLES, GAME, COMBAT } from './canvas-constants';
 import {
   updateStamina,
@@ -42,6 +43,7 @@ import { resolveAttack } from './combat';
 import { spawnCarcass, updateCarcasses, decrementCarcassChunks } from './carcass';
 import { spawnChunksFromFish, updateChunks, checkChunkCollection } from './essence-chunks';
 import { resolveBodyOverlap } from './canvas-collision';
+import { computeSpriteHitbox } from './sprite-hitbox';
 import {
   getGrowthStage,
   getGrowthStageSprite,
@@ -306,18 +308,20 @@ export function tickGameState(params: GameTickParams): boolean {
       const fishA = fishList[i];
       if ((fishA.opacity ?? 1) < 1 || fishA.lifecycleState === 'dying' || fishA.lifecycleState === 'removed') continue;
       if (!fishA.isDashing) continue; // attacker must be dashing
-      const aHead = getHeadPosition(fishA);
-      const aR = getHeadRadius(fishA.size);
+      const aHeadEllipse = getHeadEllipseResolved(fishA);
       for (let j = 0; j < fishList.length; j++) {
         if (i === j) continue;
         const fishB = fishList[j];
         if ((fishB.opacity ?? 1) < 1 || fishB.lifecycleState === 'dying' || fishB.lifecycleState === 'removed') continue;
-        const bHead = getHeadPosition(fishB);
-        const bR = getHeadRadius(fishB.size);
-        const dx = bHead.x - aHead.x;
-        const dy = bHead.y - aHead.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist >= aR + bR) continue;
+        const bBodyEllipse = getBodyEllipseResolved(fishB);
+        if (!ellipseOverlapsEllipse(aHeadEllipse, bBodyEllipse)) continue;
+
+        const dx = bBodyEllipse.cx - aHeadEllipse.cx;
+        const dy = bBodyEllipse.cy - aHeadEllipse.cy;
+
+        // Fleeing prey never deal damage - their dash is escape only
+        const fishAIsFleeing = fishA.fleeFromId && fishA.fleeFromUntil && now < fishA.fleeFromUntil;
+        if (fishAIsFleeing && fishA.type === 'prey') continue;
 
         // Cooldown: use attackFlashEndTime as implicit cooldown (already set by resolveAttack)
         if (fishA.attackFlashEndTime && now < (fishA.attackFlashEndTime - COMBAT.ATTACK_FLASH_DURATION + COMBAT.ATTACK_COOLDOWN_MS)) continue;
@@ -350,6 +354,10 @@ export function tickGameState(params: GameTickParams): boolean {
         pushBloodAt(state, (fishA.x + fishB.x) * 0.5, (fishA.y + fishB.y) * 0.5, fishB.size * 0.6);
         fishA.animationSprite?.hasAction?.('bite') && fishA.animationSprite.triggerAction('bite');
 
+        const impactX = (fishA.x + fishB.x) * 0.5;
+        const impactY = (fishA.y + fishB.y) * 0.5;
+        state.particles.dashMultiEntity.spawnBurstAt(impactX, impactY, 14, Math.max(0.8, fishA.size * 0.02));
+
         if (result.died) {
           // Death: spawn carcass + chunks, mark dying
           fishB.lifecycleState = 'dying';
@@ -378,18 +386,21 @@ export function tickGameState(params: GameTickParams): boolean {
   }
 
   // --- Player-fish combat (health-based) ---
-  const playerHead = getHeadPosition(player);
-  const playerHeadR = getHeadRadius(player.size);
+  const playerHeadEllipse = getHeadEllipseResolved(player);
+  const playerBodyEllipse = getBodyEllipseResolved(player);
 
   for (let idx = state.fish.length - 1; idx >= 0; idx--) {
     const fish = state.fish[idx];
     if ((fish.opacity ?? 1) < 1 || fish.lifecycleState === 'dying' || fish.lifecycleState === 'removed') continue;
-    const fishHead = getHeadPosition(fish);
-    const fishHeadR = getHeadRadius(fish.size);
-    const dx = fishHead.x - playerHead.x;
-    const dy = fishHead.y - playerHead.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist >= playerHeadR + fishHeadR) continue;
+    const fishHeadEllipse = getHeadEllipseResolved(fish);
+    const fishBodyEllipse = getBodyEllipseResolved(fish);
+    const playerHeadHitsFishBody = ellipseOverlapsEllipse(playerHeadEllipse, fishBodyEllipse);
+    const fishHeadHitsPlayerBody = ellipseOverlapsEllipse(fishHeadEllipse, playerBodyEllipse);
+    if (!playerHeadHitsFishBody && !fishHeadHitsPlayerBody) continue;
+
+    const dx = fishBodyEllipse.cx - playerHeadEllipse.cx;
+    const dy = fishBodyEllipse.cy - playerHeadEllipse.cy;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
     if (gameMode) {
       const playerAttacking = player.isDashing;
@@ -402,7 +413,11 @@ export function tickGameState(params: GameTickParams): boolean {
       const fishIsPrey = fish.type === 'prey';
       const playerAttackOnly = fishIsPrey && playerAttacking && fish.size > player.size;
 
-      if (playerAttacking && !playerOnCooldown) {
+      // Player: damage only when dashing toward target (direction check)
+      const dxToFish = fishBodyEllipse.cx - player.x;
+      const dyToFish = fishBodyEllipse.cy - player.y;
+      const playerMovingTowardFish = (player.vx * dxToFish + player.vy * dyToFish) > 0;
+      if (playerAttacking && !playerOnCooldown && playerHeadHitsFishBody && playerMovingTowardFish) {
         // Player attacks fish
         const result = resolveAttack(player, fish, {
           attackerDamage: playerCreature?.stats?.damage ?? 10,
@@ -436,6 +451,10 @@ export function tickGameState(params: GameTickParams): boolean {
         });
 
         pushBloodAt(state, (fish.x + player.x) * 0.5, (fish.y + player.y) * 0.5, fish.size * 0.8);
+
+        const impactXPlayerFish = (player.x + fish.x) * 0.5;
+        const impactYPlayerFish = (player.y + fish.y) * 0.5;
+        state.particles.dashMultiEntity.spawnBurstAt(impactXPlayerFish, impactYPlayerFish, 16, Math.max(0.8, player.size * 0.02));
 
         if (result.died) {
           // Death: spawn carcass + chunks
@@ -473,8 +492,9 @@ export function tickGameState(params: GameTickParams): boolean {
         }
       }
 
-      // Fish attacks player (skip if larger-prey counterattack prevention applies)
-      if (fishAttacking && !playerAttackOnly) {
+      // Fish attacks player (skip if fleeing - fleeing fish never deal damage)
+      const fishIsFleeing = fish.fleeFromId && fish.fleeFromUntil && now < fish.fleeFromUntil;
+      if (fishAttacking && !playerAttackOnly && fishHeadHitsPlayerBody && !fishIsFleeing) {
         const fishCooldown = fish.attackFlashEndTime && now < (fish.attackFlashEndTime - COMBAT.ATTACK_FLASH_DURATION + COMBAT.ATTACK_COOLDOWN_MS);
         if (!fishCooldown) {
           const result = resolveAttack(fish, player, {
@@ -495,6 +515,10 @@ export function tickGameState(params: GameTickParams): boolean {
           });
 
           pushBloodAt(state, (fish.x + player.x) * 0.5, (fish.y + player.y) * 0.5, player.size * 0.5);
+
+          const impactXFishPlayer = (fish.x + player.x) * 0.5;
+          const impactYFishPlayer = (fish.y + player.y) * 0.5;
+          state.particles.dashMultiEntity.spawnBurstAt(impactXFishPlayer, impactYFishPlayer, 14, Math.max(0.8, fish.size * 0.02));
 
           if (result.died) {
             // Player died
@@ -532,6 +556,7 @@ export function tickGameState(params: GameTickParams): boolean {
           const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
           callbacks.onReloadPlayerSprite?.(spriteUrl, (canvas) => {
             player.sprite = canvas;
+            player.hitbox = computeSpriteHitbox(canvas);
           });
           if (state.animationSpriteManager.hasSprite('player')) {
             const animSprite = state.animationSpriteManager.getSprite('player', player.animations || {});
@@ -586,6 +611,7 @@ export function tickGameState(params: GameTickParams): boolean {
           const { sprite: spriteUrl } = getGrowthStageSprite(playerCreature, player.size, 'player');
           callbacks.onReloadPlayerSprite?.(spriteUrl, (canvas) => {
             player.sprite = canvas;
+            player.hitbox = computeSpriteHitbox(canvas);
           });
           if (state.animationSpriteManager.hasSprite('player')) {
             const animSprite = state.animationSpriteManager.getSprite('player', player.animations || {});

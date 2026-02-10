@@ -6,10 +6,12 @@
  */
 
 import type { CarcassEntity } from './canvas-state';
+import { removeBackground, DEFAULT_CHROMA_TOLERANCE } from '@/lib/rendering/fish-renderer';
 
 // --- Constants ---
 const CARCASS_DECAY_TIME = 45_000; // 45 seconds total lifespan
 const CARCASS_FADE_DURATION = 2_000; // fade over final 2 seconds
+const CARCASS_DRIFT_SPEED = 0.035; // slow upward float
 const CARCASS_TINT_COLOR = 'rgba(80, 60, 60, 0.4)';
 
 // --- Sprite cache ---
@@ -27,20 +29,16 @@ export function clearCarcassSpriteCache(): void {
  */
 export async function preloadCarcassSprite(): Promise<void> {
   try {
-    // Try loading from IndexedDB shared sprites
+    // Try loading from IndexedDB shared sprites (Sprite Lab saves as 'carcass')
     const { getSharedSprite } = await import('@/lib/storage/sprite-lab-db');
-    const blob = await getSharedSprite('carcass-default');
+    let blob = await getSharedSprite('carcass');
+    if (!blob) blob = await getSharedSprite('carcass-default');
     if (blob) {
       const img = new Image();
       const url = URL.createObjectURL(blob);
       await new Promise<void>((resolve, reject) => {
         img.onload = () => {
-          const c = document.createElement('canvas');
-          c.width = img.width;
-          c.height = img.height;
-          const ctx = c.getContext('2d')!;
-          ctx.drawImage(img, 0, 0);
-          carcassSprite = c;
+          carcassSprite = removeBackground(img, DEFAULT_CHROMA_TOLERANCE);
           URL.revokeObjectURL(url);
           resolve();
         };
@@ -65,10 +63,15 @@ export function spawnCarcass(
   size: number,
   chunkCount: number
 ): CarcassEntity {
+  // Slow drift: upward bias, slight random horizontal
+  const vx = (Math.random() - 0.5) * CARCASS_DRIFT_SPEED * 0.8;
+  const vy = -CARCASS_DRIFT_SPEED * (0.8 + Math.random() * 0.4);
   return {
     carcassId: `carcass-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     x,
     y,
+    vx,
+    vy,
     size,
     spawnTime: performance.now(),
     opacity: 1,
@@ -95,6 +98,10 @@ export function updateCarcasses(carcasses: CarcassEntity[]): CarcassEntity[] {
   const now = performance.now();
   return carcasses.filter((c) => {
     const age = now - c.spawnTime;
+
+    // Apply drift (slow float)
+    c.x += c.vx;
+    c.y += c.vy;
 
     // If all chunks collected, start immediate fade
     if (c.remainingChunks <= 0) {
@@ -129,9 +136,10 @@ export function drawCarcasses(
     ctx.globalAlpha = c.opacity * 0.8; // carcasses are slightly translucent
 
     if (carcassSprite) {
-      // Draw the cached sprite
-      const w = c.size * 1.2;
-      const h = c.size * 0.8;
+      // Draw the cached sprite - preserve natural aspect ratio (like fish rendering)
+      const aspect = carcassSprite.height / carcassSprite.width;
+      const w = c.size;
+      const h = c.size * aspect;
       ctx.drawImage(carcassSprite, c.x - w / 2, c.y - h / 2, w, h);
     } else {
       // Placeholder: dark oval
