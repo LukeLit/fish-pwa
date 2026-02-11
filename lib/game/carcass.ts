@@ -18,6 +18,13 @@ const CARCASS_TINT_COLOR = 'rgba(80, 60, 60, 0.4)';
 let carcassSprite: HTMLCanvasElement | null = null;
 
 /**
+ * Get the cached carcass sprite (for R3F texture use).
+ */
+export function getCarcassSprite(): HTMLCanvasElement | null {
+  return carcassSprite;
+}
+
+/**
  * Clear the cached carcass sprite (call when sprites refresh).
  */
 export function clearCarcassSpriteCache(): void {

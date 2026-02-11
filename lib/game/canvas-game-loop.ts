@@ -1274,6 +1274,23 @@ export function tickGameState(params: GameTickParams): boolean {
   state.camera.x = targetCameraX;
   state.camera.y = targetCameraY;
 
+  // Compute effective camera position for R3F (was in renderGame; now centralised here)
+  let effectiveCamX = state.camera.x;
+  let effectiveCamY = state.camera.y;
+  if (currentEditMode || isPaused) {
+    if (options.selectedFishId) {
+      const isPlayerSelected = options.selectedFishId === player.id;
+      const selectedFish = isPlayerSelected ? null : state.fish.find((f) => f.id === options.selectedFishId);
+      effectiveCamX = isPlayerSelected ? player.x : selectedFish?.x ?? state.camera.x;
+      effectiveCamY = isPlayerSelected ? player.y : selectedFish?.y ?? state.camera.y;
+    } else {
+      effectiveCamX = state.camera.panX;
+      effectiveCamY = state.camera.panY;
+    }
+  }
+  state.camera.effectiveX = effectiveCamX;
+  state.camera.effectiveY = effectiveCamY;
+
   return true;
 }
 

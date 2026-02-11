@@ -58,8 +58,9 @@ import { updatePlayerPhysics, constrainToBounds, getAnimationAction } from '@/li
 import { updateAIFish } from '@/lib/game/canvas-ai';
 // Old collision module functions replaced by inline combat in canvas-game-loop.ts
 import { CanvasGameState, type FishEntity, type PlayerEntity, type FishLifecycleState } from '@/lib/game/canvas-state';
-import { renderGame } from '@/lib/game/canvas-renderer';
 import { tickGameState } from '@/lib/game/canvas-game-loop';
+import { Canvas } from '@react-three/fiber';
+import { GameProvider, R3FGameScene, renderOverlay } from '@/lib/rendering/r3f';
 import { pollGamepadState } from '@/lib/game/gamepad-poller';
 import { useCanvasSpawnSync, type FishDataLike } from '@/lib/game/canvas-spawn-sync';
 import { createStaminaUpdater, type StaminaEntity } from '@/lib/game/canvas-stamina';
@@ -169,6 +170,7 @@ export default function FishEditorCanvas({
   // Component refs
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
@@ -196,6 +198,7 @@ export default function FishEditorCanvas({
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const waterTimeRef = useRef<number>(0);
   const lastPlayerAnimActionRef = useRef<string | null>(null);
+  const animatedZoomRef = useRef<number>(zoom);
 
   // Update refs when props change
   useEffect(() => { chromaToleranceRef.current = chromaTolerance }, [chromaTolerance])
@@ -222,6 +225,7 @@ export default function FishEditorCanvas({
   }, [])
   useEffect(() => {
     zoomRef.current = zoom;
+    animatedZoomRef.current = zoom;
     inputManagerRef.current.setAnimatedZoom(zoom);
   }, [zoom])
   useEffect(() => { deformationRef.current = deformationIntensity }, [deformationIntensity])
@@ -242,6 +246,8 @@ export default function FishEditorCanvas({
   useEffect(() => { showDepthBandOverlayRef.current = showDepthBandOverlay }, [showDepthBandOverlay])
   useEffect(() => { showHitboxDebugRef.current = showHitboxDebug }, [showHitboxDebug])
   useEffect(() => { runIdRef.current = runId }, [runId])
+  const enableWaterDistortionRef = useRef<boolean>(enableWaterDistortion ?? false);
+  useEffect(() => { enableWaterDistortionRef.current = enableWaterDistortion ?? false }, [enableWaterDistortion])
   const currentLevelRef = useRef<string>(currentLevel);
   useEffect(() => { currentLevelRef.current = currentLevel }, [currentLevel])
   const unlockedDepthBandsRef = useRef<string[] | undefined>(unlockedDepthBands);
@@ -516,12 +522,14 @@ export default function FishEditorCanvas({
     const zoomState = inputManagerRef.current.getZoomState();
     const currentZoom = zoomState.animatedZoom;
     const cam = gameStateRef.current.camera;
+    const camX = cam.effectiveX;
+    const camY = cam.effectiveY;
 
     for (const [fishId, pos] of editButtonPositionsRef.current.entries()) {
       // Calculate button position in screen space (same formula as rendering)
       // screenPos = (worldPos - cameraPos) * zoom + canvas.center
-      const screenX = (pos.x - cam.x) * currentZoom + canvas.width / 2;
-      const screenY = (pos.y - cam.y) * currentZoom + canvas.height / 2 - pos.size * currentZoom / 2 - UI.EDIT_BUTTON_SIZE - UI.EDIT_BUTTON_OFFSET;
+      const screenX = (pos.x - camX) * currentZoom + canvas.width / 2;
+      const screenY = (pos.y - camY) * currentZoom + canvas.height / 2 - pos.size * currentZoom / 2 - UI.EDIT_BUTTON_SIZE - UI.EDIT_BUTTON_OFFSET;
       const buttonSize = UI.EDIT_BUTTON_SIZE;
 
       const dx = x - screenX;
@@ -1029,10 +1037,7 @@ export default function FishEditorCanvas({
     return () => window.removeEventListener('updateFishSize', handleSizeUpdate as EventListener);
   }, [playerCreature, loadGrowthAwareSprite]);
 
-  // Mark canvas ready when canvas actually mounts (canvas is not rendered until isClient is true)
-  useEffect(() => {
-    if (isClient && canvasRef.current) setCanvasReady(true);
-  }, [isClient]);
+  // canvasReady is set when R3F Canvas mounts (via onCreated)
 
   useCanvasSpawnSync(
     spawnedFish,
@@ -1051,15 +1056,9 @@ export default function FishEditorCanvas({
     gameMode ? handleAllNewFishLoaded : undefined
   );
 
-  // Setup canvas and game loop
+  // Setup R3F canvas and game loop
   useEffect(() => {
     if (!isClient || !containerRef.current) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
 
     // When level transitions (e.g. continuous progression 1-1 -> 1-2), reset game mode
     // so the timer restarts and the loop resumes (it stops when level complete fires)
@@ -1074,25 +1073,7 @@ export default function FishEditorCanvas({
       gameStateRef.current.player.lifecycleState = 'active';
     }
 
-    // Set canvas to fill available space
-    const updateCanvasSize = () => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      canvas.width = container.clientWidth;
-      canvas.height = container.clientHeight;
-    };
-
-    updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-
-    // Use ResizeObserver to detect container size changes (e.g., when side panel opens/closes)
-    const resizeObserver = new ResizeObserver(() => {
-      updateCanvasSize();
-    });
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
+    // R3F Canvas sizes to its container automatically
 
     const handleKeyDown = (e: KeyboardEvent) => {
       inputManagerRef.current.handleKeyDown(e.key);
@@ -1204,47 +1185,54 @@ export default function FishEditorCanvas({
       waterTimeRef.current += 0.01;
       const lerpSpeed = CAMERA.LERP_SPEED;
       inputManagerRef.current.updateAnimatedZoom(lerpSpeed);
+      animatedZoomRef.current = inputManagerRef.current.getZoomState().animatedZoom;
 
-      // Delegate all drawing to extracted renderer
-      renderGame({
-        canvas,
-        ctx,
-        player: gameStateRef.current.player,
-        fish: gameStateRef.current.fish,
-        camera: gameStateRef.current.camera,
-        zoom: zoomRef.current,
-        animatedZoom: inputManagerRef.current.getZoomState().animatedZoom,
-        background: backgroundImageRef.current ?? undefined,
-        enableWaterDistortion,
-        waterTime: waterTimeRef.current,
-        deformationIntensity: deformationRef.current,
-        gameMode,
-        isEditMode: currentEditMode,
-        isPaused,
-        selectedFishId: selectedFishIdRef.current,
-        showEditButtons: showEditButtonsRef.current,
-        editButtonPositions: editButtonPositionsRef.current,
-        chompParticles: gameStateRef.current.particles.chomp,
-        bloodParticles: gameStateRef.current.particles.blood,
-        carcasses: gameStateRef.current.carcasses,
-        chunks: gameStateRef.current.chunks,
-        dashMultiEntity: gameStateRef.current.particles.dashMultiEntity,
-        animationSpriteManager: gameStateRef.current.animationSpriteManager,
-        lastPlayerAnimAction: lastPlayerAnimActionRef.current,
-        gameStartTime: gameStateRef.current.gameMode.startTime,
-        totalPausedTime: gameStateRef.current.gameMode.totalPausedTime,
-        pauseStartTime: gameStateRef.current.gameMode.pauseStartTime,
-        score: gameStateRef.current.gameMode.score,
-        fishCount: gameStateRef.current.fish.length,
-        showBoundaryOverlay: showBoundaryOverlayRef.current,
-        showDepthBandOverlay: showDepthBandOverlayRef.current,
-        showHitboxDebug: showHitboxDebugRef.current,
-        runId: runIdRef.current,
-        onEditFish,
-        setLastPlayerAnimAction: (action) => { lastPlayerAnimActionRef.current = action; },
+      // Populate editButtonPositions for click hit-test
+      const state = gameStateRef.current;
+      editButtonPositionsRef.current.clear();
+      state.fish.forEach((f) => {
+        if (f.lifecycleState !== 'removed') editButtonPositionsRef.current.set(f.id, { x: f.x, y: f.y, size: f.size });
       });
+      if (state.player.lifecycleState !== 'dead') {
+        editButtonPositionsRef.current.set(state.player.id, { x: state.player.x, y: state.player.y, size: state.player.size });
+      }
 
-      // REMOVED: inline rendering block - now in canvas-renderer via renderGame()
+      // Render 2D overlay (particles, health bars, UI, etc.)
+      const overlay = overlayCanvasRef.current;
+      const container = containerRef.current;
+      if (overlay && container) {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (overlay.width !== w || overlay.height !== h) {
+          overlay.width = w;
+          overlay.height = h;
+        }
+        renderOverlay({
+          canvas: overlay,
+          player: state.player,
+          fish: state.fish,
+          camera: state.camera,
+          animatedZoom: animatedZoomRef.current,
+          chompParticles: state.particles.chomp,
+          bloodParticles: state.particles.blood,
+          dashMultiEntity: state.particles.dashMultiEntity,
+          gameMode,
+          isEditMode: currentEditMode,
+          isPaused,
+          showEditButtons: showEditButtonsRef.current,
+          gameStartTime: state.gameMode.startTime,
+          totalPausedTime: state.gameMode.totalPausedTime,
+          pauseStartTime: state.gameMode.pauseStartTime,
+          score: state.gameMode.score,
+          fishCount: state.fish.filter((f) => f.lifecycleState !== 'removed').length,
+          showBoundaryOverlay: showBoundaryOverlayRef.current,
+          showDepthBandOverlay: showDepthBandOverlayRef.current,
+          showHitboxDebug: showHitboxDebugRef.current,
+          runId: runIdRef.current,
+          enableWaterDistortion: enableWaterDistortionRef.current,
+          waterTime: waterTimeRef.current,
+        });
+      }
 
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     };
@@ -1254,8 +1242,6 @@ export default function FishEditorCanvas({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('resize', updateCanvasSize);
-      resizeObserver.disconnect();
       // Clean up zoom controls
       if (container) {
         container.removeEventListener('wheel', handleWheel);
@@ -1277,21 +1263,63 @@ export default function FishEditorCanvas({
     );
   }
 
+  const gameContextValue = {
+    gameStateRef,
+    zoomRef,
+    animatedZoomRef,
+    waterTimeRef,
+    gameMode: gameMode ?? false,
+    isEditMode: editMode,
+    isPaused: paused,
+    backgroundImageRef,
+    enableWaterDistortion: enableWaterDistortion ?? false,
+    deformationIntensity: deformationIntensity ?? 1,
+  };
+
   return (
     <div ref={containerRef} className="relative w-full h-full" style={{ touchAction: 'none' }}>
-      <canvas
-        ref={canvasRef}
-        className="w-full h-full block"
-        onClick={handleCanvasClick}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onTouchStart={handleCanvasTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1, cursor: (paused && !selectedFishId) ? 'grab' : 'default' }}
+      <div
+        className="absolute inset-0 z-0"
+        style={{ background: 'linear-gradient(to bottom, #1e40af 0%, #1e3a8a 100%)' }}
+        aria-hidden
       />
+      <GameProvider value={gameContextValue}>
+        <div
+          className="w-full h-full"
+          style={{ position: 'relative', zIndex: 1, cursor: (paused && !selectedFishId) ? 'grab' : 'default' }}
+          onClick={handleCanvasClick as React.MouseEventHandler}
+          onMouseDown={handleMouseDown as React.MouseEventHandler}
+          onMouseMove={handleMouseMove as React.MouseEventHandler}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleCanvasTouchStart as React.TouchEventHandler}
+          onTouchMove={handleTouchMove as React.TouchEventHandler}
+          onTouchEnd={handleTouchEnd}
+        >
+          <Canvas
+            gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+            onCreated={({ gl }) => {
+              gl.setClearColor(0x000000, 0);
+              (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = gl.domElement;
+              setCanvasReady(true);
+            }}
+            style={{ width: '100%', height: '100%', display: 'block' }}
+          >
+            <R3FGameScene />
+          </Canvas>
+          <canvas
+            ref={overlayCanvasRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+              zIndex: 10,
+            }}
+          />
+        </div>
+      </GameProvider>
       <div style={{ pointerEvents: paused ? 'none' : 'auto', position: 'absolute', inset: 0, zIndex: 20 }}>
         <AnalogJoystick onChange={handleJoystickChange} mode="on-touch" disabled={paused} />
       </div>

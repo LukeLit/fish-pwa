@@ -30,6 +30,14 @@ const MEAT_CHUNK_GROWTH_MULTIPLIER = 0.6; // Reduce vs pre-combat; tune to targe
 const chunkSprites = new Map<string, HTMLCanvasElement>();
 
 /**
+ * Get a chunk sprite by key (for R3F texture use).
+ * Keys: 'meat' | 'essence_<type>' (e.g. 'essence_shallow').
+ */
+export function getChunkSprite(key: string): HTMLCanvasElement | undefined {
+  return chunkSprites.get(key);
+}
+
+/**
  * Clear all cached chunk sprites (call when sprites refresh).
  */
 export function clearChunkSpriteCache(): void {
@@ -387,7 +395,7 @@ export function drawChunks(
   }
 }
 
-function getChunkColor(essenceType: string): string {
+export function getChunkColor(essenceType: string): string {
   switch (essenceType) {
     case 'generic':
     case 'meat':
