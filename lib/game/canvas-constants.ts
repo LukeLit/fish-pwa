@@ -27,6 +27,9 @@ export const AI = {
   STAMINA_REGEN: 100, // per second
   SPEED_SCALE: 0.1, // Scale down for canvas movement
   PREDATOR_TARGET_SIZE_RATIO: 0.8, // Only chase if target smaller than fish.size * this
+  PREDATOR_VS_PLAYER_SIZE_RATIO: 1.15, // Predator chases player when player < fish.size * this (predator can be 15% smaller)
+  FISH_FIGHT_BACK_PREDATOR_SIZE_RATIO: 0.7, // Predator fights back when >= 70% of attacker size
+  AI_SKIP_DISTANCE: 900, // Skip AI update when fish > this distance from player (perf)
   DASH_DISTANCE_MULTIPLIER: 6, // Predator starts dash when dist < fish.size * this
   DASH_STAMINA_MIN: 15, // Min stamina to allow AI dash
   PREY_DASH_DISTANCE_MULTIPLIER: 8, // Prey starts dash when threat within fish.size * this

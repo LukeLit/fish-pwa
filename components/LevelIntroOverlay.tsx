@@ -20,6 +20,8 @@ interface LevelIntroOverlayProps {
   onComplete: () => void;
   /** Objectives to show below subtitle; animate in sequence. */
   objectives?: LevelObjective[];
+  /** When true, show "VV NEW DEPTH UNLOCKED VV" to encourage going deeper. */
+  showDepthPrompt?: boolean;
 }
 
 export default function LevelIntroOverlay({
@@ -27,6 +29,7 @@ export default function LevelIntroOverlay({
   levelLabel,
   onComplete,
   objectives = [],
+  showDepthPrompt = false,
 }: LevelIntroOverlayProps) {
   const [isExiting, setIsExiting] = useState(false);
 
@@ -49,6 +52,7 @@ export default function LevelIntroOverlay({
       subtitle={levelLabel}
       isExiting={isExiting}
       objectives={objectives}
+      showDepthPrompt={showDepthPrompt}
     />
   );
 }

@@ -22,7 +22,7 @@ import {
 import { DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { loadCreatureById } from '@/lib/game/data/creature-loader';
 import { createLevel } from '@/lib/game/create-level';
-import { getLevelIdFromDepthBandId, inferActConfigIdFromDepthBand, getActConfig } from '@/lib/game/data/level-loader';
+import { getLevelIdFromDepthBandId, inferActConfigIdFromDepthBand, getActConfig, isBandShallowerThan } from '@/lib/game/data/level-loader';
 import { getObjectivesForBand } from '@/lib/game/objectives';
 import LevelObjectivesPanel from './LevelObjectivesPanel';
 import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
@@ -243,19 +243,20 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
 
         setPlayerFishSprite(playerSprite);
 
-        // Spawn fish: continuous flow uses all unlocked bands; otherwise single band
+        // Spawn fish: only include bands at current depth or deeper (no shallow fish when continuing)
         const biomeId = 'shallow'; // TODO: from run state when we support multiple biomes
         const bands = currentRunState.unlockedDepthBands ?? [currentRunState.currentLevel];
         const spawnList: Array<Creature & { id: string; creatureId?: string; depthBandId?: string }> = [];
         for (const bandId of bands) {
+          if (isBandShallowerThan(bandId, currentRunState.currentLevel)) continue;
           const levelId = getLevelIdFromDepthBandId(bandId);
           const result = await createLevel(biomeId, levelId);
           for (const fish of result.spawnList) {
             spawnList.push({ ...fish, id: `${fish.id}_${bandId}`, depthBandId: bandId });
           }
+          loadedBandsRef.current.add(bandId);
         }
         setSpawnedFish(spawnList);
-        bands.forEach((b) => loadedBandsRef.current.add(b));
       } catch (error) {
         console.error('Failed to load game assets:', error);
       }
@@ -303,7 +304,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
         }
         loadedBandsRef.current.add(bandId);
       }
-      setSpawnedFish((prev) => [...prev, ...newFish]);
+      setSpawnedFish((prev) => {
+        const filtered = prev.filter((f) => {
+          const band = (f as { depthBandId?: string }).depthBandId;
+          return band == null || !isBandShallowerThan(band, rs.currentLevel);
+        });
+        return [...filtered, ...newFish];
+      });
     };
 
     window.addEventListener('runStateUpdated', handleRunStateUpdated);
@@ -463,6 +470,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
           totalSteps={(getActConfig(runState.actConfigId ?? 'shallow_act')?.steps ?? [currentLevel]).length || 1}
           onComplete={() => setShowLevelIntro(false)}
           objectives={getObjectivesForBand(currentLevel)}
+          showDepthPrompt={currentLevel !== '1-1'}
         />
       )}
 

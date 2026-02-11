@@ -46,6 +46,8 @@ export interface LevelSplashPanelProps {
   isExiting?: boolean;
   /** Objectives to show below subtitle (intro only); animate in sequence when present. */
   objectives?: LevelObjective[];
+  /** When true, show "VV NEW DEPTH UNLOCKED VV" to encourage going deeper (1-2, 1-3, etc.). */
+  showDepthPrompt?: boolean;
 }
 
 export default function LevelSplashPanel({
@@ -53,6 +55,7 @@ export default function LevelSplashPanel({
   subtitle,
   isExiting = false,
   objectives = [],
+  showDepthPrompt = false,
 }: LevelSplashPanelProps) {
   const animationClass = isExiting ? ANIMATION.exit : ANIMATION.enter;
 
@@ -67,6 +70,11 @@ export default function LevelSplashPanel({
         </h1>
         <div className={LAYOUT.divider} />
         <p className={LAYOUT.subtitle}>{subtitle}</p>
+        {showDepthPrompt && (
+          <p className="mt-2 text-cyan-400 text-sm font-bold tracking-widest animate-pulse">
+            VV NEW DEPTH UNLOCKED VV
+          </p>
+        )}
         {objectives.length > 0 && (
           <div className="mt-4 space-y-2">
             {objectives.map((obj, i) => (

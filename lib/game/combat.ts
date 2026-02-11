@@ -6,7 +6,7 @@
  * ALL combat timers use performance.now() — never game-relative currentTime.
  */
 
-import { COMBAT } from './canvas-constants';
+import { COMBAT, AI } from './canvas-constants';
 
 export interface AttackResult {
   damage: number;
@@ -79,4 +79,20 @@ export function resolveAttack(
     died: newHealth <= 0,
     overkill: Math.max(0, damage - currentHealth),
   };
+}
+
+/**
+ * Whether target should fight back when attacked.
+ * Prey: fight back when bigger than attacker.
+ * Predator: fight back when >= FISH_FIGHT_BACK_PREDATOR_SIZE_RATIO of attacker.
+ */
+export function shouldFightBack(
+  attacker: { size: number; type?: string },
+  target: { size: number; type?: string }
+): boolean {
+  if (target.type === 'prey') return target.size > attacker.size;
+  if (target.type === 'predator' || target.type === 'mutant') {
+    return target.size >= attacker.size * AI.FISH_FIGHT_BACK_PREDATOR_SIZE_RATIO;
+  }
+  return false;
 }

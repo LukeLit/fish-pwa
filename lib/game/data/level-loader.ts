@@ -41,6 +41,8 @@ interface DepthBandEntry {
   predator_count?: number;
   main_apex?: boolean;
   sub_depths?: string[];
+  /** Biome IDs for fish pool (e.g. ["shallow","medium"]). Overrides root level_tags when set. */
+  level_tags?: string[];
   objectives?: LevelObjective[];
 }
 
@@ -93,10 +95,13 @@ function levelIdToDepthBandId(levelId: number): string {
 }
 
 function parseDepthBandEntry(bandId: string, entry: DepthBandEntry, levelId: number): LevelRules {
+  const rootTags = (config as LevelConfig).level_tags;
   const levelTags =
-    Array.isArray((config as LevelConfig).level_tags) && (config as LevelConfig).level_tags!.length > 0
-      ? (config as LevelConfig).level_tags
-      : undefined;
+    Array.isArray(entry.level_tags) && entry.level_tags.length > 0
+      ? entry.level_tags
+      : Array.isArray(rootTags) && rootTags.length > 0
+        ? rootTags
+        : undefined;
   const objectives = Array.isArray(entry.objectives) ? entry.objectives.filter((o): o is LevelObjective => o && typeof o === 'object' && typeof (o as LevelObjective).type === 'string') : undefined;
   return {
     level_id: levelId,
@@ -111,6 +116,20 @@ function parseDepthBandEntry(bandId: string, entry: DepthBandEntry, levelId: num
     level_tags: levelTags,
     objectives,
   };
+}
+
+/**
+ * Returns true if bandId is shallower (higher in the water column) than currentLevel.
+ * Uses min_meters from level config: 1-1 (0.15) < 1-2 (0.35) < 1-3 (0.6) < 2-1 (0.8), etc.
+ * Use to filter spawn pool when advancing—keep only fish from current band and deeper.
+ */
+export function isBandShallowerThan(bandId: string | undefined, currentLevel: string): boolean {
+  if (!bandId) return false;
+  const band = getDepthBandRules(bandId, 1);
+  const current = getDepthBandRules(currentLevel, 1);
+  const bandMeters = band.min_meters ?? 0;
+  const currentMeters = current.min_meters ?? 0;
+  return bandMeters < currentMeters;
 }
 
 /**

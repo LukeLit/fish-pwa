@@ -70,7 +70,7 @@ export default function DeathScreen({ stats, onReturnToMenu }: DeathScreenProps)
     : 'shadow-red-500/50';
 
   return (
-    <div className="absolute inset-0 dv-bg-cosmic-alt flex items-center justify-center z-50 animate-in fade-in duration-500 p-4">
+    <div className="absolute inset-0 flex items-center justify-center z-50 animate-in fade-in duration-500 p-4 bg-black/60 backdrop-blur-sm">
       {/* Death Message */}
       <div className="max-w-3xl w-full space-y-4 sm:space-y-6 animate-scale-in">
         <UIPanel 
