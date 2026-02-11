@@ -3,7 +3,7 @@
  * Uses the same meters→world Y mapping as the depth overlay so spawn aligns with depth bands.
  */
 
-import { getRunConfig, getDepthBandRules } from './data/level-loader';
+import { getActConfig, getDepthBandRules } from './data/level-loader';
 import { WORLD_BOUNDS } from './canvas-constants';
 
 /** Depth in meters offset from top of band (shallow end). */
@@ -13,14 +13,14 @@ const SPAWN_DEPTH_OFFSET_METERS = 0.05;
  * Returns world { x, y } for the default player spawn: top of the given level band.
  * Uses run's depth range and the same meters→worldY formula as the depth overlay.
  *
- * @param runId - Run id (e.g. 'shallow_run'). Defaults to 'shallow_run'.
+ * @param runId - Act id (e.g. 'shallow_act'). Defaults to 'shallow_act'.
  * @param currentLevel - Depth band id (e.g. '1-1'). Defaults to '1-1'.
  */
 export function getDefaultPlayerSpawnPosition(
   runId?: string,
   currentLevel?: string
 ): { x: number; y: number } {
-  const run = getRunConfig(runId ?? 'shallow_run');
+  const act = getActConfig(runId ?? 'shallow_act');
   const bandId = currentLevel ?? '1-1';
   const band = getDepthBandRules(bandId, 1);
 
@@ -30,8 +30,8 @@ export function getDefaultPlayerSpawnPosition(
   let runMinMeters: number;
   let runMaxMeters: number;
 
-  if (run?.steps?.length) {
-    const bands = run.steps.map((id, i) => getDepthBandRules(id, i + 1));
+  if (act?.steps?.length) {
+    const bands = act.steps.map((id, i) => getDepthBandRules(id, i + 1));
     runMinMeters = Math.min(...bands.map((r) => r.min_meters));
     runMaxMeters = Math.max(...bands.map((r) => r.max_meters));
   } else {
@@ -56,7 +56,7 @@ const SPAWN_POSITION_RETRIES = 20;
  * Returns world { x, y } for spawning a fish within its depth band, at least minDistance from the player.
  * Y is random within the band's world Y range; X is random in world X. Retries if too close to player.
  *
- * @param runId - Run id (e.g. 'shallow_run'). Defaults to 'shallow_run'.
+ * @param runId - Act id (e.g. 'shallow_act'). Defaults to 'shallow_act'.
  * @param depthBandId - Depth band id (e.g. '1-1') – fish spawn in this band's Y range.
  * @param playerPos - Current player position (used to enforce min distance).
  * @param minDistance - Minimum world-space distance from player (e.g. SPAWN.MIN_DISTANCE).
@@ -67,7 +67,7 @@ export function getSpawnPositionInBand(
   playerPos: { x: number; y: number },
   minDistance: number
 ): { x: number; y: number } {
-  const run = getRunConfig(runId ?? 'shallow_run');
+  const act = getActConfig(runId ?? 'shallow_act');
   const bandId = depthBandId ?? '1-1';
   const band = getDepthBandRules(bandId, 1);
   const b = WORLD_BOUNDS;
@@ -76,8 +76,8 @@ export function getSpawnPositionInBand(
   let runMinMeters: number;
   let runMaxMeters: number;
 
-  if (run?.steps?.length) {
-    const bands = run.steps.map((id, i) => getDepthBandRules(id, i + 1));
+  if (act?.steps?.length) {
+    const bands = act.steps.map((id, i) => getDepthBandRules(id, i + 1));
     runMinMeters = Math.min(...bands.map((r) => r.min_meters));
     runMaxMeters = Math.max(...bands.map((r) => r.max_meters));
   } else {
@@ -125,15 +125,15 @@ export function getWorldYRangeForBands(
   runId: string | undefined,
   bandIds: string[]
 ): { min: number; max: number } {
-  const run = getRunConfig(runId ?? 'shallow_run');
+  const act = getActConfig(runId ?? 'shallow_act');
   const b = WORLD_BOUNDS;
   const worldHeight = b.maxY - b.minY;
 
-  if (!run?.steps?.length || bandIds.length === 0) {
+  if (!act?.steps?.length || bandIds.length === 0) {
     return { min: b.minY, max: b.maxY };
   }
 
-  const bands = run.steps.map((id, i) => getDepthBandRules(id, i + 1));
+  const bands = act.steps.map((id, i) => getDepthBandRules(id, i + 1));
   const runMinMeters = Math.min(...bands.map((r) => r.min_meters));
   const runMaxMeters = Math.max(...bands.map((r) => r.max_meters));
   const runDepthSpan = Math.max(runMaxMeters - runMinMeters, 0.1);

@@ -771,7 +771,14 @@ export default function FishEditorPage() {
           {/* Save Button (only when fish selected) */}
           {selectedFish && (
             <button
-              onClick={() => handleSaveFish(selectedFish)}
+              onClick={() => {
+                if (hasPendingChanges && paused) {
+                  // Trigger overlay's save (persists to blob) when editor is open
+                  window.dispatchEvent(new CustomEvent('fishEditAction', { detail: { action: 'save' } }));
+                } else if (hasPendingChanges) {
+                  handleSaveFish(selectedFish);
+                }
+              }}
               disabled={!hasPendingChanges}
               className={`w-10 h-10 rounded-lg shadow-lg border flex items-center justify-center transition-colors ${hasPendingChanges
                 ? 'bg-green-700 hover:bg-green-600 border-green-500 text-white'
@@ -1019,7 +1026,7 @@ export default function FishEditorPage() {
             deformationIntensity={deformationIntensity}
             showBoundaryOverlay={showBoundaryOverlay}
             showDepthBandOverlay={showDepthBandOverlay}
-            runId="shallow_run"
+            runId="shallow_act"
             editMode={editMode}
             selectedFishId={selectedFishId}
             onEditFish={handleEditFish}

@@ -235,6 +235,25 @@ export function spawnEssenceChunksFromFish(
 }
 
 /**
+ * Spawn essence chunks from player's collected essence (on death).
+ * Uses same scatter logic as spawnEssenceChunksFromFish; converts Record<string, number> to essence-type format.
+ */
+export function spawnEssenceChunksFromCollected(
+  collectedEssence: Record<string, number>,
+  x: number,
+  y: number,
+  size: number,
+  carcassId: string,
+  bodyEllipse?: Ellipse,
+  headEllipse?: Ellipse
+): ChunkEntity[] {
+  const essenceTypes = Object.entries(collectedEssence)
+    .filter(([, amount]) => amount > 0)
+    .map(([type, baseYield]) => ({ type, baseYield }));
+  return spawnEssenceChunksFromFish(x, y, size, essenceTypes, carcassId, bodyEllipse, headEllipse);
+}
+
+/**
  * Update all chunks: apply friction, slow drift (bob like carcass), handle lifetime/fade.
  * Returns the filtered array (removes expired chunks).
  */

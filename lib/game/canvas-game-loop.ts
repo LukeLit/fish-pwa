@@ -44,6 +44,7 @@ import { spawnCarcass, updateCarcasses, decrementCarcassChunks } from './carcass
 import {
   spawnMeatChunksFromFish,
   spawnEssenceChunksFromFish,
+  spawnEssenceChunksFromCollected,
   updateChunks,
   checkChunkCollection,
 } from './essence-chunks';
@@ -59,9 +60,15 @@ import {
 } from '@/lib/rendering/fish-renderer';
 import { cacheBust } from '@/lib/utils/cache-bust';
 import { getSpawnPositionInBand, getWorldYRangeForBands } from './spawn-position';
+import { getObjectivesForBand, areObjectivesComplete } from './objectives';
+
+const LEVEL_COMPLETE_RAMP_MS = 1500;
+const DEATH_SEQUENCE_MS = 2000;
 
 export interface GameTickCallbacks {
   onLevelComplete?: (score: number, stats?: { size: number; fishEaten: number; timeSurvived: number }) => void;
+  /** Called when level complete phase starts (timer expired, slowdown begins); parent shows overlay */
+  onLevelCompletePhaseStart?: () => void;
   onGameOver?: (stats: {
     score: number;
     cause: 'starved' | 'eaten';
@@ -70,7 +77,7 @@ export interface GameTickCallbacks {
     essenceCollected: number;
     timeSurvived: number;
   }) => void;
-  onStatsUpdate?: (stats: { size: number; hunger: number; score: number; fishEaten: number; timeSurvived: number }) => void;
+  onStatsUpdate?: (stats: { size: number; hunger: number; score: number; fishEaten: number; preyEaten: number; predatorsEaten: number; timeSurvived: number }) => void;
   onReloadPlayerSprite?: (spriteUrl: string, onLoaded: (canvas: HTMLCanvasElement) => void) => void;
 }
 
@@ -85,7 +92,6 @@ export interface GameTickParams {
   input: InputState;
   options: {
     gameMode: boolean;
-    levelDuration: number;
     isPaused: boolean;
     currentEditMode: boolean;
     zoom: number;
@@ -102,13 +108,62 @@ export interface GameTickParams {
   helpers: GameTickHelpers;
 }
 
+/** Ease-out: t in [0,1], returns 1 - (1-t)^2. Used for timeScale ramp. */
+function easeOutQuad(t: number): number {
+  return 1 - (1 - t) * (1 - t);
+}
+
+export function updateTimeScaleRamp(state: CanvasGameState, now: number): void {
+  const phase = state.gameMode.timeScalePhase;
+  const start = state.gameMode.timeScalePhaseStartTime;
+  if (!phase || start <= 0) return;
+  const elapsed = now - start;
+  const t = Math.min(1, elapsed / LEVEL_COMPLETE_RAMP_MS);
+  const eased = easeOutQuad(t);
+  state.gameMode.timeScale = Math.max(0, 1 - eased);
+}
+
+function startPlayerDeathSequence(
+  state: CanvasGameState,
+  player: PlayerEntity,
+  cause: 'starved' | 'eaten',
+  callbacks: GameTickCallbacks
+): void {
+  const now = performance.now();
+  state.gameMode.gameOverFired = true;
+  state.gameMode.deathSequenceStartTime = now;
+  state.gameMode.deathCause = cause;
+  state.gameMode.timeScalePhase = 'death';
+  state.gameMode.timeScalePhaseStartTime = now;
+  player.lifecycleState = 'dead';
+
+  const runState = loadRunState();
+  const collectedEssence = runState?.collectedEssence ?? {};
+  const bodyEllipse = getBodyEllipseResolved(player);
+  const headEllipse = getHeadEllipseResolved(player);
+
+  const carcass = spawnCarcass(player.x, player.y, player.size, 0);
+  const essenceChunks = spawnEssenceChunksFromCollected(
+    collectedEssence,
+    player.x,
+    player.y,
+    player.size,
+    carcass.carcassId,
+    bodyEllipse,
+    headEllipse
+  );
+  carcass.remainingChunks = essenceChunks.length;
+  state.carcasses.push(carcass);
+  state.chunks.push(...essenceChunks);
+}
+
 /**
  * Run one frame of game logic. Mutates state.
  * @returns false if the game loop should stop (game over or level complete), true otherwise.
  */
 export function tickGameState(params: GameTickParams): boolean {
   const { state, input, options, playerCreature, callbacks, helpers } = params;
-  const { gameMode, levelDuration, isPaused, currentEditMode, zoom, dashFromControls } = options;
+  const { gameMode, isPaused, currentEditMode, zoom, dashFromControls } = options;
   const player = state.player;
   const MAX_SPEED = PHYSICS.MAX_SPEED;
   const ACCELERATION = PHYSICS.ACCELERATION;
@@ -117,10 +172,41 @@ export function tickGameState(params: GameTickParams): boolean {
 
   state.updatePauseTracking(isPaused);
 
+  // --- Time-scale ramp and sequence completion ---
+  const nowEarly = performance.now();
+  if (gameMode && state.gameMode.timeScalePhase) {
+    updateTimeScaleRamp(state, nowEarly);
+    if (state.gameMode.timeScalePhase === 'levelComplete' && state.gameMode.timeScale <= 0) {
+      const elapsed = state.getElapsedGameTime();
+      callbacks.onLevelComplete?.(state.gameMode.score, {
+        size: player.size,
+        fishEaten: state.gameMode.fishEaten,
+        timeSurvived: Math.floor(elapsed / 1000),
+      });
+      return false;
+    }
+    if (state.gameMode.timeScalePhase === 'death' && state.gameMode.deathSequenceStartTime > 0) {
+      const deathElapsed = nowEarly - state.gameMode.deathSequenceStartTime;
+      if (deathElapsed >= DEATH_SEQUENCE_MS) {
+        callbacks.onGameOver?.({
+          score: state.gameMode.score,
+          cause: state.gameMode.deathCause ?? 'eaten',
+          size: player.size,
+          fishEaten: state.gameMode.fishEaten,
+          essenceCollected: state.gameMode.essenceCollected,
+          timeSurvived: Math.floor((nowEarly - state.gameMode.startTime - state.gameMode.totalPausedTime) / 1000),
+        });
+        return false;
+      }
+    }
+  }
+
   // Start timer on first game-mode frame so it always counts down
   if (gameMode && state.gameMode.startTime === 0) {
     state.gameMode.startTime = Date.now();
     state.gameMode.fishEaten = 0;
+    state.gameMode.preyEaten = 0;
+    state.gameMode.predatorsEaten = 0;
     state.gameMode.score = 0;
     state.gameMode.totalPausedTime = 0;
     const runState = loadRunState();
@@ -130,28 +216,30 @@ export function tickGameState(params: GameTickParams): boolean {
   }
 
   if (gameMode && !state.gameMode.levelCompleteFired && !state.gameMode.gameOverFired && !isPaused) {
-    const effectiveLevelDuration =
-      typeof levelDuration === 'number' && Number.isFinite(levelDuration) && levelDuration > 0
-        ? levelDuration
-        : GAME.DEFAULT_LEVEL_DURATION_MS;
-    const elapsed = state.getElapsedGameTime();
-    if (elapsed >= effectiveLevelDuration) {
-      state.gameMode.levelCompleteFired = true;
-      callbacks.onLevelComplete?.(state.gameMode.score, {
-        size: player.size,
-        fishEaten: state.gameMode.fishEaten,
-        timeSurvived: Math.floor(elapsed / 1000),
-      });
-      return false;
-    }
+    const bandId = options.currentLevel ?? '1-1';
+    const objectives = getObjectivesForBand(bandId);
     const runState = loadRunState();
+    const progressState = {
+      playerSize: player.size,
+      fishEaten: state.gameMode.fishEaten,
+      preyEaten: state.gameMode.preyEaten,
+      predatorsEaten: state.gameMode.predatorsEaten,
+      essenceCollected: runState ? runState.collectedEssence : {},
+    };
     if (runState) {
       state.gameMode.essenceCollected = Object.values(runState.collectedEssence).reduce((sum, val) => sum + val, 0);
+    }
+    if (areObjectivesComplete(objectives, progressState)) {
+      state.gameMode.levelCompleteFired = true;
+      state.gameMode.timeScalePhase = 'levelComplete';
+      state.gameMode.timeScalePhaseStartTime = performance.now();
+      callbacks.onLevelCompletePhaseStart?.();
+      return true; // keep loop running for slowdown ramp
     }
   }
 
   const wantsDash = input.wantsDash || dashFromControls;
-  if (gameMode) {
+  if (gameMode && player.lifecycleState !== 'dead') {
     player.isDashing = wantsDash && canDash(player);
     if (player.isDashing) {
       const frameMs = (deltaTime / 60) * 1000;
@@ -187,7 +275,7 @@ export function tickGameState(params: GameTickParams): boolean {
     }
   }
 
-  if (!currentEditMode && !isPaused) {
+  if (!currentEditMode && !isPaused && player.lifecycleState !== 'dead') {
     if (input.joystick.active) {
       player.vx = input.joystick.x * effectiveMaxSpeed;
       player.vy = input.joystick.y * effectiveMaxSpeed;
@@ -245,20 +333,8 @@ export function tickGameState(params: GameTickParams): boolean {
     const movementFactor = Math.min(COLLISION.NON_DASH_MOVEMENT_DRAIN_CAP, Math.max(COLLISION.STATIONARY_DRAIN_FRACTION, normalizedSpeed));
     updateHunger(player, deltaTime, { movementFactor });
     if (isStarved(player) && !state.gameMode.gameOverFired) {
-      if (state.animationSpriteManager.hasSprite('player')) {
-        const sprite = state.animationSpriteManager.getSprite('player', player.animations || {});
-        sprite.triggerAction('death');
-      }
-      state.gameMode.gameOverFired = true;
-      callbacks.onGameOver?.({
-        score: state.gameMode.score,
-        cause: 'starved',
-        size: player.size,
-        fishEaten: state.gameMode.fishEaten,
-        essenceCollected: state.gameMode.essenceCollected,
-        timeSurvived: Math.floor((now - state.gameMode.startTime - state.gameMode.totalPausedTime) / 1000),
-      });
-      return false;
+      startPlayerDeathSequence(state, player, 'starved', callbacks);
+      return true; // keep loop running for 2s death sequence
     }
   }
 
@@ -470,6 +546,12 @@ export function tickGameState(params: GameTickParams): boolean {
         if (result.died) {
           // Death: spawn carcass + meat + essence chunks
           state.gameMode.fishEaten += 1;
+          const fishType = fish.creatureData?.type;
+          if (fishType === 'prey') {
+            state.gameMode.preyEaten += 1;
+          } else if (fishType === 'predator' || fishType === 'mutant') {
+            state.gameMode.predatorsEaten += 1;
+          }
           state.eatenIds.add(fish.id);
 
           const carcass = spawnCarcass(fish.x, fish.y, fish.size, 0);
@@ -533,21 +615,13 @@ export function tickGameState(params: GameTickParams): boolean {
           state.particles.dashMultiEntity.spawnBurstAt(impactXFishPlayer, impactYFishPlayer, 14, Math.max(0.8, fish.size * 0.02));
 
           if (result.died) {
-            // Player died
+            // Player died - start death sequence (carcass + chunks, 2s delay)
             state.animationSpriteManager.hasSprite('player') &&
               state.animationSpriteManager.getSprite('player', player.animations || {}).triggerAction('death');
             if (!state.gameMode.gameOverFired) {
-              state.gameMode.gameOverFired = true;
-              callbacks.onGameOver?.({
-                score: state.gameMode.score,
-                cause: 'eaten',
-                size: player.size,
-                fishEaten: state.gameMode.fishEaten,
-                essenceCollected: state.gameMode.essenceCollected,
-                timeSurvived: Math.floor((now - state.gameMode.startTime - state.gameMode.totalPausedTime) / 1000),
-              });
+              startPlayerDeathSequence(state, player, 'eaten', callbacks);
             }
-            return false;
+            return true; // keep loop running for 2s death sequence
           }
         }
       }
@@ -606,7 +680,9 @@ export function tickGameState(params: GameTickParams): boolean {
     state.chunks = updateChunks(state.chunks, deltaTime);
 
     // Check chunk collection by player (cooldown prevents spam; all overlapping chunks granted in one batch)
-    const canCollect = !player.lastChunkEatTime || (now - player.lastChunkEatTime) >= COMBAT.CHUNK_EAT_COOLDOWN_MS;
+    // Skip when player is dead (death sequence running)
+    const playerAlive = player.lifecycleState !== 'dead';
+    const canCollect = playerAlive && (!player.lastChunkEatTime || (now - player.lastChunkEatTime) >= COMBAT.CHUNK_EAT_COOLDOWN_MS);
     const collected = canCollect ? checkChunkCollection(state.chunks, player) : [];
     if (collected.length > 0) {
       player.lastChunkEatTime = now;
@@ -735,7 +811,7 @@ export function tickGameState(params: GameTickParams): boolean {
         const size = c.stats?.size ?? SPAWN.DEFAULT_CREATURE_SIZE;
         const isSmallPrey = c.type === 'prey' && size < SPAWN.SMALL_PREY_SIZE_THRESHOLD;
         const isPrey = c.type === 'prey' && size < SPAWN.PREY_SIZE_THRESHOLD;
-        const copies = isSmallPrey ? 14 : isPrey ? 4 : 1;
+        const copies = isSmallPrey ? 6 : isPrey ? 3 : 1;
         for (let i = 0; i < copies; i++) weightedPool.push(c);
       });
       creature = weightedPool[Math.floor(Math.random() * weightedPool.length)];
@@ -841,6 +917,8 @@ export function tickGameState(params: GameTickParams): boolean {
         hunger: player.hunger,
         score: state.gameMode.score,
         fishEaten: state.gameMode.fishEaten,
+        preyEaten: state.gameMode.preyEaten,
+        predatorsEaten: state.gameMode.predatorsEaten,
         timeSurvived,
       });
     }

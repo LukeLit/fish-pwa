@@ -1,9 +1,10 @@
 /**
  * Level config loader – rules only, no fish IDs.
- * Config is procedural: depth bands only (no biomes block). Runs reference depth bands by id (e.g. "1-1", "1-2", "1-3").
+ * Config is procedural: depth bands only (no biomes block). Acts reference depth bands by id (e.g. "1-1", "1-2", "1-3").
  */
 
 import levelConfigJson from './level-config.json';
+import type { LevelObjective } from '@/lib/game/types';
 
 /** Depth range in meters (for sorting biomes / matching fish to depth). */
 export interface DepthRangeMeters {
@@ -19,11 +20,15 @@ export interface LevelRules {
   max_meters: number;
   fish_count: number;
   apex_count: number;
+  /** Extra predators (beyond apex) to add challenge; default 0. */
+  predator_count?: number;
   sub_depths: string[];
   /** Optional sub-tags (biome IDs) for fish pool; when set, pool = union of creatures from these tags. */
   level_tags?: string[];
   /** When true, first apex spawn uses boss-tier size as the level target. */
   main_apex?: boolean;
+  /** Completion objectives for this level. */
+  objectives?: LevelObjective[];
 }
 
 /** Stored depth band entry (no level_id; id is the band key e.g. "1-1"). */
@@ -33,8 +38,10 @@ interface DepthBandEntry {
   max_meters?: number;
   fish_count?: number;
   apex_count?: number;
+  predator_count?: number;
   main_apex?: boolean;
   sub_depths?: string[];
+  objectives?: LevelObjective[];
 }
 
 /** Biome entry in config (legacy; config may have no biomes). */
@@ -44,17 +51,17 @@ export interface BiomeConfig {
   levels: LevelRules[];
 }
 
-/** One level in a run: which biome + which level_id (1-based step index). */
-export interface RunLevelRef {
+/** One level in an act: which biome + which level_id (1-based step index). */
+export interface ActLevelRef {
   biome: string;
   level_id: number;
 }
 
-/** A full run: steps are depth band ids; levels derived for backward compat. */
-export interface RunConfig {
+/** An act (chapter): steps are depth band ids; levels derived for backward compat. */
+export interface ActConfig {
   id: string;
   name: string;
-  levels: RunLevelRef[];
+  levels: ActLevelRef[];
   steps?: string[];
 }
 
@@ -62,7 +69,7 @@ type LevelConfig = {
   level_tags?: string[];
   biomes?: Record<string, { id: string; depth_range_meters: DepthRangeMeters; levels: LevelRules[] }>;
   depth_bands?: Record<string, DepthBandEntry>;
-  runs?: Record<string, { id: string; name: string; primary_biome?: string; steps?: string[]; levels?: RunLevelRef[] }>;
+  acts?: Record<string, { id: string; name: string; primary_biome?: string; steps?: string[]; levels?: ActLevelRef[] }>;
 };
 
 const config = levelConfigJson as LevelConfig;
@@ -90,6 +97,7 @@ function parseDepthBandEntry(bandId: string, entry: DepthBandEntry, levelId: num
     Array.isArray((config as LevelConfig).level_tags) && (config as LevelConfig).level_tags!.length > 0
       ? (config as LevelConfig).level_tags
       : undefined;
+  const objectives = Array.isArray(entry.objectives) ? entry.objectives.filter((o): o is LevelObjective => o && typeof o === 'object' && typeof (o as LevelObjective).type === 'string') : undefined;
   return {
     level_id: levelId,
     phases: typeof entry.phases === 'number' ? entry.phases : DEFAULT_LEVEL_RULES.phases,
@@ -97,9 +105,11 @@ function parseDepthBandEntry(bandId: string, entry: DepthBandEntry, levelId: num
     max_meters: typeof entry.max_meters === 'number' ? entry.max_meters : DEFAULT_LEVEL_RULES.max_meters,
     fish_count: typeof entry.fish_count === 'number' ? entry.fish_count : DEFAULT_LEVEL_RULES.fish_count,
     apex_count: typeof entry.apex_count === 'number' ? entry.apex_count : DEFAULT_LEVEL_RULES.apex_count,
+    predator_count: typeof entry.predator_count === 'number' ? entry.predator_count : 0,
     main_apex: 'main_apex' in entry && typeof entry.main_apex === 'boolean' ? entry.main_apex : false,
     sub_depths: Array.isArray(entry.sub_depths) ? entry.sub_depths.filter((s) => typeof s === 'string') : [],
     level_tags: levelTags,
+    objectives,
   };
 }
 
@@ -168,18 +178,18 @@ export function getBiomeConfig(biomeId: string): BiomeConfig | null {
   };
 }
 
-/** Run order when advancing past last step of a run. */
-export const RUN_ORDER: string[] = ['shallow_run', 'level_2_run', 'deep_run', 'apex_run'];
+/** Act order when advancing past last step of an act. */
+export const ACT_ORDER: string[] = ['shallow_act', 'level_2_act', 'deep_act', 'apex_act'];
 
 /**
- * Infer run config id from depth band (e.g. "2-1" -> "level_2_run").
+ * Infer act config id from depth band (e.g. "2-1" -> "level_2_act").
  */
-export function inferRunConfigIdFromDepthBand(depthBandId: string): string {
+export function inferActConfigIdFromDepthBand(depthBandId: string): string {
   const parts = depthBandId.split('-');
-  if (parts.length !== 2) return RUN_ORDER[0];
+  if (parts.length !== 2) return ACT_ORDER[0];
   const area = parseInt(parts[0], 10) || 1;
-  const idx = Math.min(area - 1, RUN_ORDER.length - 1);
-  return RUN_ORDER[idx];
+  const idx = Math.min(area - 1, ACT_ORDER.length - 1);
+  return ACT_ORDER[idx];
 }
 
 /**
@@ -195,25 +205,25 @@ export function getLevelIdFromDepthBandId(depthBandId: string): number {
 }
 
 /**
- * Returns next step and run config id. Uses run steps; when last step of run, advances to next run.
+ * Returns next step and act config id. Uses act steps; when last step of act, advances to next act.
  */
 export function getNextStep(
-  runConfigId: string,
+  actConfigId: string,
   currentLevel: string
-): { nextLevel: string; runConfigId: string } | null {
-  const run = getRunConfig(runConfigId);
-  if (!run?.steps?.length) return null;
+): { nextLevel: string; actConfigId: string } | null {
+  const act = getActConfig(actConfigId);
+  if (!act?.steps?.length) return null;
 
-  const idx = run.steps.indexOf(currentLevel);
-  if (idx >= 0 && idx < run.steps.length - 1) {
-    return { nextLevel: run.steps[idx + 1], runConfigId };
+  const idx = act.steps.indexOf(currentLevel);
+  if (idx >= 0 && idx < act.steps.length - 1) {
+    return { nextLevel: act.steps[idx + 1], actConfigId };
   }
-  if (idx === run.steps.length - 1) {
-    const nextRunIdx = RUN_ORDER.indexOf(runConfigId) + 1;
-    if (nextRunIdx < RUN_ORDER.length) {
-      const nextRun = getRunConfig(RUN_ORDER[nextRunIdx]);
-      if (nextRun?.steps?.length) {
-        return { nextLevel: nextRun.steps[0], runConfigId: nextRun.id };
+  if (idx === act.steps.length - 1) {
+    const nextActIdx = ACT_ORDER.indexOf(actConfigId) + 1;
+    if (nextActIdx < ACT_ORDER.length) {
+      const nextAct = getActConfig(ACT_ORDER[nextActIdx]);
+      if (nextAct?.steps?.length) {
+        return { nextLevel: nextAct.steps[0], actConfigId: nextAct.id };
       }
     }
   }
@@ -221,29 +231,29 @@ export function getNextStep(
 }
 
 /**
- * Returns the full run definition. When run has steps (depth band ids), levels are derived for backward compat.
+ * Returns the full act definition. When act has steps (depth band ids), levels are derived for backward compat.
  */
-export function getRunConfig(runId: string): RunConfig | null {
-  const run = config.runs?.[runId];
-  if (!run) return null;
-  const primaryBiome = run.primary_biome ?? 'shallow';
-  if (run.steps?.length) {
-    const levels: RunLevelRef[] = run.steps.map((_, i) => ({
+export function getActConfig(actId: string): ActConfig | null {
+  const act = config.acts?.[actId];
+  if (!act) return null;
+  const primaryBiome = act.primary_biome ?? 'shallow';
+  if (act.steps?.length) {
+    const levels: ActLevelRef[] = act.steps.map((_, i) => ({
       biome: primaryBiome,
       level_id: i + 1,
     }));
     return {
-      id: run.id ?? runId,
-      name: run.name ?? runId,
+      id: act.id ?? actId,
+      name: act.name ?? actId,
       levels,
-      steps: run.steps,
+      steps: act.steps,
     };
   }
-  if (run.levels?.length) {
+  if (act.levels?.length) {
     return {
-      id: run.id ?? runId,
-      name: run.name ?? runId,
-      levels: run.levels,
+      id: act.id ?? actId,
+      name: act.name ?? actId,
+      levels: act.levels,
     };
   }
   return null;

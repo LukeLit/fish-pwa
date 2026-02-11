@@ -24,6 +24,7 @@ export type FishLifecycleState =
   | 'exhausted'
   | 'knocked_out'
   | 'dying'
+  | 'dead'  // Player death sequence; hidden, carcass at position
   | 'despawning'
   | 'removed';
 

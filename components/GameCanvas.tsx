@@ -22,18 +22,24 @@ import {
 import { DEFAULT_STARTER_FISH_ID } from '@/lib/game/data';
 import { loadCreatureById } from '@/lib/game/data/creature-loader';
 import { createLevel } from '@/lib/game/create-level';
-import { getLevelIdFromDepthBandId, inferRunConfigIdFromDepthBand } from '@/lib/game/data/level-loader';
+import { getLevelIdFromDepthBandId, inferActConfigIdFromDepthBand, getActConfig } from '@/lib/game/data/level-loader';
+import { getObjectivesForBand } from '@/lib/game/objectives';
+import LevelObjectivesPanel from './LevelObjectivesPanel';
 import { getSpriteUrlForSize } from '@/lib/rendering/fish-renderer';
-import { ART } from '@/lib/game/canvas-constants';
+import { ART, CAMERA } from '@/lib/game/canvas-constants';
 import type { CheatSizeStage } from './SettingsDrawer';
+import LevelIntroOverlay from './LevelIntroOverlay';
+import LevelCompleteOverlay from './LevelCompleteOverlay';
 
 interface GameCanvasProps {
   onGameEnd?: (score: number, essence: number) => void;
   onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
   onLevelComplete?: () => void;
+  /** Called when actively playing a level (not paused, no overlays). Used to disable gamepad virtual cursor. */
+  onGameplayActiveChange?: (active: boolean) => void;
 }
 
-export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: GameCanvasProps) {
+export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onGameplayActiveChange }: GameCanvasProps) {
   const [isClient, setIsClient] = useState(false);
   const [runState, setRunState] = useState<RunState | null>(null);
 
@@ -42,7 +48,6 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   const [playerFishSprite, setPlayerFishSprite] = useState<string | null>(null);
   const [playerCreature, setPlayerCreature] = useState<Creature | null>(null);
   const [spawnedFish, setSpawnedFish] = useState<Array<Creature & { creatureId?: string }>>([]);
-  const [levelDuration, setLevelDuration] = useState<number>(60000);
   const [currentLevel, setCurrentLevel] = useState<string>('1-1');
 
   // Pause: game pauses when either settings drawer or pause menu is open
@@ -55,6 +60,15 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
   /** True until player + fish sprites are loaded; then canvas calls onReadyToPlay. */
   const [loading, setLoading] = useState(true);
+
+  /** Level intro splash (Sonic-style); shown for 1.5s when level starts */
+  const [showLevelIntro, setShowLevelIntro] = useState(true);
+
+  /** Level complete overlay during slowdown (1.5s before DigestionScreen) */
+  const [showLevelCompleteOverlay, setShowLevelCompleteOverlay] = useState(false);
+
+  /** Intro zoom progress 0→1 over INTRO_DURATION_MS; drives zoom from INTRO_ZOOM to GAMEPLAY_ZOOM */
+  const [introZoomProgress, setIntroZoomProgress] = useState(0);
 
   const [playerStats, setPlayerStats] = useState<PlayerGameStats | null>(null);
   const [playerFishData, setPlayerFishData] = useState<FishData | null>(null);
@@ -84,6 +98,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Report when actively playing (for gamepad virtual cursor - disable during level)
+  const inActiveLevel = !loading && !showLevelIntro && !showLevelCompleteOverlay && !paused;
+  useEffect(() => {
+    onGameplayActiveChange?.(inActiveLevel);
+    return () => onGameplayActiveChange?.(false);
+  }, [inActiveLevel, onGameplayActiveChange]);
 
   // Handle stats update from canvas - persist size, sprite (growth-stage), and stats to run state
   const handleStatsUpdate = useCallback((stats: PlayerGameStats) => {
@@ -141,13 +162,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     // Load assets based on run state
     const loadGameAssets = async (currentRunState: RunState) => {
       try {
-        // Parse level to get difficulty scaling
-        const level = parseLevelString(currentRunState.currentLevel);
         setCurrentLevel(currentRunState.currentLevel);
-
-        // Calculate level-based difficulty
-        const duration = 60000 + (level.levelNum - 1) * 15000; // 60s, 75s, 90s
-        setLevelDuration(duration);
 
         // Load background
         const bgResponse = await fetch('/api/list-assets?type=background');
@@ -272,9 +287,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
 
       setRunState(rs);
       setCurrentLevel(rs.currentLevel);
-      const level = rs.currentLevel.split('-');
-      const levelNum = parseInt(level[1], 10) || 1;
-      setLevelDuration(60000 + (levelNum - 1) * 15000);
+      setShowLevelIntro(true); // Show intro when transitioning to new level
 
       const bands = rs.unlockedDepthBands ?? [rs.currentLevel];
       const newBands = bands.filter((b) => !loadedBandsRef.current.has(b));
@@ -296,6 +309,31 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     window.addEventListener('runStateUpdated', handleRunStateUpdated);
     return () => window.removeEventListener('runStateUpdated', handleRunStateUpdated);
   }, []);
+
+  // Intro zoom animation: start zoomed out, pan in on fish during intro
+  const introStartTimeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!showLevelIntro) {
+      introStartTimeRef.current = null;
+      setIntroZoomProgress(1); // Ensure we end at full zoom when intro hidden
+      return;
+    }
+    introStartTimeRef.current = performance.now();
+    let rafId: number;
+
+    const tick = () => {
+      const start = introStartTimeRef.current;
+      if (start == null) return;
+      const elapsed = performance.now() - start;
+      const progress = Math.min(1, elapsed / CAMERA.INTRO_DURATION_MS);
+      setIntroZoomProgress(progress);
+      if (progress < 1) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [showLevelIntro]);
 
   // Handlers for pause menu - must be before early return to maintain hook order
   const handleSelectFish = useCallback((fish: FishData) => {
@@ -351,29 +389,20 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     }
   }, []);
 
-  // Helper to parse level string (e.g. "1-1" -> levelNum 1)
-  const parseLevelString = useCallback((levelStr: string): number => {
-    const parts = levelStr.split('-');
-    if (parts.length !== 2) return 1;
-    return parseInt(parts[1], 10) || 1;
-  }, []);
-
   // Cheat: skip to a depth band level
   const handleCheatLevel = useCallback(async (depthBandId: string) => {
     const rs = loadRunState();
     if (!rs) return;
-    const runConfigId = inferRunConfigIdFromDepthBand(depthBandId);
+    const actConfigId = inferActConfigIdFromDepthBand(depthBandId);
     const updated = {
       ...rs,
-      runConfigId,
+      actConfigId,
       currentLevel: depthBandId,
       unlockedDepthBands: [depthBandId],
     };
     saveRunState(updated);
     setRunState(updated);
     setCurrentLevel(depthBandId);
-    const levelNum = parseLevelString(depthBandId);
-    setLevelDuration(60000 + (levelNum - 1) * 15000);
     const biomeId = 'shallow';
     const levelId = getLevelIdFromDepthBandId(depthBandId);
     const result = await createLevel(biomeId, levelId);
@@ -381,7 +410,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
     setSpawnedFish(spawnList);
     loadedBandsRef.current.clear();
     loadedBandsRef.current.add(depthBandId);
-  }, [parseLevelString]);
+  }, []);
 
   // Cheat: set player size to a growth stage (juvenile / adult / elder)
   const handleCheatSize = useCallback((stage: CheatSizeStage) => {
@@ -408,7 +437,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
   }
 
   return (
-    <div className="relative w-full h-full bg-black">
+    <div className={`relative w-full h-full bg-black ${inActiveLevel ? 'cursor-none' : ''}`}>
       {/* Loading overlay: spawn + art load before game starts */}
       {loading && (
         <div
@@ -425,10 +454,46 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         </div>
       )}
 
-      {/* Level Display */}
-      <div className="absolute top-4 left-4 z-40 bg-black/70 px-4 py-2 rounded-lg border border-cyan-400">
-        <div className="text-cyan-400 font-bold text-lg">Level {currentLevel}</div>
-      </div>
+      {/* Level Intro Overlay (1.5s at level start) */}
+      {!loading && showLevelIntro && runState && (
+        <LevelIntroOverlay
+          levelName={getActConfig(runState.actConfigId ?? 'shallow_act')?.name ?? 'Level'}
+          levelLabel={currentLevel}
+          stepIndex={(getActConfig(runState.actConfigId ?? 'shallow_act')?.steps ?? [currentLevel]).indexOf(currentLevel) + 1 || 1}
+          totalSteps={(getActConfig(runState.actConfigId ?? 'shallow_act')?.steps ?? [currentLevel]).length || 1}
+          onComplete={() => setShowLevelIntro(false)}
+          objectives={getObjectivesForBand(currentLevel)}
+        />
+      )}
+
+      {/* Level Complete Overlay (during 1.5s slowdown) */}
+      {showLevelCompleteOverlay && runState && (
+        <LevelCompleteOverlay
+          levelName={getActConfig(runState.actConfigId ?? 'shallow_act')?.name ?? 'Level'}
+          stepIndex={(getActConfig(runState.actConfigId ?? 'shallow_act')?.steps ?? [currentLevel]).indexOf(currentLevel) + 1 || 1}
+          totalSteps={(getActConfig(runState.actConfigId ?? 'shallow_act')?.steps ?? [currentLevel]).length || 1}
+        />
+      )}
+
+      {/* Level + Objectives + Timer Panel */}
+      <LevelObjectivesPanel
+        levelLabel={currentLevel}
+        objectives={getObjectivesForBand(currentLevel)}
+        progress={
+          playerStats && runState
+            ? {
+              playerSize: playerStats.size,
+              fishEaten: playerStats.fishEaten,
+              preyEaten: playerStats.preyEaten ?? 0,
+              predatorsEaten: playerStats.predatorsEaten ?? 0,
+              essenceCollected: runState.collectedEssence,
+            }
+            : undefined
+        }
+        elapsedSeconds={playerStats?.timeSurvived ?? 0}
+        actName={getActConfig(runState?.actConfigId ?? 'shallow_act')?.name}
+        showProgress={true}
+      />
 
       {/* HUD: Pause button (z-40 above AnalogJoystick overlay) */}
       <div className="absolute top-4 right-16 z-40 flex gap-2 items-center">
@@ -480,20 +545,25 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
         spawnedFish={spawnedFish}
         fishData={fishData}
         chromaTolerance={50}
-        zoom={1}
+        zoom={
+          showLevelIntro
+            ? CAMERA.INTRO_ZOOM + (CAMERA.GAMEPLAY_ZOOM - CAMERA.INTRO_ZOOM) * introZoomProgress
+            : CAMERA.GAMEPLAY_ZOOM
+        }
         enableWaterDistortion={false}
         deformationIntensity={1}
         showDepthBandOverlay={showDepthBandOverlay}
         showHitboxDebug={showHitboxDebug}
-        runId={runState?.runConfigId ?? 'shallow_run'}
+        runId={runState?.actConfigId ?? 'shallow_act'}
         currentLevel={runState?.currentLevel ?? '1-1'}
         unlockedDepthBands={runState?.unlockedDepthBands}
         gameMode={true}
         loading={loading}
         onReadyToPlay={() => setLoading(false)}
-        levelDuration={levelDuration}
+        onLevelCompletePhaseStart={() => setShowLevelCompleteOverlay(true)}
         paused={paused}
         dashFromControlsRef={dashFromControlsRef}
+        gamepadZoomEnabled={inActiveLevel}
         syncedPlayerSize={runState?.fishState.size}
         onStatsUpdate={handleStatsUpdate}
         onGameOver={(stats) => {
@@ -503,6 +573,7 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete }: G
           }
         }}
         onLevelComplete={(score, finalStats) => {
+          setShowLevelCompleteOverlay(false);
           // Merge final stats and growth-stage sprite into run state
           let rs = loadRunState();
           if (rs && finalStats) {

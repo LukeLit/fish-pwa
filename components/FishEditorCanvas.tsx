@@ -60,6 +60,7 @@ import { updateAIFish } from '@/lib/game/canvas-ai';
 import { CanvasGameState, type FishEntity, type PlayerEntity, type FishLifecycleState } from '@/lib/game/canvas-state';
 import { renderGame } from '@/lib/game/canvas-renderer';
 import { tickGameState } from '@/lib/game/canvas-game-loop';
+import { pollGamepadState } from '@/lib/game/gamepad-poller';
 import { useCanvasSpawnSync, type FishDataLike } from '@/lib/game/canvas-spawn-sync';
 import { createStaminaUpdater, type StaminaEntity } from '@/lib/game/canvas-stamina';
 import { HUNGER_LOW_THRESHOLD, HUNGER_WARNING_PULSE_FREQUENCY, HUNGER_WARNING_PULSE_BASE, HUNGER_WARNING_INTENSITY } from '@/lib/game/hunger-constants';
@@ -72,6 +73,8 @@ export interface PlayerGameStats {
   hunger: number;
   score: number;
   fishEaten: number;
+  preyEaten: number;
+  predatorsEaten: number;
   timeSurvived: number;
 }
 
@@ -102,9 +105,10 @@ interface FishEditorCanvasProps {
   syncedPlayerSize?: number;
   // Game mode features
   gameMode?: boolean;
-  levelDuration?: number; // in milliseconds
   onGameOver?: (stats: { score: number; cause: 'starved' | 'eaten'; size: number; fishEaten: number; essenceCollected: number; timeSurvived: number }) => void;
   onLevelComplete?: (score: number, finalStats?: Pick<PlayerGameStats, 'size' | 'fishEaten' | 'timeSurvived'>) => void;
+  /** Called when level complete phase starts (timer expired, slowdown begins); parent shows overlay */
+  onLevelCompletePhaseStart?: () => void;
   onStatsUpdate?: (stats: PlayerGameStats) => void;
   /** Called when player sprite and all fish sprites are loaded (game mode). Start game after this. */
   onReadyToPlay?: () => void;
@@ -122,6 +126,8 @@ interface FishEditorCanvasProps {
   onCacheRefreshed?: () => void;
   // Ref for mobile dash button state (set by parent GameControls)
   dashFromControlsRef?: React.MutableRefObject<boolean>;
+  /** When true, right stick Y controls zoom (during gameplay when virtual cursor is disabled) */
+  gamepadZoomEnabled?: boolean;
 }
 
 export default function FishEditorCanvas({
@@ -136,14 +142,14 @@ export default function FishEditorCanvas({
   showBoundaryOverlay = false,
   showDepthBandOverlay = false,
   showHitboxDebug = false,
-  runId = 'shallow_run',
+  runId = 'shallow_act',
   currentLevel = '1-1',
   unlockedDepthBands,
   syncedPlayerSize,
   gameMode = false,
-  levelDuration = 60000,
   onGameOver,
   onLevelComplete,
+  onLevelCompletePhaseStart,
   onStatsUpdate,
   onReadyToPlay,
   loading = false,
@@ -155,6 +161,7 @@ export default function FishEditorCanvas({
   paused = false,
   onCacheRefreshed,
   dashFromControlsRef: dashFromControlsRefProp,
+  gamepadZoomEnabled = false,
 }: FishEditorCanvasProps) {
   // Get canvas configuration (base constants only)
   const canvasConfig = getCanvasConfig();
@@ -239,6 +246,8 @@ export default function FishEditorCanvas({
   useEffect(() => { currentLevelRef.current = currentLevel }, [currentLevel])
   const unlockedDepthBandsRef = useRef<string[] | undefined>(unlockedDepthBands);
   useEffect(() => { unlockedDepthBandsRef.current = unlockedDepthBands }, [unlockedDepthBands])
+  const gamepadZoomEnabledRef = useRef<boolean>(gamepadZoomEnabled);
+  useEffect(() => { gamepadZoomEnabledRef.current = gamepadZoomEnabled }, [gamepadZoomEnabled])
 
   // Loading readiness for game mode: wait for player sprite + all fish sprites before starting
   const playerSpriteLoadedRef = useRef(false);
@@ -1058,6 +1067,11 @@ export default function FishEditorCanvas({
       gameStateRef.current.gameMode.levelCompleteFired = false;
       gameStateRef.current.gameMode.startTime = 0;
       gameStateRef.current.gameMode.levelEnding = false;
+      gameStateRef.current.gameMode.timeScale = 1;
+      gameStateRef.current.gameMode.timeScalePhase = null;
+      gameStateRef.current.gameMode.timeScalePhaseStartTime = 0;
+      gameStateRef.current.gameMode.deathSequenceStartTime = 0;
+      gameStateRef.current.player.lifecycleState = 'active';
     }
 
     // Set canvas to fill available space
@@ -1128,12 +1142,29 @@ export default function FishEditorCanvas({
       const isPaused = pausedRef.current;
       const currentEditMode = editModeRef.current;
 
+      // Poll gamepad and feed into InputManager
+      const gamepadState = pollGamepadState();
+      if (gamepadState) {
+        inputManagerRef.current.handleJoystick({
+          velocity: { x: gamepadState.joystick.x, y: gamepadState.joystick.y },
+          direction: null,
+          isActive: gamepadState.joystick.active,
+        });
+        inputManagerRef.current.setDashFromControls(gamepadState.wantsDash);
+        // Right stick Y for zoom - only when virtual cursor is disabled (during gameplay)
+        // Inverted: stick up = zoom in, stick down = zoom out
+        if (gamepadZoomEnabledRef.current && gamepadState.zoomAxis !== 0) {
+          inputManagerRef.current.handleGamepadZoom(-gamepadState.zoomAxis, CAMERA.MIN_ZOOM, CAMERA.MAX_ZOOM);
+        }
+      } else {
+        inputManagerRef.current.setDashFromControls(false);
+      }
+
       const shouldContinue = tickGameState({
         state: gameStateRef.current,
         input: inputManagerRef.current.getState(),
         options: {
           gameMode,
-          levelDuration,
           isPaused,
           currentEditMode,
           zoom: zoomRef.current,
@@ -1148,6 +1179,7 @@ export default function FishEditorCanvas({
         playerCreature: playerCreature,
         callbacks: {
           onLevelComplete,
+          onLevelCompletePhaseStart,
           onGameOver,
           onStatsUpdate,
           onReloadPlayerSprite: (spriteUrl, onLoaded) => {
@@ -1199,7 +1231,6 @@ export default function FishEditorCanvas({
         dashMultiEntity: gameStateRef.current.particles.dashMultiEntity,
         animationSpriteManager: gameStateRef.current.animationSpriteManager,
         lastPlayerAnimAction: lastPlayerAnimActionRef.current,
-        levelDuration,
         gameStartTime: gameStateRef.current.gameMode.startTime,
         totalPausedTime: gameStateRef.current.gameMode.totalPausedTime,
         pauseStartTime: gameStateRef.current.gameMode.pauseStartTime,

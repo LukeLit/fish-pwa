@@ -13,8 +13,8 @@ import {
 } from '@/lib/rendering/fish-renderer';
 import { HUNGER_LOW_THRESHOLD, HUNGER_WARNING_PULSE_FREQUENCY, HUNGER_WARNING_PULSE_BASE, HUNGER_WARNING_INTENSITY } from './hunger-constants';
 import { computeEffectiveMaxStamina } from './stamina-hunger';
-import { RENDERING, UI, WORLD_BOUNDS, GAME, COMBAT, PLAYER_BASE_MAX_HEALTH } from './canvas-constants';
-import { getRunConfig, getDepthBandRules } from './data/level-loader';
+import { RENDERING, UI, WORLD_BOUNDS, COMBAT, PLAYER_BASE_MAX_HEALTH } from './canvas-constants';
+import { getActConfig, getDepthBandRules } from './data/level-loader';
 import type { PlayerEntity, FishEntity, ChompParticle, BloodParticle, CameraState, CarcassEntity, ChunkEntity } from './canvas-state';
 import type { MultiEntityDashParticleManager } from '@/lib/rendering/multi-entity-dash-particles';
 import type { AnimationSprite } from '@/lib/rendering/animation-sprite';
@@ -84,7 +84,6 @@ export interface RenderOptions {
   dashMultiEntity: MultiEntityDashParticleManager;
   animationSpriteManager: ReturnType<typeof import('@/lib/rendering/animation-sprite').getAnimationSpriteManager>;
   lastPlayerAnimAction: string | null;
-  levelDuration: number;
   gameStartTime: number;
   totalPausedTime: number;
   pauseStartTime: number;
@@ -127,7 +126,6 @@ export function renderGame(options: RenderOptions): void {
     dashMultiEntity,
     animationSpriteManager,
     lastPlayerAnimAction,
-    levelDuration,
     gameStartTime,
     totalPausedTime,
     pauseStartTime,
@@ -136,7 +134,7 @@ export function renderGame(options: RenderOptions): void {
     showBoundaryOverlay = false,
     showDepthBandOverlay = false,
     showHitboxDebug = false,
-    runId = 'shallow_run',
+    runId = 'shallow_act',
     onEditFish,
     setLastPlayerAnimAction,
   } = options;
@@ -281,7 +279,7 @@ export function renderGame(options: RenderOptions): void {
 
     // --- AI Fish Health Bars ---
     if (gameMode && fishEntity.health !== undefined && fishEntity.maxHealth !== undefined &&
-        fishEntity.health < fishEntity.maxHealth && fishEntity.lastDamagedTime) {
+      fishEntity.health < fishEntity.maxHealth && fishEntity.lastDamagedTime) {
       const timeSinceDamage = wallNow - fishEntity.lastDamagedTime;
       if (timeSinceDamage < COMBAT.HEALTH_BAR_SHOW_DURATION) {
         const fadeStart = COMBAT.HEALTH_BAR_SHOW_DURATION * 0.5;
@@ -310,91 +308,95 @@ export function renderGame(options: RenderOptions): void {
     editButtonPositions.set(fishEntity.id, { x: fishEntity.x, y: fishEntity.y, size: fishEntity.size });
   });
 
+  const playerDead = player.lifecycleState === 'dead';
+
   // Draw dash particles behind fish
   if (gameMode) {
     const dashEntityIds = [
-      'player',
+      ...(playerDead ? [] : ['player']),
       ...fish.filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed').map((f) => f.id),
     ];
     dashMultiEntity.drawBehind(ctx, dashEntityIds);
   }
 
-  // Draw player
-  const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / 1.5);
-  const playerScreenSize = player.size * animatedZoom;
-  const playerHasAnimations = hasUsableAnimations(player.animations);
-  const playerClipMode = getClipMode(playerScreenSize, playerHasAnimations, renderContext);
+  // Draw player (skip when dead - carcass renders at death position)
+  if (!playerDead) {
+    const playerSpeed = Math.min(1, Math.sqrt(player.vx ** 2 + player.vy ** 2) / 1.5);
+    const playerScreenSize = player.size * animatedZoom;
+    const playerHasAnimations = hasUsableAnimations(player.animations);
+    const playerClipMode = getClipMode(playerScreenSize, playerHasAnimations, renderContext);
 
-  let playerRendered = false;
+    let playerRendered = false;
 
-  // Try animation sprite rendering
-  if (playerClipMode === 'video' && playerHasAnimations && animationSpriteManager.hasSprite('player')) {
-    const animSprite = animationSpriteManager.getSprite('player', player.animations || {});
-    const desiredAction = player.isDashing && animSprite.hasAction('dash')
-      ? 'dash'
-      : (playerSpeed < 0.2 ? 'idle' : 'swim');
-    if (lastPlayerAnimAction !== desiredAction) {
-      setLastPlayerAnimAction(desiredAction);
-      animSprite.playAction(desiredAction);
+    // Try animation sprite rendering
+    if (playerClipMode === 'video' && playerHasAnimations && animationSpriteManager.hasSprite('player')) {
+      const animSprite = animationSpriteManager.getSprite('player', player.animations || {});
+      const desiredAction = player.isDashing && animSprite.hasAction('dash')
+        ? 'dash'
+        : (playerSpeed < 0.2 ? 'idle' : 'swim');
+      if (lastPlayerAnimAction !== desiredAction) {
+        setLastPlayerAnimAction(desiredAction);
+        animSprite.playAction(desiredAction);
+      }
+      animSprite.update();
+      playerRendered = animSprite.drawToContext(
+        ctx,
+        player.x,
+        player.y,
+        player.size,
+        player.size,
+        {
+          flipX: !player.facingRight,
+          rotation: player.facingRight ? player.verticalTilt : -player.verticalTilt,
+        }
+      );
     }
-    animSprite.update();
-    playerRendered = animSprite.drawToContext(
-      ctx,
-      player.x,
-      player.y,
-      player.size,
-      player.size,
-      {
-        flipX: !player.facingRight,
-        rotation: player.facingRight ? player.verticalTilt : -player.verticalTilt,
-      }
-    );
-  }
 
-  // Fallback to deformation rendering
-  if (!playerRendered && player.sprite) {
-    const playerSegments = Math.round(getSegmentsSmooth(playerScreenSize) * PLAYER_SEGMENT_MULTIPLIER);
-    drawFishWithDeformation(
-      ctx,
-      player.sprite,
-      player.x,
-      player.y,
-      player.size,
-      player.animTime,
-      player.facingRight,
-      {
-        speed: playerSpeed,
-        chompPhase: player.chompPhase,
-        intensity: deformationIntensity,
-        verticalTilt: player.verticalTilt,
-        segments: playerSegments,
-      }
-    );
-    playerRendered = true;
-  }
+    // Fallback to deformation rendering
+    if (!playerRendered && player.sprite) {
+      const playerSegments = Math.round(getSegmentsSmooth(playerScreenSize) * PLAYER_SEGMENT_MULTIPLIER);
+      drawFishWithDeformation(
+        ctx,
+        player.sprite,
+        player.x,
+        player.y,
+        player.size,
+        player.animTime,
+        player.facingRight,
+        {
+          speed: playerSpeed,
+          chompPhase: player.chompPhase,
+          intensity: deformationIntensity,
+          verticalTilt: player.verticalTilt,
+          segments: playerSegments,
+        }
+      );
+      playerRendered = true;
+    }
 
-  if (!playerRendered) {
-    ctx.fillStyle = '#60a5fa';
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, player.size / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
+    if (!playerRendered) {
+      ctx.fillStyle = '#60a5fa';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
 
-  if (gameMode) {
-    drawStateIcon(ctx, player, player.x, player.y, player.size, animatedZoom);
+    if (gameMode) {
+      drawStateIcon(ctx, player, player.x, player.y, player.size, animatedZoom);
+    }
+    editButtonPositions.set(player.id, { x: player.x, y: player.y, size: player.size });
   }
-  editButtonPositions.set(player.id, { x: player.x, y: player.y, size: player.size });
 
   // Draw dash particles in front
   if (gameMode) {
-    const dashEntityIds = [
-      'player',
+    const dashEntityIdsFront = [
+      ...(playerDead ? [] : ['player']),
       ...fish.filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed').map((f) => f.id),
     ];
-    dashMultiEntity.drawInFront(ctx, dashEntityIds);
+    dashMultiEntity.drawInFront(ctx, dashEntityIdsFront);
   }
 
   // Draw particles
@@ -434,8 +436,8 @@ export function renderGame(options: RenderOptions): void {
   if (showDepthBandOverlay) {
     const b = WORLD_BOUNDS;
     const margin = 100;
-    const run = getRunConfig(runId);
-    const bandIds = run?.steps?.length ? run.steps : ['1-1', '1-2', '1-3'];
+    const act = getActConfig(runId);
+    const bandIds = act?.steps?.length ? act.steps : ['1-1', '1-2', '1-3'];
     const bands = bandIds
       .map((id, i) => ({ id, rules: getDepthBandRules(id, i + 1) }))
       .filter(({ rules }) => typeof rules.min_meters === 'number' && typeof rules.max_meters === 'number');
@@ -568,17 +570,13 @@ export function renderGame(options: RenderOptions): void {
 
   // Draw game mode UI
   if (gameMode) {
-    const effectiveLevelDuration =
-      typeof levelDuration === 'number' && Number.isFinite(levelDuration) && levelDuration > 0
-        ? levelDuration
-        : GAME.DEFAULT_LEVEL_DURATION_MS;
     const currentPausedTime = isPaused ? (Date.now() - pauseStartTime) : 0;
-    const elapsed =
+    const elapsedMs =
       gameStartTime > 0
         ? Date.now() - gameStartTime - totalPausedTime - currentPausedTime
         : 0;
-    const timeLeft = Math.max(0, Math.ceil((effectiveLevelDuration - elapsed) / 1000));
-    renderGameUI(ctx, canvas.width, canvas.height, player, score, fishCount, timeLeft);
+    const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    renderGameUI(ctx, canvas.width, canvas.height, player, score, fishCount, elapsedSeconds);
   }
 
   // Draw paused indicator
@@ -868,6 +866,12 @@ function drawStateIcon(
 /**
  * Render game UI (stats, combined stamina bar, timer)
  */
+function formatElapsedTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 function renderGameUI(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -875,7 +879,7 @@ function renderGameUI(
   player: PlayerEntity,
   score: number,
   fishCount: number,
-  timeLeft: number
+  elapsedSeconds: number
 ): void {
   // Stats panel
   const statsY = height - UI.STATS_Y_OFFSET;
@@ -890,7 +894,7 @@ function renderGameUI(
   ctx.font = 'bold 13px monospace';
   ctx.fillText(`Score: ${score}`, 20, statsY + 18);
   ctx.fillText(`Size: ${Number.isInteger(player.size) ? player.size : player.size.toFixed(1)}`, 20, statsY + 36);
-  ctx.fillText(`Time: ${timeLeft}s`, 20, statsY + 54);
+  ctx.fillText(`Time: ${formatElapsedTime(elapsedSeconds)}`, 20, statsY + 54);
   ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';
   ctx.fillText(`Fish: ${fishCount}`, 20, statsY + 72);
   ctx.restore();
@@ -987,16 +991,11 @@ function renderGameUI(
   ctx.fillText(`STAMINA ${Math.ceil(player.stamina)} / ${Math.ceil(effectiveMax)}  (Hunger ${Math.ceil(player.hunger)}%)`, barX + barWidth / 2, barY + barHeight / 2);
   ctx.restore();
 
-  // Timer
+  // Timer (count up)
   const timerY = barY + barHeight + UI.TIMER_SPACING;
   ctx.font = 'bold 20px monospace';
-  if (timeLeft <= 10) {
-    const flash = Math.sin(Date.now() * 0.01) > 0;
-    ctx.fillStyle = flash ? '#fbbf24' : '#ffffff';
-  } else {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  }
-  ctx.fillText(`${timeLeft}s`, width / 2, timerY);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.fillText(formatElapsedTime(elapsedSeconds), width / 2, timerY);
 }
 
 /**

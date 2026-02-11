@@ -99,6 +99,18 @@ export class InputManager {
   }
 
   /**
+   * Handle gamepad right stick Y for zoom.
+   * axis in [-1, 1]: positive = zoom out, negative = zoom in.
+   * Only call when virtual cursor is disabled (during gameplay).
+   */
+  handleGamepadZoom(axis: number, minZoom: number = CAMERA.MIN_ZOOM, maxZoom: number = CAMERA.MAX_ZOOM): void {
+    if (axis === 0) return;
+    const rate = 0.02; // Per-frame zoom rate at full stick deflection
+    const delta = 1 + axis * rate;
+    this.targetZoom = Math.max(minZoom, Math.min(maxZoom, this.targetZoom * delta));
+  }
+
+  /**
    * Handle touch start for pinch zoom
    */
   handleTouchStart(touches: TouchList, currentZoom: number): void {

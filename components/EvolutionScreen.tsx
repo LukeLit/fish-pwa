@@ -25,8 +25,8 @@ export default function EvolutionScreen({
   const [animationPhase, setAnimationPhase] = useState<'transform' | 'complete'>('transform');
 
   // Calculate next level from run steps
-  const runConfigId = runState.runConfigId ?? 'shallow_run';
-  const nextInfo = getNextStep(runConfigId, runState.currentLevel);
+  const actConfigId = runState.actConfigId ?? 'shallow_act';
+  const nextInfo = getNextStep(actConfigId, runState.currentLevel);
   const nextLevel = nextInfo?.nextLevel ?? '1-2';
 
   useEffect(() => {

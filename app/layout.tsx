@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Orbitron } from "next/font/google";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
 import ErrorBoundary from "@/components/ErrorBoundaryWrapper";
+import GamepadCursorRoot from "@/components/GamepadCursorRoot";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,8 +49,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${orbitron.variable} antialiased`}
       >
         <ErrorBoundary>
-          <PWARegister />
-          {children}
+          <GamepadCursorRoot>
+            <PWARegister />
+            {children}
+          </GamepadCursorRoot>
         </ErrorBoundary>
       </body>
     </html>

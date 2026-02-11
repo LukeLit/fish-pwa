@@ -44,6 +44,12 @@ export const CAMERA = {
   ZOOM_DELTA: 0.1, // 10% per scroll tick (0.9 or 1.1 multiplier)
   LERP_SPEED: 0.12, // Smooth zoom animation speed
   ANIMATION_THRESHOLD: 0.01, // Minimum zoom diff to animate
+  /** Zoom at level intro start (zoomed out to show more ocean); pans in during intro */
+  INTRO_ZOOM: 1.5,
+  /** Default gameplay zoom after intro completes */
+  GAMEPLAY_ZOOM: 3.0,
+  /** Level intro duration in ms (matches LevelIntroOverlay) */
+  INTRO_DURATION_MS: 1500,
 } as const;
 
 // Spawn constants
@@ -55,10 +61,10 @@ export const SPAWN = {
   STAGGER_DELAY_MAX: 200, // Maximum delay between spawns (ms)
   DEFAULT_MAX_FISH: 45, // Base max fish count
   /** Extra cap: up to this many additional fish allowed if they are small prey (per band). */
-  SMALL_PREY_EXTRA_CAP: 50,
+  SMALL_PREY_EXTRA_CAP: 25,
   RESPAWN_INTERVAL_MS: 2000, // Default respawn interval
   /** Faster respawn for small prey so the ecosystem keeps enough food for the player. */
-  SMALL_PREY_RESPAWN_INTERVAL_MS: 400,
+  SMALL_PREY_RESPAWN_INTERVAL_MS: 800,
   FISH_SIZE_MIN: 0.5, // Min size multiplier for spawned AI fish
   FISH_SIZE_MAX: 2, // Max size multiplier for spawned AI fish
   SMALL_PREY_SIZE_THRESHOLD: 50, // Respawn pool: size < this = small prey (extra copies)

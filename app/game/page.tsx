@@ -8,9 +8,10 @@
 export const dynamic = 'force-dynamic';
 export const ssr = false;
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import GameCanvas from '@/components/GameCanvas';
+import { useGamepadCursor } from '@/lib/gamepad-cursor-context';
 import DeathScreen, { type DeathStats } from '@/components/DeathScreen';
 import DigestionScreen from '@/components/DigestionScreen';
 import UpgradeSelectionScreen from '@/components/UpgradeSelectionScreen';
@@ -30,6 +31,8 @@ import type { RunState } from '@/lib/game/types';
 
 export default function GamePage() {
   const router = useRouter();
+  const { setDisabled: setCursorDisabled } = useGamepadCursor();
+  const [gameCanvasInActiveLevel, setGameCanvasInActiveLevel] = useState(false);
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [showDeathScreen, setShowDeathScreen] = useState(false);
   const [showDigestionScreen, setShowDigestionScreen] = useState(false);
@@ -176,6 +179,19 @@ export default function GamePage() {
     window.location.reload();
   };
 
+  // Disable gamepad virtual cursor during active level gameplay
+  const isActiveGameplay =
+    gameCanvasInActiveLevel &&
+    !showDeathScreen &&
+    !showDigestionScreen &&
+    !showUpgradeScreen &&
+    !showEvolutionScreen &&
+    !showEndScreen;
+  useEffect(() => {
+    setCursorDisabled(isActiveGameplay);
+    return () => setCursorDisabled(false);
+  }, [isActiveGameplay, setCursorDisabled]);
+
   return (
     <div className="relative w-full h-screen bg-black">
       <GameCanvas
@@ -186,6 +202,7 @@ export default function GamePage() {
           clearRunState();
         }}
         onLevelComplete={handleLevelComplete}
+        onGameplayActiveChange={setGameCanvasInActiveLevel}
       />
 
 

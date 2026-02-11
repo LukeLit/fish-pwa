@@ -99,6 +99,8 @@ export interface PlayerEntity {
   lastChunkEatTime?: number;
   /** Sprite-derived hitbox (baked at load); when absent, fallback to size-ratio ellipses */
   hitbox?: BakedHitbox;
+  /** When 'dead', player is hidden and carcass/chunks render at death position */
+  lifecycleState?: FishLifecycleState;
 }
 
 export interface ChompParticle {
@@ -170,10 +172,22 @@ export interface GameModeState {
   levelEnding: boolean;
   score: number;
   fishEaten: number;
+  preyEaten: number;
+  predatorsEaten: number;
   essenceCollected: number;
   pauseStartTime: number;
   totalPausedTime: number;
   wasPaused: boolean;
+  /** 0–1; multiplied into deltaTime for slowdown sequences */
+  timeScale: number;
+  /** 'levelComplete' | 'death' during ramp; null otherwise */
+  timeScalePhase: 'levelComplete' | 'death' | null;
+  /** When timeScalePhase started (performance.now()) */
+  timeScalePhaseStartTime: number;
+  /** When player death sequence started; onGameOver delayed until 2s after */
+  deathSequenceStartTime: number;
+  /** Cause of death (set when death sequence starts) */
+  deathCause?: 'starved' | 'eaten';
 }
 
 export interface FrameTimingState {
@@ -236,6 +250,7 @@ export class CanvasGameState {
       isExhausted: false,
       health: PLAYER_BASE_MAX_HEALTH,
       maxHealth: PLAYER_BASE_MAX_HEALTH,
+      lifecycleState: 'active',
     };
 
     this.fish = [];
@@ -270,10 +285,16 @@ export class CanvasGameState {
       levelEnding: false,
       score: 0,
       fishEaten: 0,
+      preyEaten: 0,
+      predatorsEaten: 0,
       essenceCollected: 0,
       pauseStartTime: 0,
       totalPausedTime: 0,
       wasPaused: false,
+      timeScale: 1,
+      timeScalePhase: null,
+      timeScalePhaseStartTime: 0,
+      deathSequenceStartTime: 0,
     };
     this.frameTiming = {
       lastFrameTime: 0,
@@ -304,7 +325,13 @@ export class CanvasGameState {
     this.gameMode.levelEnding = false;
     this.gameMode.score = 0;
     this.gameMode.fishEaten = 0;
+    this.gameMode.preyEaten = 0;
+    this.gameMode.predatorsEaten = 0;
     this.gameMode.totalPausedTime = 0;
+    this.gameMode.timeScale = 1;
+    this.gameMode.timeScalePhase = null;
+    this.gameMode.timeScalePhaseStartTime = 0;
+    this.gameMode.deathSequenceStartTime = 0;
     this.player.hunger = HUNGER_MAX;
     const maxSta = computeEffectiveMaxStamina(this.player.baseMaxStamina, HUNGER_MAX);
     this.player.stamina = maxSta;
@@ -313,6 +340,7 @@ export class CanvasGameState {
     this.player.isExhausted = false;
     this.player.health = PLAYER_BASE_MAX_HEALTH;
     this.player.maxHealth = PLAYER_BASE_MAX_HEALTH;
+    this.player.lifecycleState = 'active';
     this.dashHoldDurationMs = 0;
     this.carcasses = [];
     this.chunks = [];
@@ -342,6 +370,7 @@ export class CanvasGameState {
     this.player.isExhausted = false;
     this.player.health = PLAYER_BASE_MAX_HEALTH;
     this.player.maxHealth = PLAYER_BASE_MAX_HEALTH;
+    this.player.lifecycleState = 'active';
   }
 
   /**
@@ -386,7 +415,8 @@ export class CanvasGameState {
     }
 
     this.frameTiming.lastFrameTime = currentTime;
-    return deltaTime;
+    const timeScale = this.gameMode.timeScale ?? 1;
+    return deltaTime * timeScale;
   }
 
   /**

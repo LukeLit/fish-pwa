@@ -21,7 +21,7 @@ export interface CreateLevelResult {
  */
 export async function createLevelForRun(
   biomeId: string,
-  runConfigId: string,
+  actConfigId: string,
   bandIds: string[]
 ): Promise<CreateLevelResult> {
   const spawnList: SpawnedCreatureForLevel[] = [];
@@ -79,6 +79,7 @@ export async function createLevel(biomeId: string, levelId: number): Promise<Cre
 
   const apexCount = Math.min(rules.apex_count, apexPool.length);
   const mainApexFirst = rules.main_apex && apexPool.length > 0;
+  const predatorCount = Math.min(rules.predator_count ?? 0, apexPool.length);
 
   for (let i = 0; i < apexCount; i++) {
     const creature = apexPool[i % apexPool.length];
@@ -88,6 +89,23 @@ export async function createLevel(biomeId: string, levelId: number): Promise<Cre
       biomeId: creature.biomeId,
       levelNumber: levelId,
       forceTier: isMainApex ? 'boss' : undefined,
+    });
+    spawnList.push({
+      ...creature,
+      id: `${creature.id}_inst_${spawnIndex++}`,
+      creatureId: creature.id,
+      stats: { ...creature.stats, size: encounterSize },
+    });
+  }
+
+  const remainingAfterApex = Math.max(0, rules.fish_count - spawnList.length);
+  const predatorSlots = Math.min(predatorCount, remainingAfterApex);
+  for (let i = 0; i < predatorSlots; i++) {
+    const creature = apexPool[i % apexPool.length];
+    const encounterSize = computeEncounterSize({
+      creature,
+      biomeId: creature.biomeId,
+      levelNumber: levelId,
     });
     spawnList.push({
       ...creature,

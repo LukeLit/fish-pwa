@@ -47,7 +47,7 @@ export function createNewRunState(fishId: string): RunState | null {
 
   return {
     runId: `run_${Date.now()}_${crypto.randomUUID ? crypto.randomUUID().slice(0, 9) : Math.random().toString(36).substr(2, 9)}`,
-    runConfigId: 'shallow_run',
+    actConfigId: 'shallow_act',
     currentLevel: '1-1',
     unlockedDepthBands: ['1-1'],
     selectedFishId: fishId,
@@ -117,11 +117,24 @@ export function saveRunState(runState: RunState): void {
  * }
  * ```
  */
+const RUN_TO_ACT_ID: Record<string, string> = {
+  shallow_run: 'shallow_act',
+  level_2_run: 'level_2_act',
+  deep_run: 'deep_act',
+  apex_run: 'apex_act',
+};
+
 export function loadRunState(): RunState | null {
   try {
     const saved = localStorage.getItem('fish_game_run_state');
     if (!saved) return null;
-    return JSON.parse(saved) as RunState;
+    const parsed = JSON.parse(saved) as RunState & { runConfigId?: string };
+    // Migrate runConfigId -> actConfigId for old saves
+    if (parsed.runConfigId && !parsed.actConfigId) {
+      parsed.actConfigId = RUN_TO_ACT_ID[parsed.runConfigId] ?? parsed.runConfigId.replace('_run', '_act');
+      delete parsed.runConfigId;
+    }
+    return parsed as RunState;
   } catch (error) {
     console.error('Failed to load run state:', error);
     return null;
@@ -385,8 +398,8 @@ export function incrementEvolution(runState: RunState): RunState {
  * ```
  */
 export function progressToNextLevel(runState: RunState): RunState {
-  const runConfigId = runState.runConfigId ?? 'shallow_run';
-  const next = getNextStep(runConfigId, runState.currentLevel);
+  const actConfigId = runState.actConfigId ?? 'shallow_act';
+  const next = getNextStep(actConfigId, runState.currentLevel);
 
   if (next) {
     const currentUnlocked = runState.unlockedDepthBands ?? [runState.currentLevel];
@@ -396,7 +409,7 @@ export function progressToNextLevel(runState: RunState): RunState {
 
     return {
       ...runState,
-      runConfigId: next.runConfigId,
+      actConfigId: next.actConfigId,
       currentLevel: next.nextLevel,
       unlockedDepthBands: nextUnlocked,
       collectedEssence: {},
@@ -405,7 +418,7 @@ export function progressToNextLevel(runState: RunState): RunState {
   }
 
   // Fallback: invalid or unknown step
-  console.warn(`No next step for ${runConfigId}/${runState.currentLevel}, staying at current level`);
+  console.warn(`No next step for ${actConfigId}/${runState.currentLevel}, staying at current level`);
   return {
     ...runState,
     collectedEssence: {},

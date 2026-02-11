@@ -3,6 +3,18 @@
  * Based on DATA_STRUCTURE.md specification
  */
 
+/** Objective types for level completion. */
+export type ObjectiveType = 'reach_size' | 'eat_prey' | 'eat_predators' | 'collect_essence';
+
+/** Per-level completion objective. */
+export interface LevelObjective {
+  type: ObjectiveType;
+  targetMeters?: number; // reach_size
+  count?: number; // eat_prey, eat_predators, collect_essence
+  essenceId?: string; // collect_essence
+  timeLimitSeconds?: number; // future: "within Y:YY"
+}
+
 /**
  * Essence Type - Defines a currency category
  */
@@ -356,7 +368,7 @@ export interface BackgroundAsset {
  */
 export interface RunState {
   runId: string; // Unique run identifier
-  runConfigId?: string; // Run config id (e.g. 'shallow_run') for step progression
+  actConfigId?: string; // Act config id (e.g. 'shallow_act') for step progression
   currentLevel: string; // "1-1", "1-2", etc.
   /** Depth bands the player can access (continuous progression within level). */
   unlockedDepthBands?: string[];
