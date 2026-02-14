@@ -1023,171 +1023,171 @@ export function tickGameState(params: GameTickParams): boolean {
             fish.vy = (fish.vy! / sp) * AI.WANDER_SPEED;
           }
         } else {
-        const others = state.fish.filter(
-          (f) => f.id !== fish.id && (f.lifecycleState === 'active' || f.lifecycleState === 'exhausted' || f.lifecycleState === 'knocked_out') && (f.opacity ?? 1) >= 1
-        );
-        const speedMult = (fish.isDashing && (fish.stamina ?? 0) > 0) ? PHYSICS.DASH_SPEED_MULTIPLIER : 1;
-        const baseSpeed = AI_BASE_SPEED * speedMult;
+          const others = state.fish.filter(
+            (f) => f.id !== fish.id && (f.lifecycleState === 'active' || f.lifecycleState === 'exhausted' || f.lifecycleState === 'knocked_out') && (f.opacity ?? 1) >= 1
+          );
+          const speedMult = (fish.isDashing && (fish.stamina ?? 0) > 0) ? PHYSICS.DASH_SPEED_MULTIPLIER : 1;
+          const baseSpeed = AI_BASE_SPEED * speedMult;
 
-        if (fish.type === 'predator' || fish.type === 'mutant') {
-          let targetX: number | null = null;
-          let targetY: number | null = null;
-          let targetId: string | null = null;
-          let distToTarget = Infinity;
-          const chaseElapsed = fish.chaseStartTime != null ? now - fish.chaseStartTime : 0;
-          if (fish.chaseTargetId != null && chaseElapsed > AI_CHASE_TIMEOUT_MS) {
-            fish.chaseTargetId = undefined;
-            fish.chaseStartTime = undefined;
-          }
-          if (chaseElapsed <= AI_CHASE_TIMEOUT_MS) {
+          if (fish.type === 'predator' || fish.type === 'mutant') {
+            let targetX: number | null = null;
+            let targetY: number | null = null;
+            let targetId: string | null = null;
+            let distToTarget = Infinity;
+            const chaseElapsed = fish.chaseStartTime != null ? now - fish.chaseStartTime : 0;
+            if (fish.chaseTargetId != null && chaseElapsed > AI_CHASE_TIMEOUT_MS) {
+              fish.chaseTargetId = undefined;
+              fish.chaseStartTime = undefined;
+            }
+            if (chaseElapsed <= AI_CHASE_TIMEOUT_MS) {
+              for (const other of others) {
+                if (other.size < fish.size * 0.8 && (other.type === 'prey' || other.lifecycleState === 'knocked_out')) {
+                  const dx = other.x - fish.x;
+                  const dy = other.y - fish.y;
+                  const d = Math.sqrt(dx * dx + dy * dy);
+                  if (d < AI_DETECTION_RANGE && d < distToTarget) {
+                    distToTarget = d;
+                    targetX = other.x;
+                    targetY = other.y;
+                    targetId = other.id;
+                  }
+                }
+              }
+              if (player.size < fish.size * AI.PREDATOR_VS_PLAYER_SIZE_RATIO) {
+                const pdx = player.x - fish.x;
+                const pdy = player.y - fish.y;
+                const pd = Math.sqrt(pdx * pdx + pdy * pdy);
+                if (pd < AI_DETECTION_RANGE && pd < distToTarget) {
+                  distToTarget = pd;
+                  targetX = player.x;
+                  targetY = player.y;
+                  targetId = 'player';
+                }
+              }
+            }
+            const maxSpeed = baseSpeed * AI_PREDATOR_CHASE_SPEED;
+            if (targetX != null && targetY != null && distToTarget > 5) {
+              fish.chaseTargetId = targetId ?? undefined;
+              if (fish.chaseStartTime == null) fish.chaseStartTime = now;
+              const dx = targetX - fish.x;
+              const dy = targetY - fish.y;
+              const len = Math.sqrt(dx * dx + dy * dy) || 1;
+              fish.vx = (dx / len) * maxSpeed;
+              fish.vy = (dy / len) * maxSpeed;
+              fish.isDashing = !fish.recoveringFromExhausted && canDash(fish) && distToTarget < fish.size * AI.DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
+            } else {
+              fish.chaseTargetId = undefined;
+              fish.chaseStartTime = undefined;
+              fish.vx += (Math.random() - 0.5) * AI.WANDER_JITTER;
+              fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
+              fish.isDashing = false;
+            }
+            updateStamina(fish, deltaTime, { drainRate: AI_DASH_STAMINA_DRAIN_RATE });
+            const stam = fish.stamina ?? 0;
+            if (stam <= 0) {
+              fish.isDashing = false;
+              fish.lifecycleState = 'exhausted';
+              fish.recoveringFromExhausted = true;
+            } else if (stam <= AI.DASH_STAMINA_MIN) {
+              fish.isDashing = false;
+              fish.recoveringFromExhausted = true;
+            }
+            if (stam <= 0) {
+              const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREDATOR_CHASE_SPEED;
+              const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
+              if (sp > exhaustedMaxSpeed && sp > 0) {
+                fish.vx = (fish.vx / sp) * exhaustedMaxSpeed;
+                fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
+              }
+            }
+            if (fish.recoveringFromExhausted && (fish.stamina ?? 0) >= (fish.maxStamina ?? 0)) fish.recoveringFromExhausted = false;
+          } else if (fish.type === 'prey') {
+            let fleeX = 0;
+            let fleeY = 0;
+            let nearestThreatDist = Infinity;
+            // Clear expired flee state
+            if (fish.fleeFromUntil && now > fish.fleeFromUntil) {
+              fish.fleeFromId = undefined;
+              fish.fleeFromUntil = undefined;
+            }
             for (const other of others) {
-              if (other.size < fish.size * 0.8 && (other.type === 'prey' || other.lifecycleState === 'knocked_out')) {
-                const dx = other.x - fish.x;
-                const dy = other.y - fish.y;
+              // Flee from larger predators OR from any attacker that hit us (fleeFromId)
+              const isLargerPredator = other.size > fish.size * 1.2 && (other.type === 'predator' || other.type === 'mutant');
+              const isFleeTarget = fish.fleeFromId === other.id && fish.fleeFromUntil && now < fish.fleeFromUntil;
+              if (isLargerPredator || isFleeTarget) {
+                const dx = fish.x - other.x;
+                const dy = fish.y - other.y;
                 const d = Math.sqrt(dx * dx + dy * dy);
-                if (d < AI_DETECTION_RANGE && d < distToTarget) {
-                  distToTarget = d;
-                  targetX = other.x;
-                  targetY = other.y;
-                  targetId = other.id;
+                if (d < AI_DETECTION_RANGE) {
+                  if (d < nearestThreatDist) nearestThreatDist = d;
+                  if (d > 0) {
+                    fleeX += dx / d;
+                    fleeY += dy / d;
+                  }
                 }
               }
             }
-            if (player.size < fish.size * AI.PREDATOR_VS_PLAYER_SIZE_RATIO) {
-              const pdx = player.x - fish.x;
-              const pdy = player.y - fish.y;
+            // Flee from player: larger OR was attacked by player
+            const fleeFromPlayer = player.size > fish.size * 1.2 ||
+              (fish.fleeFromId === 'player' && fish.fleeFromUntil && now < fish.fleeFromUntil);
+            if (fleeFromPlayer) {
+              const pdx = fish.x - player.x;
+              const pdy = fish.y - player.y;
               const pd = Math.sqrt(pdx * pdx + pdy * pdy);
-              if (pd < AI_DETECTION_RANGE && pd < distToTarget) {
-                distToTarget = pd;
-                targetX = player.x;
-                targetY = player.y;
-                targetId = 'player';
-              }
-            }
-          }
-          const maxSpeed = baseSpeed * AI_PREDATOR_CHASE_SPEED;
-          if (targetX != null && targetY != null && distToTarget > 5) {
-            fish.chaseTargetId = targetId ?? undefined;
-            if (fish.chaseStartTime == null) fish.chaseStartTime = now;
-            const dx = targetX - fish.x;
-            const dy = targetY - fish.y;
-            const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            fish.vx = (dx / len) * maxSpeed;
-            fish.vy = (dy / len) * maxSpeed;
-            fish.isDashing = !fish.recoveringFromExhausted && canDash(fish) && distToTarget < fish.size * AI.DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
-          } else {
-            fish.chaseTargetId = undefined;
-            fish.chaseStartTime = undefined;
-            fish.vx += (Math.random() - 0.5) * AI.WANDER_JITTER;
-            fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
-            fish.isDashing = false;
-          }
-          updateStamina(fish, deltaTime, { drainRate: AI_DASH_STAMINA_DRAIN_RATE });
-          const stam = fish.stamina ?? 0;
-          if (stam <= 0) {
-            fish.isDashing = false;
-            fish.lifecycleState = 'exhausted';
-            fish.recoveringFromExhausted = true;
-          } else if (stam <= AI.DASH_STAMINA_MIN) {
-            fish.isDashing = false;
-            fish.recoveringFromExhausted = true;
-          }
-          if (stam <= 0) {
-            const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREDATOR_CHASE_SPEED;
-            const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
-            if (sp > exhaustedMaxSpeed && sp > 0) {
-              fish.vx = (fish.vx / sp) * exhaustedMaxSpeed;
-              fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
-            }
-          }
-          if (fish.recoveringFromExhausted && (fish.stamina ?? 0) >= (fish.maxStamina ?? 0)) fish.recoveringFromExhausted = false;
-        } else if (fish.type === 'prey') {
-          let fleeX = 0;
-          let fleeY = 0;
-          let nearestThreatDist = Infinity;
-          // Clear expired flee state
-          if (fish.fleeFromUntil && now > fish.fleeFromUntil) {
-            fish.fleeFromId = undefined;
-            fish.fleeFromUntil = undefined;
-          }
-          for (const other of others) {
-            // Flee from larger predators OR from any attacker that hit us (fleeFromId)
-            const isLargerPredator = other.size > fish.size * 1.2 && (other.type === 'predator' || other.type === 'mutant');
-            const isFleeTarget = fish.fleeFromId === other.id && fish.fleeFromUntil && now < fish.fleeFromUntil;
-            if (isLargerPredator || isFleeTarget) {
-              const dx = fish.x - other.x;
-              const dy = fish.y - other.y;
-              const d = Math.sqrt(dx * dx + dy * dy);
-              if (d < AI_DETECTION_RANGE) {
-                if (d < nearestThreatDist) nearestThreatDist = d;
-                if (d > 0) {
-                  fleeX += dx / d;
-                  fleeY += dy / d;
+              if (pd < AI_DETECTION_RANGE) {
+                if (pd < nearestThreatDist) nearestThreatDist = pd;
+                if (pd > 0) {
+                  fleeX += pdx / pd;
+                  fleeY += pdy / pd;
                 }
               }
             }
-          }
-          // Flee from player: larger OR was attacked by player
-          const fleeFromPlayer = player.size > fish.size * 1.2 ||
-            (fish.fleeFromId === 'player' && fish.fleeFromUntil && now < fish.fleeFromUntil);
-          if (fleeFromPlayer) {
-            const pdx = fish.x - player.x;
-            const pdy = fish.y - player.y;
-            const pd = Math.sqrt(pdx * pdx + pdy * pdy);
-            if (pd < AI_DETECTION_RANGE) {
-              if (pd < nearestThreatDist) nearestThreatDist = pd;
-              if (pd > 0) {
-                fleeX += pdx / pd;
-                fleeY += pdy / pd;
+            const maxSpeed = baseSpeed * AI_PREY_FLEE_SPEED;
+            const threatened = fleeX !== 0 || fleeY !== 0;
+            if (threatened) {
+              const mag = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
+              fish.vx = (fleeX / mag) * maxSpeed;
+              fish.vy = (fleeY / mag) * maxSpeed;
+              fish.isDashing = !fish.recoveringFromExhausted && canDash(fish) && nearestThreatDist < fish.size * AI.PREY_DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
+            } else {
+              fish.vx += (Math.random() - 0.5) * AI.WANDER_JITTER;
+              fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
+              fish.isDashing = false;
+            }
+            updateStamina(fish, deltaTime, {
+              drainRate: AI_DASH_STAMINA_DRAIN_RATE,
+              fleeMultiplier: fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1,
+            });
+            const stam = fish.stamina ?? 0;
+            if (stam <= 0) {
+              fish.isDashing = false;
+              fish.lifecycleState = 'exhausted';
+              fish.recoveringFromExhausted = true;
+            } else if (stam <= AI.DASH_STAMINA_MIN) {
+              fish.isDashing = false;
+              fish.recoveringFromExhausted = true;
+            }
+            if (stam <= 0) {
+              const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREY_FLEE_SPEED;
+              const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
+              if (sp > exhaustedMaxSpeed && sp > 0) {
+                fish.vx = (fish.vx / sp) * exhaustedMaxSpeed;
+                fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
               }
             }
+            if (fish.recoveringFromExhausted && (fish.stamina ?? 0) >= (fish.maxStamina ?? 0)) fish.recoveringFromExhausted = false;
           }
-          const maxSpeed = baseSpeed * AI_PREY_FLEE_SPEED;
-          const threatened = fleeX !== 0 || fleeY !== 0;
-          if (threatened) {
-            const mag = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
-            fish.vx = (fleeX / mag) * maxSpeed;
-            fish.vy = (fleeY / mag) * maxSpeed;
-            fish.isDashing = !fish.recoveringFromExhausted && canDash(fish) && nearestThreatDist < fish.size * AI.PREY_DASH_DISTANCE_MULTIPLIER && (fish.stamina ?? 0) > AI.DASH_STAMINA_MIN;
-          } else {
-            fish.vx += (Math.random() - 0.5) * AI.WANDER_JITTER;
-            fish.vy += (Math.random() - 0.5) * AI.WANDER_JITTER;
-            fish.isDashing = false;
-          }
-          updateStamina(fish, deltaTime, {
-            drainRate: AI_DASH_STAMINA_DRAIN_RATE,
-            fleeMultiplier: fish.isDashing ? PREY_FLEE_STAMINA_MULTIPLIER : 1,
-          });
-          const stam = fish.stamina ?? 0;
-          if (stam <= 0) {
-            fish.isDashing = false;
-            fish.lifecycleState = 'exhausted';
-            fish.recoveringFromExhausted = true;
-          } else if (stam <= AI.DASH_STAMINA_MIN) {
-            fish.isDashing = false;
-            fish.recoveringFromExhausted = true;
-          }
-          if (stam <= 0) {
-            const exhaustedMaxSpeed = AI_BASE_SPEED * EXHAUSTED_SPEED_MULTIPLIER * AI_PREY_FLEE_SPEED;
+
+          if (fish.lifecycleState === 'active') {
+            const effectiveMax = (fish.type === 'predator' || fish.type === 'mutant')
+              ? baseSpeed * AI_PREDATOR_CHASE_SPEED
+              : baseSpeed * AI_PREY_FLEE_SPEED;
             const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
-            if (sp > exhaustedMaxSpeed && sp > 0) {
-              fish.vx = (fish.vx / sp) * exhaustedMaxSpeed;
-              fish.vy = (fish.vy / sp) * exhaustedMaxSpeed;
+            if (sp > effectiveMax && sp > 0) {
+              fish.vx = (fish.vx / sp) * effectiveMax;
+              fish.vy = (fish.vy / sp) * effectiveMax;
             }
           }
-          if (fish.recoveringFromExhausted && (fish.stamina ?? 0) >= (fish.maxStamina ?? 0)) fish.recoveringFromExhausted = false;
-        }
-
-        if (fish.lifecycleState === 'active') {
-          const effectiveMax = (fish.type === 'predator' || fish.type === 'mutant')
-            ? baseSpeed * AI_PREDATOR_CHASE_SPEED
-            : baseSpeed * AI_PREY_FLEE_SPEED;
-          const sp = Math.sqrt(fish.vx ** 2 + fish.vy ** 2);
-          if (sp > effectiveMax && sp > 0) {
-            fish.vx = (fish.vx / sp) * effectiveMax;
-            fish.vy = (fish.vy / sp) * effectiveMax;
-          }
-        }
         }
       } else if (!gameMode || (fish.type !== 'prey' && fish.type !== 'predator')) {
         if (Math.random() < AI.RANDOM_DIRECTION_CHANCE) {

@@ -1,7 +1,10 @@
 /**
- * BackgroundLayer - Parallax background image or gradient, vignette
- * Renders behind all game entities in world space
- * Uses view-sized gradient quad when no level image for guaranteed visibility
+ * BackgroundLayer - Parallax background image or gradient
+ * Renders behind all game entities in world space.
+ *
+ * The plane is dynamically sized to the current camera view (+ a small margin
+ * for parallax). This ensures the texture maps 1:1 to the visible area so the
+ * background looks sharp instead of being zoomed into a giant oversized plane.
  */
 'use client';
 
@@ -9,7 +12,7 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useGameContext } from './GameContext';
-import { RENDERING } from '@/lib/game/canvas-constants';
+import { RENDERING, WORLD_BOUNDS } from '@/lib/game/canvas-constants';
 
 export function BackgroundLayer() {
   const { gameStateRef, backgroundImageRef, animatedZoomRef } = useGameContext();
@@ -26,26 +29,15 @@ export function BackgroundLayer() {
     ctx.fillRect(0, 0, 512, 512);
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
-  }, []);
-
-  const vignetteTexture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d')!;
-    const gradient = ctx.createRadialGradient(128, 128, 60, 128, 128, 140);
-    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.25)'); // Lighter vignette
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 256, 256);
-    return new THREE.CanvasTexture(canvas);
   }, []);
 
   const bgTextureRef = useRef<THREE.Texture | null>(null);
   const lastBgImageRef = useRef<HTMLImageElement | null>(null);
-  const geometry = useMemo(() => new THREE.PlaneGeometry(10000, 10000), []);
+
+  // Unit plane (1x1) – scaled dynamically each frame to match camera view
+  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
   const material = useMemo(
     () =>
@@ -54,35 +46,27 @@ export function BackgroundLayer() {
         depthWrite: false,
         depthTest: false,
         side: THREE.DoubleSide,
+        transparent: false,
+        opacity: 1,
       }),
     [gradientTexture]
   );
 
-  const vignetteMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        map: vignetteTexture,
-        transparent: true,
-        depthWrite: false,
-        depthTest: false,
-        side: THREE.DoubleSide,
-      }),
-    [vignetteTexture]
-  );
-
   const meshRef = useRef<THREE.Mesh | null>(null);
-  const vignetteRef = useRef<THREE.Mesh | null>(null);
-  const viewGradientRef = useRef<THREE.Mesh | null>(null);
-  const viewGradientGeo = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
   useFrame((state) => {
     const img = backgroundImageRef.current;
-    const hasLevelBg = img && img.complete && img.width > 0;
+    const hasLevelBg = img && img.complete && img.naturalWidth > 0;
 
     if (hasLevelBg && img !== lastBgImageRef.current) {
       bgTextureRef.current?.dispose();
-      const tex = new THREE.CanvasTexture(img);
+      const tex = new THREE.Texture(img);
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      const maxAnisotropy = (state.gl as THREE.WebGLRenderer).capabilities?.getMaxAnisotropy?.() ?? 1;
+      tex.anisotropy = Math.min(16, maxAnisotropy);
       tex.needsUpdate = true;
       material.map = tex;
       bgTextureRef.current = tex;
@@ -97,66 +81,51 @@ export function BackgroundLayer() {
     const gameState = gameStateRef.current;
     if (!gameState) return;
 
-    const cx = gameState.camera.effectiveX;
-    const cy = -gameState.camera.effectiveY;
     const zoom = animatedZoomRef.current;
-    const vw = state.size.width / zoom;
-    const vh = state.size.height / zoom;
+    const { width, height } = state.size; // CSS pixels
 
-    // Large plane for level image or gradient
+    // View dimensions in world units (matches CameraController frustum)
+    const viewW = width / zoom;
+    const viewH = height / zoom;
+
+    // Scale plane slightly larger than view to provide parallax margin
+    const bgScale = RENDERING.BACKGROUND_SCALE; // 1.3
+    const planeW = viewW * bgScale;
+    const planeH = viewH * bgScale;
+
+    const cx = gameState.camera.effectiveX;
+    const cy = -gameState.camera.effectiveY; // Y-up for Three.js
+
+    // Bounded parallax: background lags behind camera, clamped to margin so
+    // edges never become visible.  Normalize camera position to world extents
+    // so the full parallax range is used across the playable area.
+    const marginX = (planeW - viewW) / 2;
+    const marginY = (planeH - viewH) / 2;
+    const worldRangeX = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX; // e.g. 3000
+    const worldRangeY = WORLD_BOUNDS.maxY - WORLD_BOUNDS.minY; // e.g. 2400
+    const halfRangeX = worldRangeX / 2 || 1;
+    const halfRangeY = worldRangeY / 2 || 1;
+    const rawParallaxX = -(cx / halfRangeX) * marginX;
+    const rawParallaxY = -(cy / halfRangeY) * marginY;
+    const parallaxX = Math.max(-marginX, Math.min(marginX, rawParallaxX));
+    const parallaxY = Math.max(-marginY, Math.min(marginY, rawParallaxY));
+
     if (meshRef.current) {
-      meshRef.current.position.set(cx, cy, 0);
+      meshRef.current.scale.set(planeW, planeH, 1);
+      meshRef.current.position.set(cx + parallaxX, cy + parallaxY, 0);
       meshRef.current.renderOrder = -1000;
       meshRef.current.visible = true;
     }
 
-    // View-sized gradient quad (guaranteed visible when no level image)
-    if (viewGradientRef.current) {
-      viewGradientRef.current.visible = !hasLevelBg;
-      if (!hasLevelBg) {
-        viewGradientRef.current.position.set(cx, cy, -0.5);
-        viewGradientRef.current.scale.set(vw, vh, 1);
-        viewGradientRef.current.renderOrder = -1001;
-      }
-    }
-
-    if (vignetteRef.current) {
-      vignetteRef.current.position.set(cx, cy, 0.1);
-      vignetteRef.current.renderOrder = -999;
-    }
-
+    // Reset any stale UV offset from the old approach (texture covers full plane 0-1)
     if (material.map && 'offset' in material.map) {
-      const parallax = RENDERING.BACKGROUND_PARALLAX_FACTOR;
-      material.map.offset.set(cx * 0.0001 * parallax, cy * 0.0001 * parallax);
+      material.map.offset.set(0, 0);
     }
   });
-
-  const viewGradientMaterial = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        map: gradientTexture,
-        depthWrite: false,
-        depthTest: false,
-        side: THREE.DoubleSide,
-      }),
-    [gradientTexture]
-  );
 
   return (
     <group>
       <mesh ref={meshRef} geometry={geometry} material={material} position={[0, 0, 0]} />
-      <mesh
-        ref={viewGradientRef}
-        geometry={viewGradientGeo}
-        material={viewGradientMaterial}
-        position={[0, 0, -0.5]}
-      />
-      <mesh
-        ref={vignetteRef}
-        geometry={geometry}
-        material={vignetteMaterial}
-        position={[0, 0, 0.1]}
-      />
     </group>
   );
 }

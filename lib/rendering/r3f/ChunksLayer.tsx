@@ -37,6 +37,7 @@ function createChunkMesh(chunk: ChunkEntity): ChunkMesh {
     sprite = getChunkSprite('essence_shallow');
   }
   const texture = sprite ? new THREE.CanvasTexture(sprite) : null;
+  if (texture) texture.colorSpace = THREE.SRGBColorSpace;
   const color = chunk.chunkKind === 'meat'
     ? parseColor(getChunkColor('meat'))
     : parseColor(chunk.essenceType ?? 'shallow');

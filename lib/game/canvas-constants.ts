@@ -86,14 +86,16 @@ export const SPAWN = {
 export const UI = {
   EDIT_BUTTON_SIZE: 24,
   EDIT_BUTTON_OFFSET: 5, // Offset above fish
-  HUNGER_BAR_HEIGHT: 24,
+  BAR_HEIGHT: 18, // Unified height for all HUD bars
+  HUNGER_BAR_HEIGHT: 18, // Alias for backwards compat
   HUNGER_BAR_WIDTH: 300, // Base width (responsive)
   HUNGER_BAR_MIN_WIDTH: 200, // Minimum width for responsive layout
   HUNGER_BAR_Y: 16, // Position from top
   HUNGER_BAR_PADDING: 3, // Inner padding
-  STAMINA_BAR_HEIGHT: 24,
+  STAMINA_BAR_HEIGHT: 18, // Alias for backwards compat
   STAMINA_BAR_SPACING: 8, // Space between bars
-  BAR_SPACING: 8,
+  BAR_SPACING: 4, // Space between bars
+  BAR_BORDER_RADIUS: 4, // Rounded corner radius for HUD bars
   TIMER_SPACING: 12, // Space below stamina bar
   STATS_Y_OFFSET: 90, // Stats panel Y offset from bottom
   STAMINA_LOW_THRESHOLD: 0.3, // 30% - color changes below this
@@ -171,9 +173,12 @@ export const RENDERING = {
   WATER_DISTORTION_AMPLITUDE: 5, // Wave amplitude
   SUNRAY_COUNT: 5, // Number of sunray gradients
   SUNRAY_OFFSET: 50, // Sunray movement offset
-  BLOOD_PARTICLE_ALPHA: 0.55,
-  BLOOD_PARTICLE_MIN_RADIUS: 3,
+  BLOOD_PARTICLE_ALPHA: 0.65,
+  BLOOD_PARTICLE_MIN_RADIUS: 4,
   KO_OPACITY_MULTIPLIER: 0.85, // KO fish are slightly transparent
+  /** Max resolution scale for entity (fish) sprite deformation canvases.
+   *  Higher = sharper at high zoom but more GPU/memory. 8 is generous for most devices. */
+  MAX_ENTITY_RESOLUTION_SCALE: 8,
 } as const;
 
 // Stamina constants

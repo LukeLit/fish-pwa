@@ -18,6 +18,8 @@ export interface GameContextValue {
   backgroundImageRef: React.MutableRefObject<HTMLImageElement | null>;
   enableWaterDistortion: boolean;
   deformationIntensity: number;
+  showVignette: boolean;
+  showParticles: boolean;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);

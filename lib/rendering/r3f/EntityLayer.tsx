@@ -1,6 +1,13 @@
 /**
  * EntityLayer - Renders fish and player as textured planes with deformation animation
  * Uses drawFishWithDeformation for spine-based wave animation
+ *
+ * Known issues / things to watch:
+ * - material.needsUpdate is required when map transitions null↔texture (shader recompile)
+ * - Spawn stagger can cause up to ~10s of invisible fish at level start (expected)
+ * - Sprite cache key in spawn-sync uses fishItem.id; game-loop uses creature.creatureId
+ *   ?? creature.id — both should be aligned via the base-id fallback cache entry
+ * - Very small fish (size < 5) at low zoom may be hard to see — consider a min display size
  */
 'use client';
 
@@ -9,6 +16,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useGameContext } from './GameContext';
 import { drawFishWithDeformation, getSegmentsSmooth, PLAYER_SEGMENT_MULTIPLIER } from '@/lib/rendering/fish-renderer';
+import { RENDERING } from '@/lib/game/canvas-constants';
 import type { FishEntity, PlayerEntity } from '@/lib/game/canvas-state';
 
 interface EntityMesh {
@@ -19,6 +27,8 @@ interface EntityMesh {
   /** Offscreen canvas for deformation rendering */
   deformationCanvas: HTMLCanvasElement | null;
   deformationCtx: CanvasRenderingContext2D | null;
+  /** Track whether material has a map so we can detect null↔texture transitions */
+  hadMap: boolean;
 }
 
 function createMesh(color: string): EntityMesh {
@@ -30,13 +40,13 @@ function createMesh(color: string): EntityMesh {
     depthWrite: true,
   });
   const mesh = new THREE.Mesh(geometry, material);
-  return { mesh, material, texture: null, spriteSource: null, deformationCanvas: null, deformationCtx: null };
+  return { mesh, material, texture: null, spriteSource: null, deformationCanvas: null, deformationCtx: null, hadMap: false };
 }
 
 function ensureDeformationCanvas(em: EntityMesh, size: number, animatedZoom: number): void {
   const pad = size * 0.6; // Extra for wave deformation
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-  const resolutionScale = Math.max(2, Math.min(4, animatedZoom * dpr));
+  const resolutionScale = Math.max(2, Math.min(RENDERING.MAX_ENTITY_RESOLUTION_SCALE, animatedZoom * dpr));
   const w = Math.ceil((size + pad) * resolutionScale);
   const h = Math.ceil((size + pad) * resolutionScale);
   if (!em.deformationCanvas || em.deformationCanvas.width < w || em.deformationCanvas.height < h) {
@@ -57,10 +67,20 @@ function updateMesh(
 ) {
   const sprite = entity.sprite;
   const scale = entity.size;
+
+  // Guard against degenerate sizes
+  if (!scale || scale <= 0 || !isFinite(scale)) return;
+
   const rotation = entity.facingRight ? -entity.verticalTilt : entity.verticalTilt;
 
   if (!sprite) {
-    em.material.map = null;
+    // No sprite available – show a colored fallback quad
+    if (em.hadMap) {
+      // Transition from texture → no texture: must recompile shader
+      em.material.map = null;
+      em.material.needsUpdate = true;
+      em.hadMap = false;
+    }
     em.spriteSource = null;
     em.texture?.dispose();
     em.texture = null;
@@ -83,7 +103,7 @@ function updateMesh(
     }
 
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const resolutionScale = Math.max(2, Math.min(4, animatedZoom * dpr));
+    const resolutionScale = Math.max(2, Math.min(RENDERING.MAX_ENTITY_RESOLUTION_SCALE, animatedZoom * dpr));
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
@@ -109,10 +129,16 @@ function updateMesh(
     if (!em.texture || em.texture.image !== canvas) {
       em.texture?.dispose();
       em.texture = new THREE.CanvasTexture(canvas);
+      em.texture.colorSpace = THREE.SRGBColorSpace;
       em.material.map = em.texture;
+      // Transition from no-map → map: recompile shader so texture is sampled
+      if (!em.hadMap) {
+        em.material.needsUpdate = true;
+        em.hadMap = true;
+      }
     }
     em.texture.needsUpdate = true;
-    em.material.color.setHex(0xbbbbbb);
+    em.material.color.setHex(0xffffff);
   }
 
   const opacity = 'opacity' in entity ? (entity.opacity ?? 1) : 1;
@@ -122,6 +148,7 @@ function updateMesh(
   em.mesh.position.set(entity.x, -entity.y, 1);
   em.mesh.rotation.z = rotation;
   em.mesh.scale.set(scale, scale, 1);
+  em.mesh.visible = true;
 }
 
 export function EntityLayer() {

@@ -97,6 +97,10 @@ interface FishEditorCanvasProps {
   showDepthBandOverlay?: boolean;
   /** Game only: show hitbox debug overlay */
   showHitboxDebug?: boolean;
+  /** Debug: show screen vignette (default true) */
+  showVignette?: boolean;
+  /** Debug: show particles - dash, blood, chomp (default true) */
+  showParticles?: boolean;
   runId?: string;
   /** Current depth band (e.g. '1-1') – used for band-based fish spawn in game mode */
   currentLevel?: string;
@@ -143,6 +147,8 @@ export default function FishEditorCanvas({
   showBoundaryOverlay = false,
   showDepthBandOverlay = false,
   showHitboxDebug = false,
+  showVignette = true,
+  showParticles = true,
   runId = 'shallow_act',
   currentLevel = '1-1',
   unlockedDepthBands,
@@ -188,6 +194,8 @@ export default function FishEditorCanvas({
   const showBoundaryOverlayRef = useRef<boolean>(showBoundaryOverlay);
   const showDepthBandOverlayRef = useRef<boolean>(showDepthBandOverlay);
   const showHitboxDebugRef = useRef<boolean>(showHitboxDebug);
+  const showVignetteRef = useRef<boolean>(showVignette);
+  const showParticlesRef = useRef<boolean>(showParticles);
   const runIdRef = useRef<string>(runId);
   const editButtonPositionsRef = useRef<Map<string, { x: number; y: number; size: number }>>(new Map());
 
@@ -245,6 +253,8 @@ export default function FishEditorCanvas({
   useEffect(() => { showBoundaryOverlayRef.current = showBoundaryOverlay }, [showBoundaryOverlay])
   useEffect(() => { showDepthBandOverlayRef.current = showDepthBandOverlay }, [showDepthBandOverlay])
   useEffect(() => { showHitboxDebugRef.current = showHitboxDebug }, [showHitboxDebug])
+  useEffect(() => { showVignetteRef.current = showVignette }, [showVignette])
+  useEffect(() => { showParticlesRef.current = showParticles }, [showParticles])
   useEffect(() => { runIdRef.current = runId }, [runId])
   const enableWaterDistortionRef = useRef<boolean>(enableWaterDistortion ?? false);
   useEffect(() => { enableWaterDistortionRef.current = enableWaterDistortion ?? false }, [enableWaterDistortion])
@@ -629,6 +639,7 @@ export default function FishEditorCanvas({
     }
 
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
       backgroundImageRef.current = img;
     };
@@ -1197,15 +1208,18 @@ export default function FishEditorCanvas({
         editButtonPositionsRef.current.set(state.player.id, { x: state.player.x, y: state.player.y, size: state.player.size });
       }
 
-      // Render 2D overlay (particles, health bars, UI, etc.)
+      // Render 2D overlay (particles, health bars, UI, etc.) at high DPR
       const overlay = overlayCanvasRef.current;
       const container = containerRef.current;
       if (overlay && container) {
         const w = container.clientWidth;
         const h = container.clientHeight;
-        if (overlay.width !== w || overlay.height !== h) {
-          overlay.width = w;
-          overlay.height = h;
+        const overlayDpr = Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+        const bufW = Math.round(w * overlayDpr);
+        const bufH = Math.round(h * overlayDpr);
+        if (overlay.width !== bufW || overlay.height !== bufH) {
+          overlay.width = bufW;
+          overlay.height = bufH;
         }
         renderOverlay({
           canvas: overlay,
@@ -1231,6 +1245,9 @@ export default function FishEditorCanvas({
           runId: runIdRef.current,
           enableWaterDistortion: enableWaterDistortionRef.current,
           waterTime: waterTimeRef.current,
+          showVignette: showVignetteRef.current,
+          showParticles: showParticlesRef.current,
+          dpr: overlayDpr,
         });
       }
 
@@ -1274,13 +1291,15 @@ export default function FishEditorCanvas({
     backgroundImageRef,
     enableWaterDistortion: enableWaterDistortion ?? false,
     deformationIntensity: deformationIntensity ?? 1,
+    showVignette: showVignette ?? true,
+    showParticles: showParticles ?? true,
   };
 
   return (
     <div ref={containerRef} className="relative w-full h-full" style={{ touchAction: 'none' }}>
       <div
         className="absolute inset-0 z-0"
-        style={{ background: 'linear-gradient(to bottom, #1e40af 0%, #1e3a8a 100%)' }}
+        style={{ background: '#0a0a12' }}
         aria-hidden
       />
       <GameProvider value={gameContextValue}>
@@ -1297,9 +1316,11 @@ export default function FishEditorCanvas({
           onTouchEnd={handleTouchEnd}
         >
           <Canvas
-            gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+            flat
+            dpr={[1, 2]}
+            gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
             onCreated={({ gl }) => {
-              gl.setClearColor(0x000000, 0);
+              gl.setClearColor(0x0a0a12, 1);
               (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = gl.domElement;
               setCanvasReady(true);
             }}

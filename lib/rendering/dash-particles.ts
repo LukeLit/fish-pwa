@@ -209,9 +209,9 @@ export class DashParticleSystem {
         ctx.globalAlpha = alpha;
         const r = p.radius * p.life;
         const bubbleGradient = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r);
-        bubbleGradient.addColorStop(0, `rgba(220, 245, 255, 0.7)`);
-        bubbleGradient.addColorStop(0.5, `rgba(160, 220, 255, 0.5)`);
-        bubbleGradient.addColorStop(1, `rgba(100, 180, 220, 0.2)`);
+        bubbleGradient.addColorStop(0, `rgba(220, 245, 255, 0.8)`);
+        bubbleGradient.addColorStop(0.5, `rgba(160, 220, 255, 0.6)`);
+        bubbleGradient.addColorStop(1, `rgba(100, 180, 220, 0.25)`);
         ctx.fillStyle = bubbleGradient;
         ctx.strokeStyle = `rgba(180, 230, 255, 0.4)`;
         ctx.lineWidth = 1;

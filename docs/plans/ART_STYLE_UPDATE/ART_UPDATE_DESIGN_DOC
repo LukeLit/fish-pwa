@@ -1,0 +1,73 @@
+Design Document: Migrate Prompt Generator to New Surreal Alien 3-Up Style + fal.ai Grok Imagine
+Goal
+Fully update the prompt generator in the fish editor to produce the new high-quality surreal alien painterly style we achieved in Grok Imagine testing.
+All generations will run through fal.ai using the exact model that produced our best results:
+Model: xai/grok-imagine-image (Grok Imagine Image / Aurora-powered)
+API Details (fal.ai)
+
+Primary endpoint: xai/grok-imagine-image
+For text-to-image (main sprite generation): use the standard queue/submit
+For future mouth animation frames (open/closed bite): use the image-to-image editing endpoint → xai/grok-imagine-image/edit
+Pass the full prompt as prompt
+For editing: also pass image_url (or base64) of the base sprite
+Resolution target: 832×1248 (the model handles this well and gives clean vertical 3-up results)
+
+Target Visual Style (make this dominant in every generated prompt)
+Digital painting style, rich painterly brushwork, vibrant surreal alien concept art illustration, organic fleshy biomechanical textures, clustered glowing alien eyes, bulbous eye-covered nodules and growths, long flowing tentacle-like sensory barbels, iridescent shifting bioluminescent patterns, dark mesmerizing horror-beauty alien vibe, visible brush strokes, artistic rendering.
+Required Layout (always enforce)
+Vertical 3-stage growth sprite:
+
+Small juvenile at the top (approximately half the size of the elder)
+Medium adult in the middle
+Large elder at the bottom
+Generous clear space between each fish for easy automated slicing with no overlap
+All three fish in clean right-facing side profile (head pointing right, tail pointing left)
+Entire composition fits perfectly in 832×1248 canvas
+
+Background (very strict – push hard)
+PERFECTLY SOLID uniform bright cyan background exactly #00FFFF across the entire image, completely flat single-color background with ZERO gradients, ZERO shading, ZERO noise, ZERO particles, ZERO lighting effects, ZERO depth, ZERO caustics, ZERO atmospheric effects — the background must be a perfectly flat, unchanging solid color block with no variation whatsoever.
+Consistency Rules
+
+All three stages use the exact same primary skin color (pull from fish data: upper body/back + belly countershade)
+Perfectly consistent colors, patterns, eyes, tentacles, growths across all stages
+All three fish have similarly sized large prominent glowing alien eyes (juvenile looks cute due to big eyes on small body)
+
+Recommended Full Prompt Template (use this structure in the generator)
+textDigital painting style, rich painterly brushwork, vibrant surreal alien concept art illustration, vertical 3-stage growth sprite for a 2.5D fish game, 
+
+three distinct growth phases of the exact same fish stacked vertically with generous clear space between them for easy automated slicing with no overlap: small juvenile at the top (approximately half the size of the elder), medium adult in the middle, large elder at the bottom, all three fish in clean right-facing side profile (head pointing right, tail pointing left),
+
+PERFECTLY SOLID uniform bright cyan background exactly #00FFFF across the entire image, completely flat single-color background with ZERO gradients, ZERO shading, ZERO noise, ZERO particles, ZERO lighting effects, ZERO depth, ZERO caustics, ZERO atmospheric effects — the background must be a perfectly flat, unchanging solid color block with no variation whatsoever,
+
+all three fish must use the exact same primary skin color: [PRIMARY_HEX] upper body and back, [BELLY_HEX] belly and lower sides countershading, perfectly consistent colors, patterns, and design language across all growth stages,
+
+all three fish have similarly sized eyes (making the small juvenile look cute with big eyes relative to its body),
+
+
+
+painterly digital art, visible brush strokes, artistic rendering, high detail with painterly quality, dramatic yet stylized lighting only on the fish, dark mesmerizing horror-beauty alien vibe, fits perfectly in 832x1248 canvas
+Implementation Notes for the Code
+
+Replace the old base prompt with the new template above.
+Dynamically insert the fish’s primary color hex values.
+Keep your existing chunk system, but prepend the new style/layout/background block and append the painterly closing line.
+Remove or deprioritize old phrases like “clean cell-shaded”, “hard edges”, “strong silhouette”, “readable at small sizes”, “no black outlines”.
+For fal.ai calls: set model: "xai/grok-imagine-image" and resolution to 832×1248 when possible.
+
+Example (Great White Bass) D:\Prototyping\fish-pwa\docs\plans\ART_STYLE_UPDATE\GreatWhiteBass.jpg
+
+Prompt:
+
+Digital painting style, rich painterly brushwork, vibrant surreal alien concept art illustration, vertical 3-stage growth sprite for a 2.5D fish game, 
+
+three distinct growth phases of the exact same fish stacked vertically with generous clear space between them for easy automated slicing with no overlap: small juvenile at the top (approximately half the size of the elder), medium adult in the middle, large elder at the bottom, all three fish in clean right-facing side profile (head pointing right, tail pointing left),
+
+PERFECTLY SOLID uniform bright cyan background exactly #00FFFF across the entire image, completely flat single-color background with ZERO gradients, ZERO shading, ZERO noise, ZERO particles, ZERO lighting effects, ZERO depth, ZERO caustics, ZERO atmospheric effects — the background must be a perfectly flat, unchanging solid color block with no variation whatsoever,
+
+all three fish must use the exact same primary skin color: upper body and back #9ca3af, belly and lower sides #e5e7eb countershading, perfectly consistent colors, patterns, and design language across all growth stages,
+
+all three fish have similarly sized large prominent glowing alien eyes (making the small juvenile look cute with big eyes relative to its body),
+
+surreal alien aesthetic: organic fleshy textures, clustered glowing alien eyes on head and body, bulbous eye-covered nodules and growths, long flowing tentacle-like sensory barbels, iridescent shifting bioluminescent patterns on scales, powerful streamlined fusiform body of a massive apex predator, rows of sharp serrated teeth visible, very prominent tall triangular dorsal fin, strong caudal fin,
+
+painterly digital art, visible brush strokes, artistic rendering, high detail with painterly quality, dramatic yet stylized lighting only on the fish, dark mesmerizing horror-beauty alien vibe, fits perfectly in 832x1248 canvas

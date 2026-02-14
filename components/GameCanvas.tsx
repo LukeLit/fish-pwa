@@ -57,6 +57,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
 
   const [showDepthBandOverlay, setShowDepthBandOverlay] = useState(true);
   const [showHitboxDebug, setShowHitboxDebug] = useState(false);
+  const [showVignette, setShowVignette] = useState(true);
+  const [showParticles, setShowParticles] = useState(true);
 
   /** True until player + fish sprites are loaded; then canvas calls onReadyToPlay. */
   const [loading, setLoading] = useState(true);
@@ -167,9 +169,13 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
         // Load background
         const bgResponse = await fetch('/api/list-assets?type=background');
         const bgData = await bgResponse.json();
-        if (bgData.success && bgData.assets.length > 0) {
-          const randomBg = bgData.assets[Math.floor(Math.random() * bgData.assets.length)];
+        const assets = bgData.assets ?? bgData.backgrounds ?? [];
+        if (bgData.success && assets.length > 0) {
+          const randomBg = assets[Math.floor(Math.random() * assets.length)];
           setSelectedBackground(randomBg.url);
+        } else {
+          // Static fallback when no blob backgrounds exist
+          setSelectedBackground('/backgrounds/shallow.svg');
         }
 
         // Determine which fish ID to use for the player:
@@ -259,6 +265,8 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
         setSpawnedFish(spawnList);
       } catch (error) {
         console.error('Failed to load game assets:', error);
+        // Ensure background fallback even on error
+        setSelectedBackground((prev) => prev ?? '/backgrounds/shallow.svg');
       }
     };
 
@@ -541,6 +549,10 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
         onDepthBandOverlayChange={setShowDepthBandOverlay}
         showHitboxDebug={showHitboxDebug}
         onShowHitboxDebugChange={setShowHitboxDebug}
+        showVignette={showVignette}
+        onVignetteChange={setShowVignette}
+        showParticles={showParticles}
+        onParticlesChange={setShowParticles}
         currentLevel={currentLevel}
         onCheatLevel={handleCheatLevel}
         onCheatSize={handleCheatSize}
@@ -562,6 +574,9 @@ export default function GameCanvas({ onGameEnd, onGameOver, onLevelComplete, onG
         deformationIntensity={1}
         showDepthBandOverlay={showDepthBandOverlay}
         showHitboxDebug={showHitboxDebug}
+        showEditButtons={false}
+        showVignette={showVignette}
+        showParticles={showParticles}
         runId={runState?.actConfigId ?? 'shallow_act'}
         currentLevel={runState?.currentLevel ?? '1-1'}
         unlockedDepthBands={runState?.unlockedDepthBands}

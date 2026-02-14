@@ -40,7 +40,7 @@ export function CameraController() {
       makeDefault
       position={[0, 0, 1000]}
       near={0.1}
-      far={2000}
+      far={10000}
     />
   );
 }

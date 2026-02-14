@@ -171,6 +171,11 @@ export function useCanvasSpawnSync(
         }
       }
 
+      // Also cache under the creature's base ID (without resolution suffix) so
+      // the game-loop respawn path can find sprites via its fallback lookup
+      // (spriteCache.get(cacheId) where cacheId = creature.creatureId ?? creature.id).
+      const creatureBaseId = (fishItem as { creatureId?: string }).creatureId ?? fishItem.id;
+
       if (existingFish && (spriteChanged || sizeMismatch)) {
         const newVersion = (spriteVersionRef.current.get(fishItem.id) ?? 0) + 1;
         spriteVersionRef.current.set(fishItem.id, newVersion);
@@ -178,10 +183,12 @@ export function useCanvasSpawnSync(
           existingFish.sprite = processedSprite;
           existingFish.hitbox = computeSpriteHitbox(processedSprite);
           gameStateRef.current.spriteCache.set(cacheKey, processedSprite);
+          gameStateRef.current.spriteCache.set(creatureBaseId, processedSprite);
         }, { spriteResolutions, fishSize: fishSizeForResolution });
       } else if (!existingFish) {
         loadSprite(currentSpriteUrl, fishItem.id, (processedSprite) => {
           gameStateRef.current.spriteCache.set(cacheKey, processedSprite);
+          gameStateRef.current.spriteCache.set(creatureBaseId, processedSprite);
 
           const szMult = SPAWN.FISH_SIZE_MIN + Math.random() * (SPAWN.FISH_SIZE_MAX - SPAWN.FISH_SIZE_MIN);
           const fishSize = fishSizeForSprite * szMult;

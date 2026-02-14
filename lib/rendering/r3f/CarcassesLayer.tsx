@@ -19,6 +19,7 @@ interface CarcassMesh {
 function createCarcassMesh(c: CarcassEntity): CarcassMesh {
   const sprite = getCarcassSprite();
   const texture = sprite ? new THREE.CanvasTexture(sprite) : null;
+  if (texture) texture.colorSpace = THREE.SRGBColorSpace;
   const material = new THREE.MeshBasicMaterial({
     color: 0x503c3c,
     transparent: true,

@@ -37,7 +37,12 @@ function drawHitboxDebug(
   drawEntityHitbox(player);
   for (const f of fish) {
     if (f.lifecycleState === 'removed') continue;
+    // Respect opacity so hitbox debug matches R3F rendering (don't draw
+    // hitboxes for fish that are still fading in / out and invisible)
+    ctx.save();
+    ctx.globalAlpha = f.opacity ?? 1;
     drawEntityHitbox(f);
+    ctx.restore();
   }
 }
 
@@ -123,6 +128,90 @@ function formatElapsedTime(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
+/** Shared HUD bar helper - draws a rounded bar with cyan-tinted border, dark fill, and coloured inner fill */
+function drawBar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  fillPct: number,
+  fillColor: string,
+  label: string,
+  opts?: {
+    /** Optional secondary (background) fill before primary fill */
+    bgFillPct?: number;
+    bgFillColor?: string;
+    /** Pulsing glow for low-resource warning */
+    glowColor?: string;
+  }
+): void {
+  const r = UI.BAR_BORDER_RADIUS;
+  const pad = UI.HUNGER_BAR_PADDING;
+
+  ctx.save();
+
+  // Dark rounded background
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fillStyle = 'rgba(0, 10, 20, 0.75)';
+  ctx.fill();
+
+  // Cyan-tinted border
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.6)';
+  ctx.stroke();
+
+  // Inner fill area
+  const innerX = x + pad;
+  const innerY = y + pad;
+  const innerW = w - pad * 2;
+  const innerH = h - pad * 2;
+
+  // Optional secondary/background fill (e.g. hunger capacity)
+  if (opts?.bgFillPct != null && opts.bgFillColor) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(innerX, innerY, innerW, innerH, Math.max(0, r - pad));
+    ctx.clip();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = opts.bgFillColor;
+    ctx.fillRect(innerX, innerY, innerW * opts.bgFillPct, innerH);
+    ctx.restore();
+  }
+
+  // Primary fill (clipped to inner rounded rect)
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(innerX, innerY, innerW, innerH, Math.max(0, r - pad));
+  ctx.clip();
+  ctx.fillStyle = fillColor;
+  ctx.fillRect(innerX, innerY, innerW * Math.max(0, Math.min(1, fillPct)), innerH);
+  ctx.restore();
+
+  // Pulsing glow border when critical
+  if (opts?.glowColor) {
+    const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
+    ctx.shadowColor = opts.glowColor;
+    ctx.shadowBlur = 15 * pulse;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.strokeStyle = opts.glowColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Label text
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + w / 2, y + h / 2);
+
+  ctx.restore();
+}
+
 function renderGameUI(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -132,103 +221,75 @@ function renderGameUI(
   fishCount: number,
   elapsedSeconds: number
 ): void {
+  // Stats panel (bottom-left) with cyan accent border
   const statsY = height - UI.STATS_Y_OFFSET;
+  const statsW = 130;
+  const statsH = 80;
+  const statsR = UI.BAR_BORDER_RADIUS;
   ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-  ctx.fillRect(10, statsY, 130, 80);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.beginPath();
+  ctx.roundRect(10, statsY, statsW, statsH, statsR);
+  ctx.fillStyle = 'rgba(0, 10, 20, 0.75)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.4)';
   ctx.lineWidth = 1;
-  ctx.strokeRect(10, statsY, 130, 80);
+  ctx.stroke();
   ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
   ctx.font = 'bold 13px monospace';
   ctx.fillText(`Score: ${score}`, 20, statsY + 18);
   ctx.fillText(`Size: ${Number.isInteger(player.size) ? player.size : player.size.toFixed(1)}`, 20, statsY + 36);
   ctx.fillText(`Time: ${formatElapsedTime(elapsedSeconds)}`, 20, statsY + 54);
-  ctx.fillStyle = 'rgba(100, 200, 255, 0.9)';
+  ctx.fillStyle = 'rgba(0, 200, 255, 0.9)';
   ctx.fillText(`Fish: ${fishCount}`, 20, statsY + 72);
   ctx.restore();
 
   const barWidth = Math.min(UI.HUNGER_BAR_WIDTH, width - UI.HUNGER_BAR_MIN_WIDTH);
-  const healthBarHeight = 10;
-  const healthBarX = (width - barWidth) / 2;
+  const barHeight = UI.BAR_HEIGHT;
+  const barX = (width - barWidth) / 2;
+
+  // --- Health bar ---
   const healthBarY = UI.HUNGER_BAR_Y;
   const playerHealth = player.health ?? PLAYER_BASE_MAX_HEALTH;
   const playerMaxHealth = player.maxHealth ?? PLAYER_BASE_MAX_HEALTH;
   const healthPct = Math.max(0, playerHealth / playerMaxHealth);
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(healthBarX, healthBarY, barWidth, healthBarHeight);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(healthBarX, healthBarY, barWidth, healthBarHeight);
-  const hpInnerX = healthBarX + 2;
-  const hpInnerW = barWidth - 4;
-  const hpInnerH = healthBarHeight - 4;
-  const hpInnerY = healthBarY + 2;
-  const hpFillW = hpInnerW * healthPct;
   let hpColor: string;
   if (healthPct > 0.6) hpColor = '#22c55e';
   else if (healthPct > 0.3) hpColor = '#eab308';
   else hpColor = '#ef4444';
-  ctx.fillStyle = hpColor;
-  ctx.fillRect(hpInnerX, hpInnerY, hpFillW, hpInnerH);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.font = 'bold 8px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`HP ${Math.ceil(playerHealth)}/${Math.ceil(playerMaxHealth)}`, healthBarX + barWidth / 2, healthBarY + healthBarHeight / 2);
-  ctx.restore();
+  drawBar(ctx, barX, healthBarY, barWidth, barHeight, healthPct, hpColor,
+    `HP ${Math.ceil(playerHealth)} / ${Math.ceil(playerMaxHealth)}`,
+    healthPct <= 0.3 ? { glowColor: hpColor } : undefined
+  );
 
-  const barHeight = UI.STAMINA_BAR_HEIGHT;
-  const barX = (width - barWidth) / 2;
-  const barY = healthBarY + healthBarHeight + 4;
+  // --- Stamina bar ---
+  const staminaBarY = healthBarY + barHeight + UI.BAR_SPACING;
   const baseMax = player.baseMaxStamina ?? 100;
   const effectiveMax = Math.max(0.01, computeEffectiveMaxStamina(baseMax, player.hunger));
   const capacityPercent = player.hunger / 100;
   const staminaPercent = effectiveMax > 0 ? player.stamina / effectiveMax : 0;
-
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.lineWidth = 2;
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  ctx.fillRect(barX, barY, barWidth, barHeight);
-  ctx.strokeRect(barX, barY, barWidth, barHeight);
-  const innerW = barWidth - UI.HUNGER_BAR_PADDING * 2;
-  const innerH = barHeight - UI.HUNGER_BAR_PADDING * 2;
-  const innerX = barX + UI.HUNGER_BAR_PADDING;
-  const innerY = barY + UI.HUNGER_BAR_PADDING;
-  const capacityWidth = innerW * capacityPercent;
   let capacityColor = '#f59e0b';
   if (capacityPercent <= 0.25) capacityColor = '#ef4444';
   else if (capacityPercent <= 0.5) capacityColor = '#fbbf24';
-  ctx.fillStyle = capacityColor;
-  ctx.globalAlpha = 0.4;
-  ctx.fillRect(innerX, innerY, capacityWidth, innerH);
-  ctx.globalAlpha = 1;
   const staminaColor = staminaPercent > UI.STAMINA_LOW_THRESHOLD ? '#22d3ee' : '#ef4444';
-  ctx.fillStyle = staminaColor;
-  const staminaFillWidth = capacityWidth * Math.min(1, staminaPercent);
-  ctx.fillRect(innerX, innerY, staminaFillWidth, innerH);
-  if (capacityPercent <= 0.25) {
-    const pulse = Math.sin(Date.now() * HUNGER_WARNING_PULSE_FREQUENCY) * HUNGER_WARNING_PULSE_BASE + HUNGER_WARNING_PULSE_BASE;
-    ctx.shadowColor = capacityColor;
-    ctx.shadowBlur = 15 * pulse;
-    ctx.strokeStyle = capacityColor;
-    ctx.strokeRect(barX, barY, barWidth, barHeight);
-    ctx.shadowBlur = 0;
-  }
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.font = 'bold 12px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`STAMINA ${Math.ceil(player.stamina)} / ${Math.ceil(effectiveMax)}  (Hunger ${Math.ceil(player.hunger)}%)`, barX + barWidth / 2, barY + barHeight / 2);
-  ctx.restore();
+  const staminaFillPct = capacityPercent * Math.min(1, staminaPercent);
+  drawBar(ctx, barX, staminaBarY, barWidth, barHeight, staminaFillPct, staminaColor,
+    `STAMINA ${Math.ceil(player.stamina)} / ${Math.ceil(effectiveMax)}  (Hunger ${Math.ceil(player.hunger)}%)`,
+    {
+      bgFillPct: capacityPercent,
+      bgFillColor: capacityColor,
+      glowColor: capacityPercent <= 0.25 ? capacityColor : undefined,
+    }
+  );
 
-  const timerY = barY + barHeight + UI.TIMER_SPACING;
+  // --- Timer ---
+  const timerY = staminaBarY + barHeight + UI.TIMER_SPACING;
+  ctx.save();
   ctx.font = 'bold 20px monospace';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.fillStyle = 'rgba(0, 200, 255, 0.9)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
   ctx.fillText(formatElapsedTime(elapsedSeconds), width / 2, timerY);
+  ctx.restore();
 }
 
 function renderHungerWarning(ctx: CanvasRenderingContext2D, width: number, height: number, hunger: number): void {
@@ -283,11 +344,11 @@ function renderScreenVignette(ctx: CanvasRenderingContext2D, width: number, heig
   ctx.save();
   const cx = width / 2;
   const cy = height / 2;
-  const maxR = Math.max(width, height) * 0.65;
-  const gradient = ctx.createRadialGradient(cx, cy, maxR * 0.3, cx, cy, maxR);
+  const maxR = Math.max(width, height) * 0.7;
+  const gradient = ctx.createRadialGradient(cx, cy, maxR * 0.4, cx, cy, maxR);
   gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  gradient.addColorStop(0.6, 'rgba(0, 0, 0, 0)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+  gradient.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.12)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
@@ -295,7 +356,7 @@ function renderScreenVignette(ctx: CanvasRenderingContext2D, width: number, heig
 
 function renderWaterEffect(ctx: CanvasRenderingContext2D, width: number, height: number, time: number): void {
   ctx.save();
-  ctx.globalAlpha = 0.03;
+  ctx.globalAlpha = 0.018;
   for (let y = 0; y < height; y += 20) {
     ctx.beginPath();
     ctx.strokeStyle = '#ffffff';
@@ -310,12 +371,12 @@ function renderWaterEffect(ctx: CanvasRenderingContext2D, width: number, height:
     }
     ctx.stroke();
   }
-  ctx.globalAlpha = 0.02;
+  ctx.globalAlpha = 0.012;
   const rayCount = RENDERING.SUNRAY_COUNT;
   for (let i = 0; i < rayCount; i++) {
     const xPos = (i / rayCount) * width + Math.sin(time + i) * RENDERING.SUNRAY_OFFSET;
     const gradient = ctx.createLinearGradient(xPos, 0, xPos, height);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(xPos - 30, 0, 60, height);
@@ -386,8 +447,17 @@ export interface OverlayRenderOptions {
   runId?: string;
   enableWaterDistortion?: boolean;
   waterTime?: number;
+  showVignette?: boolean;
+  showParticles?: boolean;
+  /** Device pixel ratio for the overlay canvas (default 1). */
+  dpr?: number;
 }
 
+/**
+ * Particles (dash, blood, chomp) use Option B: 2D overlay on a high-DPR canvas
+ * with improved size/opacity.  Code lives in overlay-renderer.ts, dash-particles.ts,
+ * multi-entity-dash-particles.ts, and FishEditorCanvas (overlay canvas sizing).
+ */
 export function renderOverlay(options: OverlayRenderOptions): void {
   const {
     canvas,
@@ -413,18 +483,28 @@ export function renderOverlay(options: OverlayRenderOptions): void {
     runId = 'shallow_act',
     enableWaterDistortion = false,
     waterTime = 0,
+    showVignette = true,
+    showParticles = true,
+    dpr = 1,
   } = options;
 
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const width = canvas.width;
-  const height = canvas.height;
+  // Physical buffer may be larger than logical size (high-DPR)
+  const width = canvas.width / dpr;   // logical (CSS) width
+  const height = canvas.height / dpr;  // logical (CSS) height
   const wallNow = performance.now();
   const effectiveCamX = camera.effectiveX;
   const effectiveCamY = camera.effectiveY;
 
-  ctx.clearRect(0, 0, width, height);
+  // Clear full physical buffer before any transforms
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Root DPR scale — all drawing below operates in logical (CSS) pixels
+  ctx.save();
+  ctx.scale(dpr, dpr);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
@@ -435,28 +515,31 @@ export function renderOverlay(options: OverlayRenderOptions): void {
   const scaledHeight = height / animatedZoom;
   ctx.translate(scaledWidth / 2 - effectiveCamX, scaledHeight / 2 - effectiveCamY);
 
-  // Dash behind
-  if (gameMode) {
-    const playerDead = player.lifecycleState === 'dead';
-    const dashEntityIds = [
-      ...(playerDead ? [] : ['player']),
-      ...fish.filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed').map((f) => f.id),
-    ];
-    dashMultiEntity.drawBehind(ctx, dashEntityIds);
-  }
+  // Particles: dash, blood, chomp (guarded by showParticles toggle)
+  if (showParticles) {
+    // Dash behind
+    if (gameMode) {
+      const playerDead = player.lifecycleState === 'dead';
+      const dashEntityIds = [
+        ...(playerDead ? [] : ['player']),
+        ...fish.filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed').map((f) => f.id),
+      ];
+      dashMultiEntity.drawBehind(ctx, dashEntityIds);
+    }
 
-  // Dash in front
-  if (gameMode) {
-    const playerDead = player.lifecycleState === 'dead';
-    const dashEntityIdsFront = [
-      ...(playerDead ? [] : ['player']),
-      ...fish.filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed').map((f) => f.id),
-    ];
-    dashMultiEntity.drawInFront(ctx, dashEntityIdsFront);
-  }
+    // Dash in front
+    if (gameMode) {
+      const playerDead = player.lifecycleState === 'dead';
+      const dashEntityIdsFront = [
+        ...(playerDead ? [] : ['player']),
+        ...fish.filter((f) => (f.opacity ?? 1) >= 1 && f.lifecycleState !== 'removed').map((f) => f.id),
+      ];
+      dashMultiEntity.drawInFront(ctx, dashEntityIdsFront);
+    }
 
-  renderBloodParticles(ctx, bloodParticles);
-  renderChompParticles(ctx, chompParticles);
+    renderBloodParticles(ctx, bloodParticles);
+    renderChompParticles(ctx, chompParticles);
+  }
 
   // Fish health bars and state icons
   fish.forEach((f) => {
@@ -514,9 +597,9 @@ export function renderOverlay(options: OverlayRenderOptions): void {
       const worldHeight = b.maxY - b.minY;
       const metersToWorldY = (meters: number) =>
         b.minY + ((meters - runMinMeters) / runDepthSpan) * worldHeight;
-      const bandAlphaById: Record<string, number> = { '1-1': 0.05, '1-2': 0.08, '1-3': 0.14 };
-      const bandAlphaByIndex = [0.05, 0.08, 0.14];
-      const getAlpha = (id: string, index: number) => bandAlphaById[id] ?? bandAlphaByIndex[Math.min(index, 2)] ?? 0.08;
+      const bandAlphaById: Record<string, number> = { '1-1': 0.03, '1-2': 0.05, '1-3': 0.08 };
+      const bandAlphaByIndex = [0.03, 0.05, 0.08];
+      const getAlpha = (id: string, index: number) => bandAlphaById[id] ?? bandAlphaByIndex[Math.min(index, 2)] ?? 0.05;
       ctx.save();
       for (let i = 0; i < bands.length; i++) {
         const { id, rules } = bands[i];
@@ -579,8 +662,10 @@ export function renderOverlay(options: OverlayRenderOptions): void {
     renderWaterEffect(ctx, width, height, waterTime);
   }
 
-  // Screen-space: subtle vignette (optional polish)
-  renderScreenVignette(ctx, width, height);
+  // Screen-space: subtle vignette (guarded by showVignette toggle)
+  if (showVignette) {
+    renderScreenVignette(ctx, width, height);
+  }
 
   // Screen-space: hunger warning
   if (gameMode && player.hunger <= HUNGER_LOW_THRESHOLD) {
@@ -609,4 +694,7 @@ export function renderOverlay(options: OverlayRenderOptions): void {
   if (isPaused && gameMode) {
     renderPausedIndicator(ctx, width, height);
   }
+
+  // Restore root DPR scale
+  ctx.restore();
 }

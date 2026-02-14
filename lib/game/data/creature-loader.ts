@@ -192,11 +192,11 @@ export function normalizeCreature(raw: unknown): Creature | null {
       : undefined;
   const essenceColorDetails = Array.isArray(raw.essenceColorDetails)
     ? raw.essenceColorDetails
-        .filter(
-          (e): e is { essenceTypeId: string; description: string } =>
-            isRecord(e) && typeof e.essenceTypeId === 'string' && typeof e.description === 'string'
-        )
-        .map((e) => ({ essenceTypeId: e.essenceTypeId, description: e.description }))
+      .filter(
+        (e): e is { essenceTypeId: string; description: string } =>
+          isRecord(e) && typeof e.essenceTypeId === 'string' && typeof e.description === 'string'
+      )
+      .map((e) => ({ essenceTypeId: e.essenceTypeId, description: e.description }))
     : undefined;
 
   return {
